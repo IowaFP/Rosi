@@ -1,0 +1,62 @@
+-- Examples
+--
+-- Comments are Haskell-style line comments
+
+-- Example 1: Wand's example
+
+-- Fully annotated
+
+--   I am going to assume that:
+
+--   prj : forall y z : R[*]. y < z => Pi z -> Pi y
+--   (++) : forall x y z : R[*]. x + y ~ z => Pi x -> Pi y -> Pi z
+
+--   inj : forall y z : R[*]. y < z => Sigma y -> Sigma z
+--   (?) : forall x y z : R[*], t : *. x + y ~ z => (Sigma x -> t) -> (Sigma y -> t) -> Sigma z -> t
+
+-- NB: the order of type arguments is not fixed by the existing formal developments!
+
+-- Also, I am thinking that there is only infix support for primitives, and that
+-- prefix versions of these will be encoded manually.
+
+wand0 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
+  -- Notes: label constants have an initial quote
+  -- Records are `Pi z`; I guess variants are `Sigma z`.  (Unicode? still sucks for GHC on Windows)
+wand0 = /\ x y z : R[*], t : *. \ m : Pi x, n : Pi y. 
+          prj [{'l := t}] [z] ((++) [x] [y] [z] m n) / #'l
+  -- Not sure about punning singletons: Do we need to distinguish between the
+  -- syntax for singleton #T and the type T?
+
+-- Should be able to infer type arguments:
+
+wand1 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
+wand1 = /\ x y z : R[*], t : * . \ m : Pi x, n : Pi y.
+          prj (m ++ n) / #'l
+
+-- Should be able to infer the presence of type abstractions from the type signature:
+
+wand2 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
+wand2 = \ m : Pi x, n : Pi y. prj (m ++ n) / #'l
+
+-- Can infer types of function arguments:
+
+wand3 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
+wand3 = \ m n. prj (m ++ n) / #'l
+
+-- Not convinced about these next two:
+
+-- Unbound variables in label position are inferred to be symbols:
+
+-- wand4 : forall x y z : R[*], t : *. x + y ~ z, {l := t} < z => Pi x -> Pi y -> t
+-- wand4 = \ m n. prj (m ++ n) / l
+
+-- Can infer kinds?
+
+wand5 : forall x y z t. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
+wand5 = \ m n. prj (m ++ n) / #'l
+
+-- Automatically generalize undeclared variables, in alphabetical order. (Note
+-- interaction with #4?)
+
+-- wand6 : x + y ~ z, {l := t} < z => Pi x -> Pi y -> t
+-- wand6 = \ m n. prj (m ++ n) / l

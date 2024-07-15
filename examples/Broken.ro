@@ -1,0 +1,2 @@
+foo : Pi {'2 := Pi {}} -> Pi {'2 := Pi {}}
+foo = \ x : Sigma {'1 := Pi {}} . x

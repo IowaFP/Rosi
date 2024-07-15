@@ -1,0 +1,10 @@
+# Rose Parser
+
+This repository hosts a parser for the Rose/Rω type systems.
+
+The parser includes:
+
+* Lexing
+* Parsing
+* Type inference
+* Code generation
