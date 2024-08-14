@@ -11,10 +11,11 @@ import Checker
 import Parser
 import Syntax
 
+unprog (Prog ds) = ds
+
 main :: IO ()
 main = do files <- getArgs
-          s <- concat <$> mapM readFile files
-          Prog decls <- parse s
+          decls <- concatMap unprog <$> mapM (\fn -> parse fn =<< readFile fn) files
           go [] decls where
   go g [] = return ()
   go g (Decl (v, ty, te) : ds) =

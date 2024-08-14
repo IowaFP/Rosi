@@ -2,54 +2,26 @@ module Parser where
 
 import Syntax
 
-import Control.Monad (foldM, replicateM)
+import Control.Monad (foldM, replicateM, void, when)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.State
 import Data.Char (isSpace)
 import Data.IORef (newIORef)
 import Data.List (intercalate)
 import Data.List.NonEmpty (fromList)
+import Data.Void (Void)
+import System.IO (hPutStrLn, stderr) 
+import System.Exit (exitFailure)
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as P
-
-
-type Parser = ParsecT String [Char] IO
+import Text.Megaparsec.Error
 
 --------------------------------------------------------------------------------
--- Lexer, Megaparsec style
-
-whitespace :: Parser ()
-whitespace = P.space space1 (P.skipLineComment "--") (P.skipBlockCommentNested "{-" "-}")
-
-lexeme      = P.lexeme whitespace
-symbol      = P.symbol whitespace
-identifier  = lexeme ((:) <$> letter <*> many alphaNumChar)
-reserved    = P.symbol whitespace 
-reservedOp  = P.symbol whitespace
-parens      = between (symbol "(") (symbol ")")
-angles      = between (symbol "<") (symbol ">")
-brackets    = between (symbol "[") (symbol "]")
-braces      = between (symbol "{") (symbol "}")
-semi        = symbol ";"
-comma       = symbol "," 
-colon       = symbol ":" 
-dot         = symbol "." 
-semiSep     = flip sepBy semi
-semiSep1    = flip sepBy1 semi
-commaSep    = flip sepBy comma 
-commaSep1   = flip sepBy1 comma 
-
-letter = letterChar
-digit = digitChar
+-- Combinators I miss from Parsec
 
 terminal p = p <* eof
-
-ps p = runParserT p ""
-
-many1 p = (:) <$> p <*> many p
-
-optionMaybe p = try (Just <$> p) <|> return Nothing
 
 chainr1 p op = 
   do lhs <- p
@@ -68,7 +40,82 @@ chainl1 p op =
      return (down lhs rhss)
   where down lhs [] = lhs
         down lhs ((op, rhs) : rhss) = down (op lhs rhs) rhss
-        
+
+ps p s = evalStateT (runParserT p "" s) []
+
+--------------------------------------------------------------------------------
+
+type Parser = ParsecT Void [Char] (StateT [(Ordering, Pos)] IO)
+
+pushIndent :: Ordering -> Pos -> Parser ()
+pushIndent o n = lift (modify ((o, n) :))
+
+popIndent :: Parser ()
+popIndent = lift (modify tail)
+
+theIndent :: Parser (Maybe (Ordering, Pos))
+theIndent =
+  do is <- lift get
+     case is of
+       [] -> return Nothing
+       i : _ -> return (Just i)
+
+guardIndent :: Parser a -> Parser a
+guardIndent p = 
+  do indent <- theIndent
+     case indent of
+       Nothing -> p
+       Just (ord, goal) -> 
+         do here <- P.indentLevel
+            when (compare here goal /= ord) (P.incorrectIndent ord goal here)       
+            p
+
+item :: Parser a -> Parser b -> (a -> b -> c) -> Parser c
+item p q f = 
+  do here <- P.indentLevel
+     x <- p
+     pushIndent GT here
+     f x <$> q <* popIndent
+
+at goal p = 
+  do here <- P.indentLevel
+     when (here /= goal) (P.incorrectIndent EQ goal here)
+     p 
+
+block :: Parser a -> Parser [a]
+block p =
+  do here <- P.indentLevel
+     pushIndent EQ here
+     many p <* popIndent
+
+--------------------------------------------------------------------------------
+-- Lexer, Megaparsec style
+
+whitespace :: Parser ()
+whitespace = P.space space1 (P.skipLineComment "--") (P.skipBlockCommentNested "{-" "-}")
+
+--------------------------------------------------------------------------------
+-- Shorthand
+
+lexeme p    = guardIndent p <* whitespace
+  
+symbol      = lexeme . string
+identifier  = lexeme ((:) <$> letterChar <*> many alphaNumChar)
+parens      = between (symbol "(") (symbol ")")
+angles      = between (symbol "<") (symbol ">")
+brackets    = between (symbol "[") (symbol "]")
+braces      = between (symbol "{") (symbol "}")
+semi        = symbol ";"
+comma       = symbol "," 
+colon       = symbol ":" 
+dot         = symbol "." 
+semiSep     = flip sepBy semi
+semiSep1    = flip sepBy1 semi
+commaSep    = flip sepBy comma 
+commaSep1   = flip sepBy1 comma 
+
+
+
 
 ---------------------------------------------------------------------------------
 -- Parser
@@ -86,17 +133,17 @@ topLevels = reverse . foldr combine [] . reverse . lines where
     | otherwise = s : ts'
 
 kind :: Parser Kind
-kind = chainr1 akind (reservedOp "->" >> return KFun) where
-  akind =  choice [ reserved "*" >> return KType
-                  , reserved "L" >> return KLabel
+kind = chainr1 akind (symbol "->" >> return KFun) where
+  akind =  choice [ symbol "*" >> return KType
+                  , symbol "L" >> return KLabel
                   , parens kind
-                  , do reserved "R"
+                  , do symbol "R"
                        KRow <$> brackets kind ]
 
 binders :: Parser t -> (Goal t -> IO t) -> Parser [(String, t)]
 binders p unif = 
-  do xs <- many1 identifier
-     m <- optionMaybe $ do colon >> p
+  do xs <- some identifier
+     m <- optional $ do colon >> p
      case m of
        Just t -> return [(x, t) | x <- xs]
        Nothing -> mapM (\x -> do r <- liftIO $ newIORef Nothing
@@ -109,11 +156,11 @@ ty = do pfs <- many prefix
         return (foldr ($) ty pfs) where
   prefix :: Parser (Ty -> Ty)          
   prefix = choice 
-             [ do reservedOp "\\"
+             [ do symbol "\\"
                   bs <- commaSep1 (binders kind (return . KUnif))
                   dot
                   return (foldr (\(v, k) f -> TLam v k . f) id (concat bs))
-             , do reserved "forall"
+             , do symbol "forall"
                   bs <- commaSep1 (binders kind (return . KUnif))
                   dot
                   return (foldr (\(v, k) f -> TForall v k . f) id (concat bs)) ]  
@@ -124,7 +171,7 @@ ty = do pfs <- many prefix
     scan = tyOrP >>= rest
 
     rest (Right t) = return t
-    rest (Left ps)  = do reservedOp "=>"
+    rest (Left ps)  = do symbol "=>"
                          t <- scan
                          return (foldr TThen t ps)
                     <|>
@@ -134,12 +181,12 @@ tyOrP :: Parser (Either [Pred] Ty)
 tyOrP = Left <$> try (commaSep1 pr) <|> Right <$> arrTy
 
 arrTy :: Parser Ty
-arrTy = chainr1 appTy (reservedOp "->" >> return (\t u -> TApp (TApp TFun t) u)) where
+arrTy = chainr1 appTy (symbol "->" >> return (\t u -> TApp (TApp TFun t) u)) where
 
 appTy = do t <- atype
            choice 
-             [ do reservedOp ":="
-                  (u : us) <- many1 atype
+             [ do symbol ":="
+                  (u : us) <- some atype
                   return (TLabeled t (foldl TApp u us))
              , do us <- many atype
                   return (foldl TApp t us) ]
@@ -150,10 +197,10 @@ labeledTy =
        _ -> unexpected (Label $ fromList "unlabeled type")
 
 atype :: Parser Ty
-atype = choice [ TLab <$> (lexeme (char '\'' >> many1 (letter <|> digit)))
+atype = choice [ TLab <$> (lexeme (char '\'' >> some alphaNumChar))
                , TSing <$> (char '#' >> atype)
-               , TSigma <$> (reserved "Sigma" >> atype)
-               , TPi <$> (reserved "Pi" >> atype)
+               , TSigma <$> (symbol "Sigma" >> atype)
+               , TPi <$> (symbol "Pi" >> atype)
                , TRow <$> (braces (commaSep labeledTy))
                , flip TVar Nothing <$> identifier
                , parens ty ]
@@ -161,11 +208,11 @@ atype = choice [ TLab <$> (lexeme (char '\'' >> many1 (letter <|> digit)))
 pr :: Parser Pred
 pr = do t <- arrTy
         choice
-          [ do reservedOp "<"
+          [ do symbol "<"
                PLeq t <$> arrTy
-          , do reservedOp "+"
+          , do symbol "+"
                u <- arrTy
-               reservedOp "~"
+               symbol "~"
                PPlus t u <$> arrTy ]
 
 -- We need a random precedence table here.  Let's try:
@@ -179,17 +226,17 @@ term = do ps <- many prefix
           return (foldr ($) t ps) where
 
   prefix :: Parser (Term -> Term)
-  prefix = do reservedOp "\\" 
+  prefix = do symbol "\\" 
               bs <- commaSep1 (binders ty (\g -> return (TUnif g KType)))
               dot
               return (foldr1 (.) (map (uncurry ELam) (concat bs)))
          <|>
-           do reservedOp "/\\"
+           do symbol "/\\"
               bs <- commaSep1 (binders kind (return . KUnif))
               dot
               return (foldr1 (.) (map (uncurry ETyLam) (concat bs)))
 
-  op s k = reservedOp s >> k
+  op s k = symbol s >> k
 
   branchTerm = chainl1 labTerm $ choice [op "++" (ebinary EConcat) , op "?" (ebinary EBranch)] where
     ebinary k = liftIO $ 
@@ -204,7 +251,7 @@ term = do ps <- many prefix
 data AppTerm = BuiltIn String | Type Ty | Term Term
 
 appTerm :: Parser Term
-appTerm = do (t : ts) <- many1 (BuiltIn <$> builtIns <|> Type <$> brackets ty <|> Term <$> aterm)
+appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|> Term <$> aterm)
              app t ts where
   app (Term t) [] = return t
   app (Type _) _ = unexpected (Label $ fromList "type argument")
@@ -280,20 +327,25 @@ appTerm = do (t : ts) <- many1 (BuiltIn <$> builtIns <|> Type <$> brackets ty <|
        return (k tx ty tz g t u)
 
   builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)"]) where
-    builtIn s = reserved s >> return s
+    builtIn s = symbol s >> return s
 
   aterm = choice [ EVar <$> identifier
                  , ESing <$> (char '#' >> atype)
-                 , ELab <$> (lexeme (char '\'' >> many1 (letter <|> digit)))
+                 , ELab <$> lexeme (char '\'' >> some alphaNumChar)
                  , parens term ]
   
-topLevel = 
-  do x <- identifier
-     choice 
-       [ do colon
-            (x,) . Left <$> ty
-       , do reservedOp "="
-            (x,) . Right <$> term ]          
+topLevel = item identifier (colon *> (Left <$> ty) <|> symbol "=" *> (Right <$> term)) (,)
+
+prog :: Parser Program
+prog = whitespace >> block topLevel >>= liftIO . defns
+
+-- topLevel = 
+--   do x <- identifier
+--      choice 
+--        [ do colon
+--             (x,) . Left <$> ty
+--        , do symbol "="
+--             (x,) . Right <$> term ]          
 
 defns :: [(String, Either Ty Term)] -> IO Program
 defns tls
@@ -305,9 +357,10 @@ defns tls
         unmatchedTerms = filter (`notElem` map fst typeMap) (map fst termMap)
         unmatchedTypes = filter (`notElem` map fst termMap) (map fst typeMap)
         
-parse :: String -> IO Program
-parse s = do tls <- sequence <$> mapM (runParserT topLevel "") ss
-             case tls of
-               Left err -> fail (show err)
-               Right tls -> defns tls
-  where ss = topLevels s
+parse :: String -> String -> IO Program
+parse fn s = 
+  do tls <- evalStateT (runParserT prog fn s) []
+     case tls of
+       Left err -> do hPutStrLn stderr (errorBundlePretty err)
+                      exitFailure
+       Right tls -> return tls
