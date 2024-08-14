@@ -61,7 +61,7 @@ executable Rose-parser
     -- other-extensions:
 
     -- Other library packages from which modules are imported.
-    build-depends:    base ^>=4.18.0.0, filepath >= 1.5, parsec >= 3.1.17, mtl >= 2.3, syb >= 0.7
+    build-depends:    base ^>=4.18.0.0, filepath >= 1.5, megaparsec >= 9.6, mtl >= 2.3, syb >= 0.7
 
     -- Directories containing source files.
     hs-source-dirs:   src

@@ -3,69 +3,72 @@ module Parser where
 import Syntax
 
 import Control.Monad (foldM, replicateM)
-import Control.Monad.IO.Class
+import Control.Monad.IO.Class (liftIO)
 import Data.Char (isSpace)
-import Data.IORef
+import Data.IORef (newIORef)
 import Data.List (intercalate)
-import Text.Parsec hiding (parse)
-import Text.Parsec.Language
-import qualified Text.Parsec.Token as P
+import Data.List.NonEmpty (fromList)
 
+import Text.Megaparsec
+import Text.Megaparsec.Char
+import qualified Text.Megaparsec.Char.Lexer as P
+
+
+type Parser = ParsecT String [Char] IO
 
 --------------------------------------------------------------------------------
--- Lexer
+-- Lexer, Megaparsec style
 
+whitespace :: Parser ()
+whitespace = P.space space1 (P.skipLineComment "--") (P.skipBlockCommentNested "{-" "-}")
 
--- Copy and paste to change the monad... fix me!
+lexeme      = P.lexeme whitespace
+symbol      = P.symbol whitespace
+identifier  = lexeme ((:) <$> letter <*> many alphaNumChar)
+reserved    = P.symbol whitespace 
+reservedOp  = P.symbol whitespace
+parens      = between (symbol "(") (symbol ")")
+angles      = between (symbol "<") (symbol ">")
+brackets    = between (symbol "[") (symbol "]")
+braces      = between (symbol "{") (symbol "}")
+semi        = symbol ";"
+comma       = symbol "," 
+colon       = symbol ":" 
+dot         = symbol "." 
+semiSep     = flip sepBy semi
+semiSep1    = flip sepBy1 semi
+commaSep    = flip sepBy comma 
+commaSep1   = flip sepBy1 comma 
 
--- | The language definition for the language Haskell98.
+letter = letterChar
+digit = digitChar
 
-haskellStyleIO :: P.GenLanguageDef String u IO
-haskellStyleIO = P.LanguageDef
-                { P.commentStart   = "{-"
-                , P.commentEnd     = "-}"
-                , P.commentLine    = "--"
-                , P.nestedComments = True
-                , P.identStart     = letter
-                , P.identLetter    = alphaNum <|> oneOf "_'"
-                , P.opStart        = P.opLetter haskellStyleIO
-                , P.opLetter       = oneOf ":!#$%&*+./<=>?@\\^|-~"
-                , P.reservedOpNames= []
-                , P.reservedNames  = []
-                , P.caseSensitive  = True
-                }                
+terminal p = p <* eof
 
-roLanguage :: P.GenLanguageDef String u IO
-roLanguage  = haskellStyleIO
+ps p = runParserT p ""
 
-roParser   :: P.GenTokenParser String u IO
-roParser    = P.makeTokenParser roLanguage
+many1 p = (:) <$> p <*> many p
 
-lexeme      = P.lexeme roParser
-identifier  = P.identifier roParser
-reserved    = P.reserved roParser
-operator    = P.operator roParser
-reservedOp  = P.reservedOp roParser
-natural     = P.natural roParser
-symbol      = P.symbol roParser
-parens      = P.parens roParser
-angles      = P.angles roParser -- Don't think I need this...
-brackets    = P.brackets roParser
-braces      = P.braces roParser
-semi        = P.semi roParser
-comma       = P.comma roParser
-colon       = P.colon roParser
-dot         = P.dot roParser
-semiSep     = P.semiSep roParser
-semiSep1    = P.semiSep1 roParser
-commaSep    = P.commaSep roParser
-commaSep1   = P.commaSep1 roParser
+optionMaybe p = try (Just <$> p) <|> return Nothing
 
-terminal p = do x <- p
-                notFollowedBy anyToken
-                return x
+chainr1 p op = 
+  do lhs <- p
+     rhss <- many (do f <- op
+                      rhs <- p
+                      return (f, rhs))
+     return (down lhs rhss)
+  where down lhs [] = lhs
+        down lhs ((op, rhs) : rhss) = op lhs (down rhs rhss)
 
-ps p = runParserT p () ""
+chainl1 p op = 
+  do lhs <- p
+     rhss <- many (do f <- op
+                      rhs <- p
+                      return (f, rhs))
+     return (down lhs rhss)
+  where down lhs [] = lhs
+        down lhs ((op, rhs) : rhss) = down (op lhs rhs) rhss
+        
 
 ---------------------------------------------------------------------------------
 -- Parser
@@ -81,8 +84,6 @@ topLevels = reverse . foldr combine [] . reverse . lines where
     | take 2 (dropWhile isSpace s) == "--" = ts'
     | isSpace (head s) = (t ++ '\n': s) : ts
     | otherwise = s : ts'
-
-type Parser = ParsecT String () IO
 
 kind :: Parser Kind
 kind = chainr1 akind (reservedOp "->" >> return KFun) where
@@ -127,7 +128,7 @@ ty = do pfs <- many prefix
                          t <- scan
                          return (foldr TThen t ps)
                     <|>
-                      unexpected "predicate"
+                      unexpected (Label $ fromList "predicate")
 
 tyOrP :: Parser (Either [Pred] Ty)  
 tyOrP = Left <$> try (commaSep1 pr) <|> Right <$> arrTy
@@ -146,7 +147,7 @@ labeledTy =
   do t <- appTy
      case t of
        TLabeled _ _ -> return t
-       _ -> unexpected "unlabeled type"
+       _ -> unexpected (Label $ fromList "unlabeled type")
 
 atype :: Parser Ty
 atype = choice [ TLab <$> (lexeme (char '\'' >> many1 (letter <|> digit)))
@@ -206,9 +207,9 @@ appTerm :: Parser Term
 appTerm = do (t : ts) <- many1 (BuiltIn <$> builtIns <|> Type <$> brackets ty <|> Term <$> aterm)
              app t ts where
   app (Term t) [] = return t
-  app (Type _) _ = unexpected "type argument"
-  app (BuiltIn s) [] = unexpected ("unsaturated " ++ s)
-  app _ (BuiltIn s : _) = unexpected s
+  app (Type _) _ = unexpected (Label $ fromList "type argument")
+  app (BuiltIn s) [] = unexpected (Label $ fromList ("unsaturated " ++ s))
+  app _ (BuiltIn s : _) = unexpected (Label $ fromList s)
   app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
   app (Term t) (Type u : ts) = app (Term (ETyApp t u)) ts
   app (BuiltIn "prj") (Term t : ts) = 
@@ -257,7 +258,7 @@ appTerm = do (t : ts) <- many1 (BuiltIn <$> builtIns <|> Type <$> brackets ty <|
   app (BuiltIn "ana") (Term t : ts) = app (Term (EAna (TLam "X" KType (TVar "X" (Just KType))) t)) ts
   app (BuiltIn "syn") (Type phi : Term t : ts) = app (Term (ESyn phi t)) ts
   app (BuiltIn "syn") (Term t : ts) = app (Term (ESyn (TLam "X" KType (TVar "X" (Just KType))) t)) ts
-  app (BuiltIn s) _ = unexpected ("ill-formed" ++ s)
+  app (BuiltIn s) _ = unexpected (Label $ fromList ("ill-formed " ++ s))
 
   goal s = Goal . (s,) <$> newIORef Nothing
 
@@ -305,7 +306,7 @@ defns tls
         unmatchedTypes = filter (`notElem` map fst termMap) (map fst typeMap)
         
 parse :: String -> IO Program
-parse s = do tls <- sequence <$> mapM (runParserT topLevel () "") ss
+parse s = do tls <- sequence <$> mapM (runParserT topLevel "") ss
              case tls of
                Left err -> fail (show err)
                Right tls -> defns tls
