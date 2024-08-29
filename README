@@ -1,10 +1,14 @@
-# Rose Parser
+# Rosi
 
-This repository hosts a parser for the Rose/Rω type systems.
+This is an implementation of the Rωμ (so far) row-typed functional programming language.
 
-The parser includes:
+Implemented features include:
 
-* Lexing
 * Parsing
-* Type inference
-* Code generation
+* Type checking (with some funky type inference)
+* Implementation (very naïve)
+
+Future goals include:
+
+* Generating Agda
+* Less naïve implementation
