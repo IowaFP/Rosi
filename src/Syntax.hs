@@ -158,10 +158,10 @@ kindOf t = error $ "internal: kindOf " ++ show t
   
 data Term =
     EVar String | ELam String Ty Term | EApp Term Term | ETyLam String Kind Term | ETyApp Term Ty
-  | ELab String | ESing Ty | ELabeled Term Term | EUnlabel Term Term 
+  | ESing Ty | ELabeled Term Term | EUnlabel Term Term 
   | EPrj Ty Ty Evid Term | EConcat Ty Ty Ty Evid Term Term | EInj Ty Ty Evid Term | EBranch Ty Ty Ty Evid Term Term
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
-  | EIn Term | ERecS Term | ERecP Term | EInjM Term | EBranchM Term Term | EPrjM Term | EConcatM Term Term
+  | EIn Term Term | EOut Term | EFix String Ty Term 
   -- Internals
   | EPrLam String Pred Term | EPrApp Term Evid | ETyEqu Term TyEqu
   deriving (Data, Eq, Show, Typeable)

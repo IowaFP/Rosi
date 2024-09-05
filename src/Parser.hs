@@ -331,7 +331,6 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
 
   aterm = choice [ EVar <$> identifier
                  , ESing <$> (char '#' >> atype)
-                 , ELab <$> lexeme (char '\'' >> some alphaNumChar)
                  , parens term ]
   
 topLevel = item identifier (colon *> (Left <$> ty) <|> symbol "=" *> (Right <$> term)) (,)

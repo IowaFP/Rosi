@@ -8,13 +8,16 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
+    ( MonadWriter(listen, tell), WriterT(..), censor )
 import Data.IORef
 import Data.List (elemIndex, nub)
 
 import Syntax
 
-check :: Program -> IO (Program)
-check = undefined
+trace, trace' :: MonadIO m => String -> m ()
+-- trace = liftIO . putStrLn 
+trace _ = return ()
+trace' = liftIO . putStrLn
 
 readRef :: MonadIO m => IORef a -> m a
 readRef = liftIO . readIORef
@@ -27,20 +30,25 @@ newRef = liftIO . newIORef
 
 -- expect t actual expected
 
+data TypeError = ErrContextType Ty TypeError | ErrContextTerm Term TypeError | ErrContextPred Pred TypeError | ErrContextOther String TypeError 
+               | ErrTypeMismatch Term Ty Ty | ErrTypeMismatchFD Pred (Maybe TyEqu) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Ty Kind Kind
+               | ErrNotEntailed [(Pred, [Pred])]
+               | ErrUnboundTyVar String | ErrUnboundVar String | ErrOther String
+
 kindGoal :: MonadIO m => String -> m Kind
 kindGoal s =
   do kr <- newRef Nothing
      return (KUnif (Goal ("k$" ++ s, kr)))
 
   -- Note: just returning a `Ty` here out of convenience; it's always an exactly the input `Ty`.
-expectK :: (MonadFail m, MonadIO m) => Ty -> Kind -> Kind -> m Ty
+expectK :: (MonadError TypeError m, MonadIO m) => Ty -> Kind -> Kind -> m Ty
 expectK t actual expected =
   do i <- expectKR t actual expected
      when (i /= 0) $
        kindMismatch t actual expected
      return t
 
-expectKR :: (MonadFail m, MonadIO m) => Ty -> Kind -> Kind -> m Int
+expectKR :: (MonadError TypeError m, MonadIO m) => Ty -> Kind -> Kind -> m Int
 expectKR t actual expected =
   do mi <- unifyK actual expected
      case mi of
@@ -69,25 +77,25 @@ unifyK (KFun dActual cActual) (KFun dExpected cExpected) =
 unifyK _ _ =
   return Nothing
 
-kindMismatch :: (MonadFail m, MonadIO m) => Ty -> Kind -> Kind -> m a
+kindMismatch :: (MonadError TypeError m, MonadIO m) => Ty -> Kind -> Kind -> m a
 kindMismatch t actual expected =
   do actual' <- flattenK actual
      expected' <- flattenK expected
-     fail ("kind mismatch: " ++ show t ++ " has kind " ++ show actual' ++ ", but expected " ++ show expected')
+     throwError (ErrKindMismatch t actual' expected')     
 
 checkTy' :: Term -> Ty -> Kind -> CheckM Ty
-checkTy' e t k = withError (\s -> unlines ["While checking " ++ show e, s]) (checkTy t k)
+checkTy' e t k = withError (ErrContextTerm e) (checkTy t k)
 
 checkTy :: Ty -> Kind -> CheckM Ty
 checkTy (TVar v Nothing) expected =
   do k <- asks (lookup v . kctxt)
      case k of
-       Nothing -> fail ("unbound type variable " ++ v)
+       Nothing -> throwError (ErrUnboundTyVar v)
        Just k' -> expectK (TVar v (Just k')) k' expected
 checkTy (TVar v (Just kv)) expected =
   do k <- asks (lookup v . kctxt)
      case k of
-       Nothing -> fail ("unbound type variable " ++ v)
+       Nothing -> throwError (ErrUnboundTyVar v)
        Just k' -> 
         do expectK (TVar v (Just k')) kv k'
            expectK (TVar v (Just k')) k' expected       
@@ -158,12 +166,12 @@ checkTy t@(TMapArg f) expected =
 
 checkPred :: Pred -> CheckM Pred
 checkPred p@(PLeq y z) =
-  withError (\s -> unlines ["While checking " ++ show p, s]) $
+  withError (ErrContextPred p)  $
   do kelem <- kindGoal "e"
      PLeq <$> checkTy y (KRow kelem)
           <*> checkTy z (KRow kelem)
 checkPred p@(PPlus x y z) =
-  withError (\s -> unlines ["While checking " ++ show p, s]) $
+  withError (ErrContextPred p) $
   do kelem <- kindGoal "e"
      PPlus <$> checkTy x (KRow kelem)
            <*> checkTy y (KRow kelem)
@@ -178,11 +186,11 @@ newtype COut = COut { goals :: [Problem] }
   deriving (Semigroup, Monoid)
 
 
-newtype CheckM a = CM (WriterT COut (ReaderT CIn (StateT CSt (ExceptT String IO))) a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader CIn, MonadState CSt, MonadWriter COut, MonadError String)
+newtype CheckM a = CM (WriterT COut (ReaderT CIn (StateT CSt (ExceptT TypeError IO))) a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader CIn, MonadState CSt, MonadWriter COut, MonadError TypeError)
 
 instance MonadFail CheckM where
-  fail s = throwError s  
+  fail s = throwError (ErrOther s)
 
 runCheckM m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (CIn [] [] [])) (CSt 0)) where
   CM m' = andSolve m
@@ -218,9 +226,6 @@ expectT m actual expected =
        Nothing -> typeMismatch m actual expected
        Just q  -> return q
 
-unify' :: String -> Ty -> Ty -> CheckM (Maybe TyEqu)              
-unify' ctxts t u = withError (\s -> unlines [ctxts, s]) (unify t u)
-
 unify :: Ty -> Ty -> CheckM (Maybe TyEqu)
 unify (TVar x _) (TVar y _)
   | x == y = return (Just QRefl)
@@ -249,13 +254,13 @@ unify a@(TForall xa ka ta) x@(TForall xx kx tx) =  -- To do: equate variables? F
   do ksUnify <- liftIO $ unifyK ka kx
      if xa == xx && ksUnify == Just 0
      then liftM QForall <$> unify ta tx
-     else do liftIO $ putStrLn $ "1 incoming unification failure: " ++ show a ++ ", " ++ show x
+     else do trace $ "1 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
 unify a@(TLam xa ka ta) x@(TLam xx kx tx) =  -- To do: as above.  Note: this case is missing from higher.pdf
   do ksUnify <- liftIO $ unifyK ka kx
      if xa == xx && ksUnify == Just 0
      then liftM QLambda <$> unify ta tx
-     else do liftIO $ putStrLn $ "2 incoming unification failure: " ++ show a ++ ", " ++ show x
+     else do trace $ "2 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
 unify actual@(TApp {}) expected = unifyNormalizing actual expected
 unify actual expected@(TApp {}) = unifyNormalizing actual expected
@@ -317,7 +322,7 @@ unify a@(TMapFun f) x@(TMapFun g) =
        Just QRefl -> return (Just QRefl)
        Just _     -> return (Just QMapFun)
        Nothing    -> 
-        do liftIO $ putStrLn $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
+        do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
 unify a@(TMapArg f) x@(TMapArg g) =
   do q <- unify f g
@@ -325,10 +330,10 @@ unify a@(TMapArg f) x@(TMapArg g) =
        Just QRefl -> return (Just QRefl)
        Just _     -> return (Just QMapFun)
        Nothing    -> 
-        do liftIO $ putStrLn $ "4 incoming unification failure: " ++ show a ++ ", " ++ show x
+        do trace $ "4 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
 unify t u = 
-  do do liftIO $ putStrLn $ "5 incoming unification failure: " ++ show t ++ ", " ++ show u
+  do do trace $ "5 incoming unification failure: " ++ show t ++ ", " ++ show u
      return Nothing
 
 -- Assumption: at least one of actual or expected is a `TApp`
@@ -339,8 +344,19 @@ unifyNormalizing actual expected =
        (QRefl, QRefl) ->
          case (actual', expected') of
            (TApp fa aa, TApp fx ax) ->
-             liftM2 QApp <$> unify fa fx <*> unify aa  ax
-           _ -> do liftIO $ putStrLn $ "6 incoming unification failure: " ++ show actual' ++ ", " ++ show expected'
+             liftM2 QApp <$> unify fa fx <*> unify aa ax
+           (TApp (TMapFun fa) (TRow ts), tx) ->
+             do unify (TRow [TApp fa ta | ta <- ts]) tx
+                return (Just QMapFun)
+           (TApp (TMapFun fa) ra, TRow []) ->
+             do unify ra (TRow [])
+                return (Just QMapFun)
+           (TApp (TMapFun fa) ra, TRow xs@(tx:_)) -> 
+             do gs <- replicateM (length xs) (typeGoal' "t" (kindOf tx))
+                unify ra (TRow gs)
+                sequence_ [unify (TApp fa ta) tx | (ta, tx) <- zip gs xs]
+                return (Just QMapFun)
+           _ -> do trace $ "6 incoming unification failure: " ++ show actual' ++ ", " ++ show expected'
                    return Nothing
        (qa, qe) ->
          liftM (QTrans qa . (`QTrans` QSym qe)) <$>
@@ -439,7 +455,7 @@ typeMismatch :: Term -> Ty -> Ty -> CheckM a
 typeMismatch m actual expected =
   do actual' <- flattenT actual
      expected' <- flattenT expected
-     fail $ "type mismatch: " ++ show m ++ " has type " ++ show actual' ++ ", but expected " ++ show expected'
+     throwError (ErrTypeMismatch m actual' expected')
 
 wrap :: TyEqu -> Term -> Term
 wrap q t = case flattenQ q of
@@ -461,7 +477,7 @@ lookupVar :: String -> CheckM Ty
 lookupVar v =
   do g <- asks tctxt
      case lookup v g of
-       Nothing -> fail $ "unbound variable: " ++ v
+       Nothing -> throwError (ErrUnboundVar v)
        Just actual -> return actual
 
 inst :: Term -> Ty -> Ty -> CheckM Term
@@ -502,10 +518,10 @@ checkTerm e0@(EApp f e) expected =
        checkTerm' e tdom
 checkTerm e0@(ETyApp e t) expected
   | Just (v, ts) <- insts e0 =
-    do u <- lookupVar v
+    do u <- flattenT =<< lookupVar v
        let (ks, actual) = quants u
        when (length ks < length ts) $
-         fail $ "too many type arguments to " ++ v
+         fail $ "too many type arguments to " ++ v ++ " : " ++ show u
        ts' <- zipWithM (\t (_, k) -> checkTy' e0 t k) ts ks
        actual' <- foldM (\u' ((x, _), t) -> subst x t u') actual (zip ks ts')
        inst (foldl (\e t -> ETyApp e t) (EVar v) ts')
@@ -524,9 +540,6 @@ checkTerm e0@(ETyApp e t) expected
          _ -> fail $ "in " ++ show e0 ++ ": expected " ++ show et' ++ " to be a quantified type"
 checkTerm e0@(EPrApp e p) expected =
   fail "unimplemented"
-checkTerm e0@(ELab s) expected =
-  do q <- expectT e0 (TLab s) expected
-     return (wrap q (ELab s))
 checkTerm e0@(ESing t) expected =
   do q <- expectT e0 (TSing t) expected
      wrap q . ESing <$> checkTy' e0 t KLabel
@@ -540,7 +553,7 @@ checkTerm e0@(EUnlabel e el) expected =
   do tl <- typeGoal' "l" KLabel
      el' <- checkTerm el (TSing tl)
      e' <- checkTerm' e (TLabeled tl expected)
-     return (EUnlabel el' e')
+     return (EUnlabel e' el')
 checkTerm e0@(EPrj y z v@(VGoal (Goal (_, r))) e) expected =
   do y' <- checkTy y (KRow (kindOf expected))
      z' <- checkTy z (KRow (kindOf expected))
@@ -593,6 +606,15 @@ checkTerm e0@(EAna phi e) expected =
                                 PPlus (TVar "y1" (Just (KRow k))) (TRow [TLabeled (TVar "l" (Just KLabel)) (TVar "u" (Just k))]) (TVar "z" (Just (KRow k))) `TThen`
                                 PPlus (TVar "z" (Just (KRow k))) (TVar "y2" (Just (KRow k))) r `TThen`
                                 TSing (TVar "l" (Just KLabel)) `funTy` TApp phi' (TVar "u" (Just k)) `funTy` t)
+checkTerm e0@(ESyn phi e) expected =
+  do k <- kindGoal "k"
+     phi' <- checkTy' e0 phi (KFun k KType)
+     r <- typeGoal' "r" (KRow k)
+     q <- expectT e0 (TPi (TApp (TMapFun phi') r)) expected
+     ESyn phi' <$> checkTerm e (TForall "l" KLabel $ TForall "u" k $ TForall "y1" (KRow k) $ TForall "z" (KRow k) $ TForall "y2" (KRow k) $
+                                PPlus (TVar "y1" (Just (KRow k))) (TRow [TLabeled (TVar "l" (Just KLabel)) (TVar "u" (Just k))]) (TVar "z" (Just (KRow k))) `TThen`
+                                PPlus (TVar "z" (Just (KRow k))) (TVar "y2" (Just (KRow k))) r `TThen`
+                                TSing (TVar "l" (Just KLabel)) `funTy` TApp phi' (TVar "u" (Just k)))
 
 solve :: (CIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
@@ -626,15 +648,16 @@ solve (cin, p, r) =
           zEqual = z == z'
 
           forceFD t t' =
-            do q <- unify' ("1 While solving " ++ show p) t t'
+            do q <- unify t t'
                case flattenQ <$> q of
                  Just QRefl -> return (Just (VVar v))
                  _          -> fundeps p q
 
   match p q = return Nothing
 
-  fundeps p q =
-    fail $ "type mismatch in functional dependencies: " ++ show p ++ " and " ++ show q
+  -- question to self: why do I have both the `fundeps` error and the `force` error?
+
+  fundeps p q = throwError (ErrTypeMismatchFD p q)
 
   plusLeq p@(PLeq y z) q@(v, PPlus x' y' z')
     | y == y' && z == z' = return (Just (VPlusR (VVar v)))
@@ -649,10 +672,10 @@ solve (cin, p, r) =
          byAssump as p
 
   force p t u =
-    do q <- unify' ("2 While solving " ++ show p) t u
+    do q <- unify t u
        case flattenQ <$> q of
          Just QRefl -> return ()
-         _ -> fail $ "type mismatch in " ++ show p ++ ": " ++ show t ++ " is not " ++ show u
+         _ -> throwError (ErrTypeMismatchPred p t u)
 
   prim p@(PLeq (TRow y) (TRow z))
     | Just yd <- mapM label y, Just zd <- mapM label z =
@@ -740,17 +763,17 @@ loop ps =
   do (b, ps') <- once False [] ps
      if b
      then loop ps'
-     else fail . unlines =<< mapM notEntailed ps'
+     else throwError . ErrNotEntailed =<< mapM notEntailed ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
           do b' <- solve p
              once (b || b')
                   (if b' then qs else p : qs)
                   ps
-        notEntailed (cin, p, _) =
+        notEntailed (cin, p, _) = 
           do p' <- flattenP p
              ps' <- mapM flattenP [p | (_, p) <- pctxt cin]
-             return ("not entailed " ++ show p' ++ " from " ++ show ps')
+             return (p', ps')
 
 andSolve :: CheckM a -> CheckM a
 andSolve m =

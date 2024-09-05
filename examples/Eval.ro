@@ -1,0 +1,55 @@
+-- unit : forall a. a -> a
+-- unit = \x. x
+
+m : Pi { 'x := (forall a. a -> a), 'y := (forall b. b -> b) }
+m = (#'x := (/\ a. \x. x)) ++ (#'y := (/\ b. \x. x))
+
+n1 : Pi { 'x := (forall a. a -> a) }
+n1 = prj m
+
+n2 : Pi { 'y := (forall b. b -> b) }
+n2 = prj m
+
+tt : Pi {}
+tt = prj (#'x := (/\ a. \x. x))
+
+m2 : Pi { 'x := Pi {}, 'y := Pi {} }
+m2 = syn [\t. Pi {}] (\l. tt)
+
+-- n3 : Pi {'x := Pi {}}
+n3 : Pi {}
+n3 = prj m2 / #'x 
+
+v1 : Sigma { 'x := Pi {}, 'y := Pi {}}
+v1 = inj (#'x := tt)
+
+v2 : Sigma { 'x := Pi {}, 'y := Pi {}}
+v2 = inj (#'y := tt)
+
+case : forall l t u. #l -> (t -> u) -> (l := t) -> u
+case = \ l f x. f (x / l)
+
+q : Sigma { 'x := Pi {}, 'y := Pi {}} -> Sigma { 'x := Pi {}, 'y := Pi {}} 
+q = case #'x (\u. inj (#'y := u)) ?
+    case #'y (\u. inj (#'x := u))
+
+w1 : Sigma { 'x := Pi {}, 'y := Pi {}} 
+w2 : Sigma { 'x := Pi {}, 'y := Pi {}} 
+
+w1 = q v1
+w2 = q v2
+
+-- This breaks type checking :(
+-- q1 : forall l1 l2 t u z1 z2. {l1 := t} + {l2 := u} ~ z1, {l1 := u} + {l2 := t} ~ z2 => Sigma z1 -> Sigma z2
+-- q1 = \l1 l2. case l1 (\x. inj (l2 := x)) ?
+--              case l2 (\x. inj (l1 := x))
+
+-- I think this is another example of needing specific entailment principles for concrete rows
+-- q3 : Sigma { 'x := Pi {}, 'y := Pi {}} -> Sigma { 'x := Sigma { 'x := Pi {}, 'y := Pi {}}, 'y := Sigma { 'x := Pi {}, 'y := Pi {}}}
+-- q3 = ana [\t. Sigma { 'x := Pi {}, 'y := Pi {}}] (\l u. inj (l := inj (l := u)))
+
+q2 : Sigma { 'x := Pi {}, 'y := Pi {}} -> Pi {}
+q2 = ana [\t. Pi {}] (\l x. x)
+
+w3 : Pi {}
+w3 = q2 v1
