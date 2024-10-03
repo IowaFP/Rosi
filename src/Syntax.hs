@@ -15,8 +15,6 @@ data Kind =
     KType | KLabel | KRow Kind | KFun Kind Kind | KUnif (Goal Kind)
   deriving (Data, Eq, Show, Typeable)
 
-type KCtxt = [(String, Kind)]  
-
 flattenK :: MonadIO m => Kind -> m Kind
 flattenK k@(KUnif (Goal (_, r))) =
   do mk <- liftIO $ readIORef r
@@ -31,8 +29,6 @@ data Pred =
     PLeq Ty Ty | PPlus Ty Ty Ty 
   deriving (Data, Eq, Show, Typeable)
 
-type PCtxt = [(String, Pred)]
-
 newtype Goal t = Goal (String, IORef (Maybe t))
   deriving (Data, Typeable)
 
@@ -42,8 +38,21 @@ instance Eq (Goal t) where
 instance Show (Goal t) where
   show (Goal (x, _)) = x  
 
+{-------------------------------------------------------------------------------
+
+Variables
+=========
+
+The goal, henceforth, is to use de Bruijn representation of variables. However,
+for error-reporting and debugging purposes, we'll keep the original names
+around. So, in `TVar Int String (Maybe Kind)`, the `Int` is the *real* identity
+of the variable, and the `String` is just for printing purposes.
+
+-------------------------------------------------------------------------------}
+
+
 data Ty =
-    TVar String (Maybe Kind) | TUnif (Goal Ty) Kind | TFun | TThen Pred Ty | TForall String Kind Ty | TLam String Kind Ty | TApp Ty Ty    
+    TVar Int String (Maybe Kind) | TUnif (Goal Ty) Kind | TFun | TThen Pred Ty | TForall String Kind Ty | TLam String Kind Ty | TApp Ty Ty    
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
   | TMu Ty
   -- Internals
@@ -57,11 +66,9 @@ data Ty =
 infixr 4 `TThen`  
 
 quants :: Ty -> ([(String, Kind)], Ty)
-quants (TForall x k t) = ((x, k) : qs, u)
-  where (qs, u) = quants t
+quants (TForall x k t) = ((x, k) : ks, u)
+  where (ks, u) = quants t
 quants t = ([], t)  
-
-type TCtxt = [(String, Ty)]
 
 funTy :: Ty -> Ty -> Ty
 funTy = TApp . TApp TFun
@@ -83,13 +90,13 @@ splitLabel _              = Nothing
 -- Yes, sadly, actually a thing
 
 idFun :: Ty -> Bool
-idFun (TLam v k (TVar w _)) = v == w
+idFun (TLam _ k (TVar 0 _ _)) = True
 idFun _ = False
 
 -- I really need to learn SYB
 flattenT :: MonadIO m => Ty -> m Ty
-flattenT t@(TVar v Nothing) = return t
-flattenT (TVar v (Just k)) = TVar v . Just <$> flattenK k
+flattenT t@(TVar i v Nothing) = return t
+flattenT (TVar i v (Just k)) = TVar i v . Just <$> flattenK k
 flattenT t@(TUnif g@(Goal (_, r)) k) = 
   do mt <- liftIO $ readIORef r
      case mt of
@@ -130,8 +137,8 @@ flattenP (PPlus x y z) =
   PPlus <$> flattenT x <*> flattenT y <*> flattenT z
 
 kindOf :: Ty -> Kind
-kindOf (TVar x (Just k)) = k
-kindOf (TVar x Nothing) = error $ "internal: unkinded type variable " ++ x
+kindOf (TVar _ _ (Just k)) = k
+kindOf (TVar _ x Nothing) = error $ "internal: unkinded type variable " ++ x
 kindOf (TUnif _ k) = k
 kindOf TFun = KFun KType (KFun KType KType)
 kindOf (TThen _ t) = kindOf t
@@ -157,28 +164,29 @@ kindOf (TMapArg f)
 kindOf t = error $ "internal: kindOf " ++ show t
   
 data Term =
-    EVar String | ELam String Ty Term | EApp Term Term | ETyLam String Kind Term | ETyApp Term Ty
-  | ESing Ty | ELabeled Term Term | EUnlabel Term Term 
+    EVar Int String | ELam String Ty Term | EApp Term Term | ETyLam String Kind Term | ETyApp Term Ty
+  | ESing Ty | ELabel Term Term | EUnlabel Term Term 
   | EPrj Ty Ty Evid Term | EConcat Ty Ty Ty Evid Term Term | EInj Ty Ty Evid Term | EBranch Ty Ty Ty Evid Term Term
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
   | EIn Term Term | EOut Term | EFix String Ty Term 
   -- Internals
-  | EPrLam String Pred Term | EPrApp Term Evid | ETyEqu Term TyEqu
+  | EPrLam Pred Term | EPrApp Term Evid | ETyEqu Term TyEqu
   deriving (Data, Eq, Show, Typeable)
 
 flattenE :: MonadIO m => Term -> m Term
 flattenE = everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) where
   (f <=< g) x = g x >>= f
 
-insts :: Term -> Maybe (String, [Ty])
-insts (EVar v)              = Just (v, [])
+insts :: Term -> Maybe ((Int, String), [Ty])
+insts (EVar i x)            = Just ((i, x), [])
 insts (ETyApp e t)
   | Just (v, ts) <- insts e = Just (v, ts ++ [t])
   | otherwise               = Nothing 
 insts _                     = Nothing  
 
 data Evid =
-    VVar String | VGoal (Goal Evid) | VRefl | VTrans Evid Evid | VPredEq PrEqu Evid -- can this happen?
+    VVar Int   -- VVars are entirely internal, so I'll only give them de Bruijn indices
+  | VGoal (Goal Evid) | VRefl | VTrans Evid Evid | VPredEq PrEqu Evid -- can this happen?
   | VLeqLiftL Ty Evid | VLeqLiftR Evid Ty | VPlusLiftL Ty Evid | VPlusLiftR Evid Ty
   | VPlusL Evid | VPlusR Evid 
   | VLeqSimple [Int] | VPlusSimple [Either Int Int]
@@ -262,3 +270,11 @@ data PrEqu = QLeq TyEqu TyEqu | QPlus TyEqu TyEqu TyEqu
 flattenQP :: PrEqu -> PrEqu
 flattenQP (QLeq qz qy) = QLeq (flattenQ qz) (flattenQ qy)
 flattenQP (QPlus qx qy qz) = QPlus (flattenQ qx) (flattenQ qy) (flattenQ qz)
+
+--
+
+data Error = ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
+           | ErrTypeMismatch Term Ty Ty | ErrTypeMismatchFD Pred (Maybe TyEqu) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Ty Kind Kind
+           | ErrNotEntailed [(Pred, [Pred])]
+           | ErrUnboundVar String | ErrUnboundTyVar String
+           | ErrOther String

@@ -4,7 +4,7 @@ module Main where
 import Control.Monad (void)
 import Control.Monad.Except (withError)
 import Control.Monad.Reader (runReaderT)
-import qualified Data.Map as M
+import Data.List (findIndex)
 import qualified Prettyprinter as P
 import qualified Prettyprinter.Util as P
 import System.Console.GetOpt
@@ -13,11 +13,11 @@ import System.FilePath
 import System.Environment (getArgs)
 import System.IO (hPutStrLn, stderr)
 
-import Agda
 import Checker
 import Naive
 import Parser
 import Printer
+import Scope
 import Syntax
 
 data Flag = Eval String | Input String
@@ -44,18 +44,24 @@ main = do args <- getArgs
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   exitFailure
           decls <- concatMap unprog <$> mapM (\fn -> parse fn =<< readFile fn) files
-          checked <- go [] decls 
-          let h@(E (_, he)) = E (M.empty, M.fromList [(v, eval h te') | (v, _, te') <- checked])
-          -- mapM_ (putDocWLn 80) [pprTyDecl x ty | (x, ty, _) <- checked]
-          mapM_ (putDocWLn 120) [pprBinding v e | (v, e) <- M.toList he, v `elem` evals]
-  where go g [] = return []
-        go g (Decl (v, ty, te) : ds) =
+          scoped <- reportErrors $ runScopeM $ scopeProg decls
+          -- mapM_ print scoped
+          checked <- goCheck [] scoped 
+          let evaled = goEval [] checked
+              output = filter ((`elem` evals) . fst) evaled
+          mapM_ (putDocWLn 120 . uncurry pprBinding) output
+  where goCheck g [] = return []
+        goCheck g (Decl (v, ty, te) : ds) =
           do ty' <- flattenT =<< reportErrors =<< runCheckM (withError (ErrContextType ty) $ checkTy ty KType)
              te' <- flattenE =<< reportErrors =<< runCheckM' g (withError (ErrContextTerm te) $ checkTerm te ty')
-             ds' <- go ((v, ty') : g) ds
+             ds' <- goCheck (ty' : g) ds
              return ((v, ty', te') : ds')
 
-reportErrors :: Either TypeError t -> IO t
+        goEval _ [] = []
+        goEval h ((x, t, m) : ds) = (x, v) : goEval (v : h) ds where 
+          v = eval (E ([], h)) m 
+       
+reportErrors :: Either Error t -> IO t
 reportErrors (Left err) =
   do putDocWLn 80 (pprTypeError err)
      exitFailure

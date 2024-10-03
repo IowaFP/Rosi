@@ -8,7 +8,6 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-    ( MonadWriter(listen, tell), WriterT(..), censor )
 import Data.IORef
 import Data.List (elemIndex, nub)
 
@@ -28,12 +27,48 @@ writeRef x = liftIO . writeIORef x
 newRef :: MonadIO m => a -> m (IORef a)
 newRef = liftIO . newIORef
 
--- expect t actual expected
+type KCtxt = [Kind]
+type TCtxt = [Ty]
+type PCtxt = [Pred]
 
-data TypeError = ErrContextType Ty TypeError | ErrContextTerm Term TypeError | ErrContextPred Pred TypeError | ErrContextOther String TypeError 
-               | ErrTypeMismatch Term Ty Ty | ErrTypeMismatchFD Pred (Maybe TyEqu) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Ty Kind Kind
-               | ErrNotEntailed [(Pred, [Pred])]
-               | ErrUnboundTyVar String | ErrUnboundVar String | ErrOther String
+newtype CSt = CSt { next :: Int }
+data CIn = CIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt }
+type Problem = (CIn, Pred, IORef (Maybe Evid))
+newtype COut = COut { goals :: [Problem] }
+  deriving (Semigroup, Monoid)
+
+newtype CheckM a = CM (WriterT COut (ReaderT CIn (StateT CSt (ExceptT Error IO))) a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader CIn, MonadState CSt, MonadWriter COut, MonadError Error)
+
+instance MonadFail CheckM where
+  fail s = throwError (ErrOther s)
+
+runCheckM m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (CIn [] [] [])) (CSt 0)) where
+  CM m' = andSolve m
+
+runCheckM' g m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (CIn [] g [])) (CSt 0)) where
+  CM m' = andSolve m
+
+bindTy :: Kind -> CheckM a -> CheckM a
+bindTy k = local (\env -> env { kctxt = k : kctxt env })
+
+bind :: Ty -> CheckM a -> CheckM a
+bind t = local (\env -> env { tctxt = t : tctxt env })
+
+assume :: Pred -> CheckM a -> CheckM a
+assume g = local (\env -> env { pctxt = g : pctxt env })
+
+require :: Pred -> IORef (Maybe Evid) -> CheckM ()
+require p r =
+  do cin <- ask
+     tell (COut [(cin, p, r)])
+
+fresh :: String -> CheckM String
+fresh x = do i <- gets next
+             modify (\st -> st { next = i + 1 })
+             return (x ++ '$' : show i)
+
+--
 
 kindGoal :: MonadIO m => String -> m Kind
 kindGoal s =
@@ -41,14 +76,14 @@ kindGoal s =
      return (KUnif (Goal ("k$" ++ s, kr)))
 
   -- Note: just returning a `Ty` here out of convenience; it's always an exactly the input `Ty`.
-expectK :: (MonadError TypeError m, MonadIO m) => Ty -> Kind -> Kind -> m Ty
+expectK :: (MonadError Error m, MonadIO m) => Ty -> Kind -> Kind -> m Ty
 expectK t actual expected =
   do i <- expectKR t actual expected
      when (i /= 0) $
        kindMismatch t actual expected
      return t
 
-expectKR :: (MonadError TypeError m, MonadIO m) => Ty -> Kind -> Kind -> m Int
+expectKR :: (MonadError Error m, MonadIO m) => Ty -> Kind -> Kind -> m Int
 expectKR t actual expected =
   do mi <- unifyK actual expected
      case mi of
@@ -77,28 +112,25 @@ unifyK (KFun dActual cActual) (KFun dExpected cExpected) =
 unifyK _ _ =
   return Nothing
 
-kindMismatch :: (MonadError TypeError m, MonadIO m) => Ty -> Kind -> Kind -> m a
+kindMismatch :: (MonadError Error m, MonadIO m) => Ty -> Kind -> Kind -> m a
 kindMismatch t actual expected =
   do actual' <- flattenK actual
      expected' <- flattenK expected
-     throwError (ErrKindMismatch t actual' expected')     
+     throwError (ErrKindMismatch t actual' expected')
 
 checkTy' :: Term -> Ty -> Kind -> CheckM Ty
 checkTy' e t k = withError (ErrContextTerm e) (checkTy t k)
 
 checkTy :: Ty -> Kind -> CheckM Ty
-checkTy (TVar v Nothing) expected =
-  do k <- asks (lookup v . kctxt)
-     case k of
-       Nothing -> throwError (ErrUnboundTyVar v)
-       Just k' -> expectK (TVar v (Just k')) k' expected
-checkTy (TVar v (Just kv)) expected =
-  do k <- asks (lookup v . kctxt)
-     case k of
-       Nothing -> throwError (ErrUnboundTyVar v)
-       Just k' -> 
-        do expectK (TVar v (Just k')) kv k'
-           expectK (TVar v (Just k')) k' expected       
+checkTy (TVar (-1) x _) expected = 
+  throwError (ErrOther $ "scoping error: " ++ x ++ " not resolved")
+checkTy (TVar i v Nothing) expected =
+  do k <- asks ((!! i) . kctxt)
+     expectK (TVar i v (Just k)) k expected
+checkTy (TVar i v (Just kv)) expected =
+  do k <- asks ((!! i) . kctxt)
+     expectK (TVar i v (Just k)) kv k
+     expectK (TVar i v (Just k)) k expected
 checkTy t@(TUnif _ k) expected = expectK t k expected
 checkTy TFun expected = expectK TFun (KFun KType (KFun KType KType)) expected
 checkTy (TThen pi t) expected =
@@ -106,11 +138,11 @@ checkTy (TThen pi t) expected =
     checkPred pi <*>
     checkTy t expected
 checkTy (TForall x k t) expected =
-  TForall x k <$> bindTy x k (checkTy t expected)
+  TForall x k <$> bindTy k (checkTy t expected)
 checkTy t@(TLam x k u) expected =
   do k' <- kindGoal "d"
      expectK t (KFun k k') expected
-     TLam x k <$> bindTy x k (checkTy u k')
+     TLam x k <$> bindTy k (checkTy u k')
 checkTy (TApp t u) expected =
   do -- Step 1: work out the function's kind, including potential lifting
      kfun <- kindGoal "f"
@@ -179,46 +211,6 @@ checkPred p@(PPlus x y z) =
 
 -- Terms
 
-newtype CSt = CSt { next :: Int }
-data CIn = CIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt }
-type Problem = (CIn, Pred, IORef (Maybe Evid))
-newtype COut = COut { goals :: [Problem] }
-  deriving (Semigroup, Monoid)
-
-
-newtype CheckM a = CM (WriterT COut (ReaderT CIn (StateT CSt (ExceptT TypeError IO))) a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader CIn, MonadState CSt, MonadWriter COut, MonadError TypeError)
-
-instance MonadFail CheckM where
-  fail s = throwError (ErrOther s)
-
-runCheckM m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (CIn [] [] [])) (CSt 0)) where
-  CM m' = andSolve m
-
-runCheckM' g m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (CIn [] g [])) (CSt 0)) where
-  CM m' = andSolve m
-
-bindTy :: String -> Kind -> CheckM a -> CheckM a
-bindTy x k = local (\env -> env { kctxt = (x, k) : kctxt env })
-
-bind :: String -> Ty -> CheckM a -> CheckM a
-bind x t = local (\env -> env { tctxt = (x, t) : tctxt env })
-
-assume :: String -> Pred -> CheckM a -> CheckM a
-assume x g = local (\env -> env { pctxt = (x, g) : pctxt env })
-
-require :: Pred -> IORef (Maybe Evid) -> CheckM ()
-require p r =
-  do cin <- ask
-     tell (COut [(cin, p, r)])
-
-fresh :: String -> CheckM String
-fresh x = do i <- gets next
-             modify (\st -> st { next = i + 1 })
-             return (x ++ '$' : show i)
-
---
-
 expectT :: Term -> Ty -> Ty -> CheckM TyEqu
 expectT m actual expected =
   do b <- unify actual expected
@@ -227,8 +219,8 @@ expectT m actual expected =
        Just q  -> return q
 
 unify :: Ty -> Ty -> CheckM (Maybe TyEqu)
-unify (TVar x _) (TVar y _)
-  | x == y = return (Just QRefl)
+unify (TVar i _ _) (TVar j _ _)
+  | i == j = return (Just QRefl)
 unify (TUnif (Goal (_, r)) k) expected =
   do mt <- readRef r
      case mt of
@@ -274,26 +266,26 @@ unify (TRow ra) (TRow rx) =
   liftM QRow <$> (sequence <$> zipWithM unify ra rx)
 unify (TPi ra) (TPi rx) =
   liftM (QCon Pi) <$> unify ra rx
-unify (TPi r) u 
+unify (TPi r) u
   | TRow [t] <- r = liftM (QTrans (QTyConSing Pi (TRow [t]) u)) <$> unify t u
   | TUnif (Goal (_, tr)) k <- r =
     do mt <- readRef tr
        case mt of
          Just r' -> unify (TPi r') u
-         Nothing -> 
+         Nothing ->
            do expectK r k (KRow (kindOf u))
               writeRef tr (Just (TRow [u]))
               return (Just (QTyConSing Pi (TRow [u]) u))
-unify t (TPi r) 
+unify t (TPi r)
   | TRow [u] <- r = liftM (`QTrans` QTyConSing Pi t (TRow [u])) <$> unify t u
   | TUnif (Goal (_, tr)) k <- r =
     do mt <- readRef tr
        case mt of
          Just r' -> unify t (TPi r')
-         Nothing -> 
+         Nothing ->
            do expectK r k (KRow (kindOf t))
               writeRef tr (Just (TRow [t]))
-              return (Just (QTyConSing Pi (TRow [t]) t))  
+              return (Just (QTyConSing Pi (TRow [t]) t))
 unify (TSigma ra) (TSigma rx) =
   liftM (QCon Sigma) <$> unify ra rx
 unify (TSigma r) u
@@ -302,7 +294,7 @@ unify (TSigma r) u
     do mt <- readRef tr
        case mt of
          Just r' -> unify (TSigma r') u
-         Nothing -> 
+         Nothing ->
            do expectK r k (KRow (kindOf u))
               writeRef tr (Just (TRow [u]))
               return (Just (QTyConSing Sigma (TRow [u]) u))
@@ -312,16 +304,16 @@ unify t (TSigma r)
     do mt <- readRef tr
        case mt of
          Just r' -> unify t (TSigma r')
-         Nothing -> 
+         Nothing ->
            do expectK r k (KRow (kindOf t))
               writeRef tr (Just (TRow [t]))
-              return (Just (QTyConSing Sigma (TRow [t]) t))  
+              return (Just (QTyConSing Sigma (TRow [t]) t))
 unify a@(TMapFun f) x@(TMapFun g) =
   do q <- unify f g
      case q of
        Just QRefl -> return (Just QRefl)
        Just _     -> return (Just QMapFun)
-       Nothing    -> 
+       Nothing    ->
         do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
 unify a@(TMapArg f) x@(TMapArg g) =
@@ -329,10 +321,10 @@ unify a@(TMapArg f) x@(TMapArg g) =
      case q of
        Just QRefl -> return (Just QRefl)
        Just _     -> return (Just QMapFun)
-       Nothing    -> 
+       Nothing    ->
         do trace $ "4 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
-unify t u = 
+unify t u =
   do do trace $ "5 incoming unification failure: " ++ show t ++ ", " ++ show u
      return Nothing
 
@@ -351,7 +343,7 @@ unifyNormalizing actual expected =
            (TApp (TMapFun fa) ra, TRow []) ->
              do unify ra (TRow [])
                 return (Just QMapFun)
-           (TApp (TMapFun fa) ra, TRow xs@(tx:_)) -> 
+           (TApp (TMapFun fa) ra, TRow xs@(tx:_)) ->
              do gs <- replicateM (length xs) (typeGoal' "t" (kindOf tx))
                 unify ra (TRow gs)
                 sequence_ [unify (TApp fa ta) tx | (ta, tx) <- zip gs xs]
@@ -364,10 +356,10 @@ unifyNormalizing actual expected =
 
 -- Sigh
 
-subst :: String -> Ty -> Ty -> CheckM Ty
-subst v t (TVar w k)
-  | v == w = return t
-  | otherwise = return (TVar w k)
+subst :: Int -> Ty -> Ty -> CheckM Ty
+subst j t (TVar i w k)
+  | i == j = return t
+  | otherwise = return (TVar i w k)
 subst v t u@(TUnif (Goal (y, r)) k) =
   do mt <- readRef r
      case mt of
@@ -377,12 +369,8 @@ subst v t u@(TUnif (Goal (y, r)) k) =
                      return u'
 subst v t TFun = return TFun
 subst v t (TThen p u) = TThen <$> substp v t p <*> subst v t u
-subst v t u0@(TForall w k u)
-  | v == w = return u0
-  | otherwise = TForall w k <$> subst v t u
-subst v t u0@(TLam w k u)
-  | v == w = return u0
-  | otherwise = TLam w k <$> subst v t u
+subst v t (TForall w k u) = TForall w k <$> subst (v + 1) t u
+subst v t (TLam w k u) = TLam w k <$> subst (v + 1) t u
 subst v t (TApp u0 u1) =
   TApp <$> subst v t u0 <*> subst v t u1
 subst v t u@(TLab _) = return u
@@ -395,13 +383,13 @@ subst v t (TMapFun f) = TMapFun <$> subst v t f
 subst v t (TMapArg f) = TMapArg <$> subst v t f
 subst v t u = error $ "internal: subst " ++ show v ++ " (" ++ show t ++ ") (" ++ show u ++")"
 
-substp :: String -> Ty -> Pred -> CheckM Pred
+substp :: Int -> Ty -> Pred -> CheckM Pred
 substp v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
 substp v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
 
 normalize :: Ty -> CheckM (Ty, TyEqu)
 normalize (TApp (TLam x k t) u) =
-  do t1 <- subst x u t
+  do t1 <- subst 0 u t
      (t2, q) <- normalize t1
      return (t2, QTrans (QBeta x k t u t1) q)
 normalize (TApp (TPi r) t) =
@@ -415,13 +403,13 @@ normalize (TApp (TMapFun f) (TRow es))
     do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (TApp f) ts)))
        return (t, QTrans QMapFun q)
 normalize (TApp (TMapFun f) z)
-  | TLam v k (TVar w _) <- f
+  | TLam v k (TVar i w _) <- f
   , v == w =
     do (z, q) <- normalize z
        return (z, QTrans QMapFun q)
   | TLam v k t <- f
   , KRow (KFun _ _) <- kindOf z =
-    do (t, q) <- normalize =<< subst v (TMapArg z) t
+    do (t, q) <- normalize =<< subst 0 (TMapArg z) t
        return (t, QTrans QMapFun q)
 normalize (TApp (TMapArg (TRow es)) t)
   | Just ls <- mapM label es, Just fs <- mapM labeled es =
@@ -473,17 +461,13 @@ typeGoal' s k =
 checkTerm' :: Term -> Ty -> CheckM Term
 checkTerm' e t = checkTerm e =<< flattenT t
 
-lookupVar :: String -> CheckM Ty
-lookupVar v =
-  do g <- asks tctxt
-     case lookup v g of
-       Nothing -> throwError (ErrUnboundVar v)
-       Just actual -> return actual
+lookupVar :: Int -> CheckM Ty
+lookupVar i = asks ((!! i) . tctxt)
 
 inst :: Term -> Ty -> Ty -> CheckM Term
 inst e (TForall x k t) expected =
   do u <- typeGoal' "t" k
-     t' <- subst x u t
+     t' <- subst 0 u t
      inst (ETyApp e u) t' expected
 inst e (TThen p t) expected =
   do vr <- newRef Nothing
@@ -495,37 +479,38 @@ checkTerm :: Term -> Ty -> CheckM Term
 checkTerm e0@(ETyLam v k e) expected =
   do tcod <- typeGoal "cod"
      q <- expectT e0 (TForall v k tcod) expected
-     wrap q . ETyLam v k <$> bindTy v k (checkTerm' e tcod)
+     wrap q . ETyLam v k <$> bindTy k (checkTerm' e tcod)
 checkTerm e (TForall v k t) =
-  ETyLam v k <$> bindTy v k (checkTerm e t)
-checkTerm e0@(EPrLam v p e) expected =
+  ETyLam v k <$> bindTy k (checkTerm e t)
+checkTerm e0@(EPrLam p e) expected =
   do tcod <- typeGoal "cod"
      q <- expectT e0 (TThen p tcod) expected
-     wrap q . EPrLam v p <$> assume v p (checkTerm' e tcod)
+     wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
 checkTerm e (TThen p t) =
-  do pvar <- fresh "v"
-     EPrLam pvar p <$> assume pvar p (checkTerm e t)
-checkTerm e@(EVar v) expected = flip (inst (EVar v)) expected =<< flattenT =<< lookupVar v
+  EPrLam p <$> assume p (checkTerm e t)
+checkTerm (EVar (-1) x) expected =   
+  throwError (ErrOther $ "scoping error: variable " ++ x ++ " not resolved")
+checkTerm e@(EVar i v) expected = flip (inst (EVar i v)) expected =<< flattenT =<< lookupVar i
 checkTerm e0@(ELam v t e) expected =
   do tcod <- typeGoal "cod"
      t' <- checkTy' e0 t KType
      q <- expectT e0 (funTy t' tcod) expected
-     wrap q . ELam v t' <$> bind v t' (checkTerm' e tcod)
+     wrap q . ELam v t' <$> bind t' (checkTerm' e tcod)
 checkTerm e0@(EApp f e) expected =
   do tdom <- typeGoal "dom"
      EApp <$>
        checkTerm f (funTy tdom expected) <*>
        checkTerm' e tdom
 checkTerm e0@(ETyApp e t) expected
-  | Just (v, ts) <- insts e0 =
-    do u <- flattenT =<< lookupVar v
+  | Just ((i, x), ts) <- insts e0 =
+    do u <- flattenT =<< lookupVar i
        let (ks, actual) = quants u
        when (length ks < length ts) $
-         fail $ "too many type arguments to " ++ v ++ " : " ++ show u
-       ts' <- zipWithM (\t (_, k) -> checkTy' e0 t k) ts ks
-       actual' <- foldM (\u' ((x, _), t) -> subst x t u') actual (zip ks ts')
-       inst (foldl (\e t -> ETyApp e t) (EVar v) ts')
-            (foldr (\(x, k) t -> TForall x k t) actual' (drop (length ts) ks))
+         fail $ "too many type arguments to " ++ x ++ " : " ++ show u
+       ts' <- zipWithM (checkTy' e0) ts (snd <$> ks)
+       actual' <- foldM (\u' (x, t) -> subst x t u') actual (zip (takeWhile (0 <=) (iterate (subtract 1) (length ts' - 1))) ts')
+       inst (foldl ETyApp (EVar i x) ts')
+            (foldr (uncurry TForall) actual' (drop (length ts) ks))
             expected
   | otherwise =
     -- Saddest of faces...
@@ -534,7 +519,7 @@ checkTerm e0@(ETyApp e t) expected
        et' <- flattenT et
        case et' of
          TForall x k u ->
-           do u' <- subst x t u
+           do u' <- subst 0 t u
               q <- expectT e0 u' expected
               return (wrap q (ETyApp e' t))
          _ -> fail $ "in " ++ show e0 ++ ": expected " ++ show et' ++ " to be a quantified type"
@@ -543,12 +528,12 @@ checkTerm e0@(EPrApp e p) expected =
 checkTerm e0@(ESing t) expected =
   do q <- expectT e0 (TSing t) expected
      wrap q . ESing <$> checkTy' e0 t KLabel
-checkTerm e0@(ELabeled el e) expected =
+checkTerm e0@(ELabel el e) expected =
   do tl <- typeGoal' "l" KLabel
      t <- typeGoal "t"
      q <- expectT e0 (TLabeled tl t) expected
      wrap q <$>
-       (ELabeled <$> checkTerm' el (TSing tl) <*> checkTerm' e t)
+       (ELabel <$> checkTerm' el (TSing tl) <*> checkTerm' e t)
 checkTerm e0@(EUnlabel e el) expected =
   do tl <- typeGoal' "l" KLabel
      el' <- checkTerm el (TSing tl)
@@ -603,22 +588,22 @@ checkTerm e0@(EAna phi e) expected =
      t <- typeGoal "t"
      q <- expectT e0 (TSigma (TApp (TMapFun phi') r) `funTy` t) expected
      EAna phi' <$> checkTerm e (TForall "l" KLabel $ TForall "u" k $ TForall "y1" (KRow k) $ TForall "z" (KRow k) $ TForall "y2" (KRow k) $
-                                PPlus (TVar "y1" (Just (KRow k))) (TRow [TLabeled (TVar "l" (Just KLabel)) (TVar "u" (Just k))]) (TVar "z" (Just (KRow k))) `TThen`
-                                PPlus (TVar "z" (Just (KRow k))) (TVar "y2" (Just (KRow k))) r `TThen`
-                                TSing (TVar "l" (Just KLabel)) `funTy` TApp phi' (TVar "u" (Just k)) `funTy` t)
+                                PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
+                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) r `TThen`
+                                TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp phi' (TVar 3 "u" (Just k)) `funTy` t)
 checkTerm e0@(ESyn phi e) expected =
   do k <- kindGoal "k"
      phi' <- checkTy' e0 phi (KFun k KType)
      r <- typeGoal' "r" (KRow k)
      q <- expectT e0 (TPi (TApp (TMapFun phi') r)) expected
      ESyn phi' <$> checkTerm e (TForall "l" KLabel $ TForall "u" k $ TForall "y1" (KRow k) $ TForall "z" (KRow k) $ TForall "y2" (KRow k) $
-                                PPlus (TVar "y1" (Just (KRow k))) (TRow [TLabeled (TVar "l" (Just KLabel)) (TVar "u" (Just k))]) (TVar "z" (Just (KRow k))) `TThen`
-                                PPlus (TVar "z" (Just (KRow k))) (TVar "y2" (Just (KRow k))) r `TThen`
-                                TSing (TVar "l" (Just KLabel)) `funTy` TApp phi' (TVar "u" (Just k)))
+                                PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
+                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) r `TThen`
+                                TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp phi' (TVar 3 "u" (Just k)))
 
 solve :: (CIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
-  local (const cin) $ 
+  local (const cin) $
   do mv <- everything =<< flattenP p
      case mv of
        Just v -> writeRef r (Just v) >> return True
@@ -631,10 +616,10 @@ solve (cin, p, r) =
 
   infixr 2 <|>
 
-  everything p = 
-    prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (pctxt cin) p
+  everything p =
+    prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (zip [0..] (pctxt cin)) p
 
-  match :: Pred -> (String, Pred) -> CheckM (Maybe Evid)
+  match :: Pred -> (Int, Pred) -> CheckM (Maybe Evid)
   match (PLeq y z) (v, PLeq y' z')
     | y == y' && z == z' = return (Just (VVar v))
   match p@(PPlus x y z) (v, q@(PPlus x' y' z'))
@@ -734,21 +719,21 @@ solve (cin, p, r) =
     | Just (ls, fs, es) <- funCallsFrom y =
       do mapM_ (force p f) fs
          fmap (VLeqLiftL f) <$> everything (PLeq (TRow (zipWith TLabeled ls es)) z)
-    | TLam v k (TVar w _) <- f
+    | TLam v k (TVar i w _) <- f
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel y =
-      fmap (VPredEq (QLeq (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar v (Just k)) t t) | t <- ts]) QRefl) .
+      fmap (VPredEq (QLeq (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar i v (Just k)) t t) | t <- ts]) QRefl) .
             VLeqLiftL f) <$> everything (PLeq (TRow y) z)
   mapFunApp p@(PLeq (TApp (TMapFun f) y) (TRow [])) =
     fmap (VLeqLiftL f) <$> everything (PLeq y (TRow []))
   mapFunApp p@(PLeq (TApp (TMapFun f) y) (TRow z))
     | Just (ls, fs, es) <- funCallsFrom z =
       do mapM_ (force p f) fs
-         fmap (VLeqLiftL f) <$> everything (PLeq y (TRow (zipWith TLabeled ls es)))         
-    | TLam v k (TVar w _) <- f
+         fmap (VLeqLiftL f) <$> everything (PLeq y (TRow (zipWith TLabeled ls es)))
+    | TLam v k (TVar i w _) <- f
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel z =
-      fmap (VPredEq (QLeq QRefl (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar v (Just k)) t t) | t <- ts])) .
+      fmap (VPredEq (QLeq QRefl (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar i v (Just k)) t t) | t <- ts])) .
             VLeqLiftL f) <$> everything (PLeq y (TRow z))
   mapFunApp p@(PPlus (TApp (TMapFun f) x) (TApp (TMapFun g) y) (TApp (TMapFun h) z)) =
     do force p f g
@@ -770,9 +755,9 @@ loop ps =
              once (b || b')
                   (if b' then qs else p : qs)
                   ps
-        notEntailed (cin, p, _) = 
+        notEntailed (cin, p, _) =
           do p' <- flattenP p
-             ps' <- mapM flattenP [p | (_, p) <- pctxt cin]
+             ps' <- mapM flattenP (pctxt cin)
              return (p', ps')
 
 andSolve :: CheckM a -> CheckM a

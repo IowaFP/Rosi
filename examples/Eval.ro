@@ -29,7 +29,10 @@ v2 = inj (#'y := tt)
 case : forall l t u. #l -> (t -> u) -> (l := t) -> u
 case = \ l f x. f (x / l)
 
-q : Sigma { 'x := Pi {}, 'y := Pi {}} -> Sigma { 'x := Pi {}, 'y := Pi {}} 
+p : Pi {'x := Pi {}}
+p = (case #'x (\u. u)) (#'x := tt)
+
+q : Sigma { 'x := Pi {}, 'y := Pi {} } -> Sigma { 'x := Pi {}, 'y := Pi {} } 
 q = case #'x (\u. inj (#'y := u)) ?
     case #'y (\u. inj (#'x := u))
 

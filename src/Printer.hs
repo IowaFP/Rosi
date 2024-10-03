@@ -9,7 +9,6 @@ import Data.String
 import qualified Prettyprinter as P
 import qualified Prettyprinter.Util as P
 import Syntax
-import Checker (TypeError(..))
 
 data PrinterOptions = PO { level :: Int, printKinds :: Bool }
 type RDoc ann = ReaderT PrinterOptions IO (P.Doc ann)
@@ -87,7 +86,7 @@ instance Printable Kind where
 --   application      3         
 
 instance Printable Ty where
-  ppr (TVar s mk) =
+  ppr (TVar _ s mk) =
     do pk <- asks printKinds
        case mk of
          Just k | pk -> ppre s <:> (P.align <$> ppr k)
@@ -129,13 +128,13 @@ instance Printable Pred where
 
 
 instance Printable Term where
-  ppr (EVar s) = ppre s
+  ppr (EVar _ s) = ppre s
   ppr (ELam x t m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
   ppr (EApp m n) = with 3 $ fillSep [ppr m, at 4 (ppr n)]
   ppr (ETyLam x k m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
   ppr (ETyApp m t) = with 3 $ fillSep [ppr m, brackets (ppr t)]
   ppr (ESing t) = "#" <> at 4 (ppr t)
-  ppr (ELabeled l m) = with 2 (fillSep [ppr l <+> ":=", at 3 (ppr m)]) 
+  ppr (ELabel l m) = with 2 (fillSep [ppr l <+> ":=", at 3 (ppr m)]) 
   ppr (EUnlabel m l) = with 2 (fillSep [ppr m <+> "/", at 3 (ppr l)])
   ppr (EPrj _ _ _ m) = with 3 (fillSep ["prj", at 4 (ppr m)])
   ppr (EConcat _ _ _ _ m n) = with 1 (fillSep [at 2 (ppr m) <+> "++", ppr n])
@@ -148,7 +147,7 @@ instance Printable Term where
   ppr (EOut {}) = "<out>"
   ppr (EFix {}) = "<fix>"
   -- Not printing internals (yet)
-  ppr (EPrLam _ _ m) = ppr m
+  ppr (EPrLam _ m) = ppr m
   ppr (EPrApp m _) = ppr m
   ppr (ETyEqu m _) = ppr m
 
@@ -163,7 +162,7 @@ instance Printable TyEqu where
 pprTyDecl :: String -> Ty -> RDoc ann
 pprTyDecl x ty = fillSep [ppre x <+> ":", ppr ty]
 
-pprTypeError :: TypeError -> RDoc ann
+pprTypeError :: Error -> RDoc ann
 pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
   where d <:> (ds, te) = (d : ds, te)
         contexts (ErrContextType ty te) = ("Whilst checking the type" <+> ppr ty) <:> contexts te

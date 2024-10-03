@@ -35,8 +35,11 @@ wand1 = /\ x y z : R[*], t : * . \ m : Pi x, n : Pi y.
 
 -- Should be able to infer the presence of type abstractions from the type signature:
 
-wand2 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
-wand2 = \ m : Pi x, n : Pi y. prj (m ++ n) / #'l
+
+-- Actually, how did I ever think that `x` and `y` were in scope in the type annotations on `m` and `n`?
+
+-- wand2 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
+-- wand2 = \ m : Pi x, n : Pi y. prj (m ++ n) / #'l
 
 -- Can infer types of function arguments:
 
