@@ -45,7 +45,6 @@ main = do args <- getArgs
                                   exitFailure
           decls <- concatMap unprog <$> mapM (\fn -> parse fn =<< readFile fn) files
           scoped <- reportErrors $ runScopeM $ scopeProg decls
-          -- mapM_ print scoped
           checked <- goCheck [] scoped 
           let evaled = goEval [] checked
               output = filter ((`elem` evals) . fst) evaled
@@ -60,7 +59,7 @@ main = do args <- getArgs
         goEval _ [] = []
         goEval h ((x, t, m) : ds) = (x, v) : goEval (v : h) ds where 
           v = eval (E ([], h)) m 
-       
+
 reportErrors :: Either Error t -> IO t
 reportErrors (Left err) =
   do putDocWLn 80 (pprTypeError err)
