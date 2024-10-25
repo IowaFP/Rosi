@@ -48,47 +48,6 @@ instance Printable Value where
 pprBinding :: String -> Value -> RDoc ann
 pprBinding s v = hang 2 (fillSep [ppre s <+> "=", ppr v])
 
-shiftE :: Int -> Term -> Term
-shiftE j (EVar i x) 
-  | i >= j = EVar (i + 1) x
-  | otherwise = EVar i x
-shiftE j (ELam x t m) = ELam x t (shiftE (j + 1) m)
-shiftE j (EApp m n) = EApp (shiftE j m) (shiftE j n)
-shiftE j (ETyLam x k m) = ETyLam x k (shiftE j m)
-shiftE j (ETyApp m t) = ETyApp (shiftE j m) t
-shiftE j m@(ESing {}) = m
-shiftE j (ELabel l m) = ELabel (shiftE j l) (shiftE j m)
-shiftE j (EUnlabel m l) = EUnlabel (shiftE j m) (shiftE j l)
-shiftE j (EPrj y z d m) = EPrj y z d (shiftE j m)
-shiftE j (EConcat x y z d m n) = EConcat x y z d (shiftE j m) (shiftE j n)
-shiftE j (EInj y z d m) = EInj y z d (shiftE j m)
-shiftE j (EBranch x y z d m n) = EBranch x y z d (shiftE j m) (shiftE j n)
-shiftE j (ESyn t m) = ESyn t (shiftE j m)
-shiftE j (EAna t m) = EAna t (shiftE j m)
-shiftE j (EFold m1 m2 m3 n) = EFold (shiftE j m1) (shiftE j m2) (shiftE j m3) (shiftE j n)
-shiftE j (EIn m n) = EIn (shiftE j m) (shiftE j n)
-shiftE j (EOut m) = EOut (shiftE j m)
-shiftE j (EFix x t m) = EFix x t (shiftE j m)
-shiftE j (EPrLam p m) = EPrLam p (shiftE j m)
-shiftE j (EPrApp m d) = EPrApp (shiftE j m) d
-shiftE j (ETyEqu m q) = ETyEqu (shiftE j m) q
-
-shiftV :: Int -> Value -> Value
-shiftV j (VTyLam h x k m) = VTyLam (shiftH j h) x k (shiftE j m)
-shiftV j (VPrLam h p m) = VPrLam (shiftH j h) p (shiftE j m)
-shiftV j (VLam h x t m) = VLam (shiftH j h) x t (shiftE j m)
-shiftV j (VIn v) = VIn (shiftV j v)
-shiftV j (VSing t) = VSing t
-shiftV j (VLabeled l v) = VLabeled l (shiftV j v)
-shiftV j (VRecord fs) = VRecord [(l, shiftV j v) | (l, v) <- fs]
-shiftV j (VBranch ls v w) = VBranch ls (shiftV j v) (shiftV j w)
-shiftV j (VAna t m) = VAna t (shiftV j m)
-shiftV j (VSyn t m) = VSyn t (shiftV j m)
-
-
-shiftH :: Int -> Env -> Env
-shiftH n (E (ht, hv)) = E (ht, shiftV n <$> hv)
-
 tyapp :: Env -> Value -> Ty -> Value
 tyapp h (VTyLam (E (ht, he)) x _ f') t = eval (E (substTy h t : map (shiftT 0) ht, he)) f'
 
