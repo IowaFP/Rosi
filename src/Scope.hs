@@ -85,11 +85,13 @@ instance HasVars Term where
   scope ETyEqu{} = error "scope: ETyEqu"
 
 instance HasVars Decl where
-  scope (Decl (x, t, m)) = Decl <$> ((,,) x <$> withError (ErrContextType t) (scope t) <*> withError (ErrContextTerm m) (scope m))
+  scope (TmDecl x t m) = TmDecl x <$> withError (ErrContextType t) (scope t) <*> withError (ErrContextTerm m) (scope m)
+  scope (TyDecl x k t) = TyDecl x k <$> withError (ErrContextType t) (scope t)
 
 scopeProg :: [Decl] -> ScopeM [Decl]
 scopeProg [] = return []
-scopeProg (d@(Decl (x, _, _)) : ds) = (:) <$> scope d <*> bindVar x (scopeProg ds)
+scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindVar x (scopeProg ds)
+scopeProg (d@(TyDecl x _ _) : ds) = (:) <$> scope d <*> bindTyVar x (scopeProg ds)
 
 instance HasVars Program where
   scope (Prog ds) = Prog <$> scopeProg ds

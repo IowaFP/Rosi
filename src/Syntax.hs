@@ -8,7 +8,7 @@ import Data.IORef
 newtype Program = Prog [Decl]
   deriving (Eq, Show)
 
-newtype Decl = Decl (String, Ty, Term)
+data Decl = TyDecl String Kind Ty | TmDecl String Ty Term
   deriving (Eq, Show)
 
 data Kind =

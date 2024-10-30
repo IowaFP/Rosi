@@ -1,16 +1,19 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Parser where
 
 import Syntax
 
-import Control.Monad (foldM, replicateM, void, when)
+import Control.Monad (foldM, mplus, replicateM, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader
 import Control.Monad.State
 
 import Data.Char (isSpace)
+import Data.Data
 import Data.IORef (newIORef)
 import Data.List (delete, intercalate)
 import Data.List.NonEmpty (fromList)
+import Data.Maybe (fromMaybe)
 import Data.Void (Void)
 import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure)
@@ -74,12 +77,12 @@ guardIndent p =
             when (compare here goal /= ord) (P.incorrectIndent ord goal here)
             p
 
-item :: Parser a -> (a -> Parser b) -> (a -> b -> c) -> Parser c
-item p q f =
+item :: Parser a -> (a -> Parser b) -> Parser b
+item p q =
   do here <- P.indentLevel
      x <- p
      pushIndent GT here
-     f x <$> q x <* popIndent
+     q x <* popIndent
 
 at goal p =
   do here <- P.indentLevel
@@ -337,23 +340,62 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                  , ESing <$> (char '#' >> atype)
                  , parens term ]
 
-topLevel :: Parser ([Char], Either Ty Term)
-topLevel = item identifier body (,) where
-  body x = colon *> (Left <$> ty) <|> 
-           symbol "=" *> (Right <$> term)
+data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term 
+  deriving (Data, Eq, Show, Typeable)
+
+topLevel :: Parser ([Char], TL)
+topLevel = item lhs body where
+  lhs = Left <$> lexeme typeIdentifier <|>
+        Right <$> identifier
+  -- You would imagine that I could write `symbol "type" *> identifier` here.
+  -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
+  -- which will check the identation level, but we are looking for entries at
+  -- *exactly* the start of the current block.
+  --
+  -- Maybe this points to a more cunning behavior for lexeme: that having
+  -- checked the indentation *once*, nested calls should not check it further.
+  typeIdentifier = symbol "type" *> ((:) <$> letterChar <*> many alphaNumChar)   
+  body (Left x)  = colon *> ((x,) . KindSig <$> kind) <|> 
+                   symbol "=" *> ((x,) . TypeDef <$> ty)
+  body (Right x) = colon *> ((x,) . TypeSig <$> ty) <|> 
+                   symbol "=" *> ((x,) . TermDef <$> term)
 
 prog :: Parser Program
 prog = whitespace >> block topLevel >>= defns
 
-defns :: MonadFail m => [(String, Either Ty Term)] -> m Program
+defns :: MonadFail m => [(String, TL)] -> m Program
 defns tls
-  | not (null unmatchedTerms) = fail $ "definitions of " ++ intercalate ", " unmatchedTerms ++ " lack type signatures"
-  | not (null unmatchedTypes) = fail $ "definitions of " ++ intercalate ", " unmatchedTypes ++ " lack bodies"
-  | otherwise = return (Prog [Decl (x, ty, te) | (x, ty) <- typeMap, let (Just te) = lookup x termMap])
-  where termMap = [(x, t) | (x, Right t) <- tls]
-        typeMap = [(x, t) | (x, Left t) <- tls]
-        unmatchedTerms = filter (`notElem` map fst typeMap) (map fst termMap)
-        unmatchedTypes = filter (`notElem` map fst termMap) (map fst typeMap)
+  | not (null unmatchedTermDefs) = fail $ "definitions of " ++ intercalate ", " unmatchedTermDefs ++ " lack type signatures"
+  | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
+  | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
+  | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
+  | otherwise = return (Prog (map mkDecl names))
+  where -- TODO: Why would not we *not* traverse this list four times?
+        termDefs = [(x, t) | (x, TermDef t) <- tls]
+        typeSigs = [(x, t) | (x, TypeSig t) <- tls]
+        typeDefs = [(x, t) | (x, TypeDef t) <- tls]
+        kindSigs = [(x, t) | (x, KindSig t) <- tls]
+
+        names = go [] tls where
+          go seen [] = []
+          go seen ((x, _) : tls)
+            | x `elem` seen = go seen tls
+            | otherwise = x : go (x : seen) tls
+
+        unmatchedTermDefs = filter (`notElem` map fst typeSigs) (map fst termDefs)
+        unmatchedTypeSigs = filter (`notElem` map fst termDefs) (map fst typeSigs)
+        unmatchedTypeDefs = filter (`notElem` map fst kindSigs) (map fst typeDefs)
+        unmatchedKindSigs = filter (`notElem` map fst typeDefs) (map fst kindSigs)
+
+        mkDecl x = fromMaybe (error $ "in building declaration of " ++ x) decl where
+          decl = do ty <- lookup x typeSigs
+                    tm <- lookup x termDefs
+                    return (TmDecl x ty tm)
+                 `mplus`
+                 do k <- lookup x kindSigs 
+                    ty <- lookup x typeDefs
+                    return (TyDecl x k ty)
+        
 
 parse :: String -> String -> IO Program
 parse fn s =

@@ -50,11 +50,13 @@ main = do args <- getArgs
               output = filter ((`elem` evals) . fst) evaled
           mapM_ (putDocWLn 120 . uncurry pprBinding) output
   where goCheck g [] = return []
-        goCheck g (Decl (v, ty, te) : ds) =
+        goCheck g (TmDecl v ty te : ds) =
           do ty' <- flattenT =<< reportErrors =<< runCheckM (withError (ErrContextType ty) $ checkTy ty KType)
              te' <- flattenE =<< reportErrors =<< runCheckM' g (withError (ErrContextTerm te) $ checkTop te ty')
              ds' <- goCheck (ty' : g) ds
              return ((v, ty', te') : ds')
+        goCheck g (TyDecl {} : ds) =
+          goCheck g ds
 
         goEval _ [] = []
         goEval h ((x, t, m) : ds) = (x, v) : goEval (v : h) ds where 

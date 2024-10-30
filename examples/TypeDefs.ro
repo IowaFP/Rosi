@@ -1,0 +1,11 @@
+type IdT : *
+type IdT = forall x : * . x -> x
+
+type Id : * -> *
+type Id = \ t : * . t
+
+id1 : (\ t : * . t) (forall x : * . x -> x)
+id1 = \ x . x
+
+id2 : Id IdT
+id2 = \ x . x 
