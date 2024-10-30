@@ -28,7 +28,9 @@ writeRef x = liftIO . writeIORef x
 newRef :: MonadIO m => a -> m (IORef a)
 newRef = liftIO . newIORef
 
-type KCtxt = [Kind]
+type KCtxt = [(Kind, Maybe Ty)] 
+-- capturing type *definitions* in the kinding context as well; quantifier- and
+-- lambda-bound type definitions get a `Nothing` in the second component.
 type TCtxt = [Ty]
 type PCtxt = [Pred]
 
@@ -45,7 +47,10 @@ instance MonadFail CheckM where
   fail s = throwError (ErrOther s)
   
 bindTy :: Kind -> CheckM a -> CheckM a
-bindTy k = local (\env -> env { kctxt = k : kctxt env })
+bindTy k = local (\env -> env { kctxt = (k, Nothing) : kctxt env })
+
+defineTy :: Kind -> Ty -> CheckM a -> CheckM a
+defineTy k t = local (\env -> env { kctxt = (k, Just t) : kctxt env })
 
 bind :: Ty -> CheckM a -> CheckM a
 bind t = local (\env -> env { tctxt = t : tctxt env })

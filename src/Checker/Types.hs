@@ -63,10 +63,10 @@ checkTy :: Ty -> Kind -> CheckM Ty
 checkTy (TVar (-1) x _) expected = 
   throwError (ErrOther $ "scoping error: " ++ x ++ " not resolved")
 checkTy (TVar i v Nothing) expected =
-  do k <- asks ((!! i) . kctxt)
+  do (k, _) <- asks ((!! i) . kctxt)
      expectK (TVar i v (Just k)) k expected
 checkTy (TVar i v (Just kv)) expected =
-  do k <- asks ((!! i) . kctxt)
+  do (k, _) <- asks ((!! i) . kctxt)
      expectK (TVar i v (Just k)) kv k
      expectK (TVar i v (Just k)) k expected
 checkTy t@(TUnif _ k) expected = expectK t k expected

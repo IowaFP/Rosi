@@ -14,5 +14,5 @@ import Checker.Unify
 runCheckM m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (CIn [] [] [])) (CSt 0)) where
   CM m' = andSolve m
 
-runCheckM' g m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (CIn [] g [])) (CSt 0)) where
+runCheckM' d g m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (CIn d g [])) (CSt 0)) where
   CM m' = andSolve m

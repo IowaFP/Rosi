@@ -45,18 +45,21 @@ main = do args <- getArgs
                                   exitFailure
           decls <- concatMap unprog <$> mapM (\fn -> parse fn =<< readFile fn) files
           scoped <- reportErrors $ runScopeM $ scopeProg decls
-          checked <- goCheck [] scoped 
+          checked <- goCheck [] [] scoped 
           let evaled = goEval [] checked
               output = filter ((`elem` evals) . fst) evaled
           mapM_ (putDocWLn 120 . uncurry pprBinding) output
-  where goCheck g [] = return []
-        goCheck g (TmDecl v ty te : ds) =
-          do ty' <- flattenT =<< reportErrors =<< runCheckM (withError (ErrContextType ty) $ checkTy ty KType)
-             te' <- flattenE =<< reportErrors =<< runCheckM' g (withError (ErrContextTerm te) $ checkTop te ty')
-             ds' <- goCheck (ty' : g) ds
+  where goCheck d g [] = return []
+        goCheck d g (TyDecl x k t : ds) = 
+          do t' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType t) $ checkTy t k)
+             goCheck ((k, Just t) : d) g ds
+        goCheck d g (TmDecl v ty te : ds) =
+          do ty' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType ty) $ checkTy ty KType)
+             te' <- flattenE =<< reportErrors =<< runCheckM' d g (withError (ErrContextTerm te) $ checkTop te ty')
+             ds' <- goCheck d (ty' : g) ds
              return ((v, ty', te') : ds')
-        goCheck g (TyDecl {} : ds) =
-          goCheck g ds
+        goCheck d g (TyDecl {} : ds) =
+          goCheck d g ds
 
         goEval _ [] = []
         goEval h ((x, t, m) : ds) = (x, v) : goEval (v : h) ds where 
