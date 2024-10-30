@@ -52,7 +52,7 @@ main = do args <- getArgs
   where goCheck g [] = return []
         goCheck g (Decl (v, ty, te) : ds) =
           do ty' <- flattenT =<< reportErrors =<< runCheckM (withError (ErrContextType ty) $ checkTy ty KType)
-             te' <- flattenE =<< reportErrors =<< runCheckM' g (withError (ErrContextTerm te) $ checkTerm te ty')
+             te' <- flattenE =<< reportErrors =<< runCheckM' g (withError (ErrContextTerm te) $ checkTop te ty')
              ds' <- goCheck (ty' : g) ds
              return ((v, ty', te') : ds')
 

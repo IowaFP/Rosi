@@ -170,3 +170,11 @@ checkTerm e0@(ESyn phi e) expected =
                                 PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
                                 PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) r `TThen`
                                 TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp phi' (TVar 3 "u" (Just k)))
+
+checkTop :: Term -> Ty -> CheckM Term
+checkTop m t = 
+  do (t', q) <- normalize t
+     m' <- checkTerm m t'
+     return (case q of
+               QRefl -> m'
+               _ -> ETyEqu m' q)  
