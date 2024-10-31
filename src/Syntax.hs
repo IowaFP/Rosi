@@ -4,6 +4,7 @@ module Syntax where
 import Control.Monad.IO.Class
 import Data.Generics hiding (TyCon(..))
 import Data.IORef
+import GHC.Stack
 
 newtype Program = Prog [Decl]
   deriving (Eq, Show)
@@ -136,7 +137,7 @@ flattenP (PLeq z y) =
 flattenP (PPlus x y z) = 
   PPlus <$> flattenT x <*> flattenT y <*> flattenT z
 
-kindOf :: Ty -> Kind
+kindOf :: HasCallStack => Ty -> Kind
 kindOf (TVar _ _ (Just k)) = k
 kindOf (TVar _ x Nothing) = error $ "internal: unkinded type variable " ++ x
 kindOf (TUnif _ k) = k
@@ -215,6 +216,7 @@ data TyEqu =
     QRefl | QSym TyEqu | QTrans TyEqu TyEqu | QBeta String Kind Ty Ty Ty -- (λ α : κ. τ) υ ≡ τ [υ / α]
   | QThen PrEqu TyEqu | QLambda TyEqu | QForall TyEqu | QApp TyEqu TyEqu | QLabeled TyEqu TyEqu | QRow [TyEqu] | QSing TyEqu  
   | QMapFun | QMapArg | QCon TyCon TyEqu | QLiftTyCon TyCon Ty Ty | QTyConSing TyCon Ty Ty  
+  | QDefn -- like QBeta, I guess?
   deriving (Data, Eq, Show, Typeable) 
 
 flattenQ :: TyEqu -> TyEqu

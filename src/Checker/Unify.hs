@@ -2,6 +2,7 @@ module Checker.Unify where
 
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Reader.Class
 
 import Checker.Monad
 import Checker.Types
@@ -120,6 +121,7 @@ unify t u =
      return Nothing
 
 -- Assumption: at least one of actual or expected is a `TApp`
+unifyNormalizing :: HasCallStack => Ty -> Ty -> CheckM (Maybe TyEqu)
 unifyNormalizing actual expected =
   do (actual', qa) <- normalize actual
      (expected', qe) <- normalize expected
@@ -197,7 +199,14 @@ substp :: Int -> Ty -> Pred -> CheckM Pred
 substp v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
 substp v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
 
-normalize :: Ty -> CheckM (Ty, TyEqu)
+
+normalize :: HasCallStack => Ty -> CheckM (Ty, TyEqu)
+normalize t@(TVar i _ _) = 
+  do (_, mdef) <- asks ((!! i) . kctxt)
+     case mdef of
+       Nothing -> return (t, QRefl)
+       Just def -> do (t', q) <- normalize def
+                      return (t', QTrans QDefn q)
 normalize (TApp (TLam x k t) u) =
   do t1 <- subst 0 u t
      (t2, q) <- normalize t1
@@ -242,7 +251,9 @@ normalize (TRow ts) =
 normalize (TSigma z) =
   do (z', q) <- normalize z
      return (TSigma z', QCon Sigma q)
-
+normalize (TForall x k t) =
+  do (t', q) <- bindTy k (normalize t)
+     return (TForall x k t', q) -- probably should be a congruence rule mentioned around here.... :)
 normalize t = return (t, QRefl)
 
 unifyP :: Pred -> Pred -> CheckM (Maybe PrEqu)

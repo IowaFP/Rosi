@@ -11,16 +11,22 @@ con = \l x. inj (l := x)
 
 -- Note to self.. add type definitions
 
+type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
+type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
+
 mapS : forall z : R[* -> *], f g : (* -> *) -> *.
-       (forall l u. {l := u} < z => #l -> f u -> g u) ->
+       (\f g z. forall l u. {l := u} < z => #l -> f u -> g u) f g z ->
        Sigma (f z) -> Sigma (g z)
-mapS = /\ z , f g : (* -> *) -> * . \ i , v . ana [f] (\ l      x. con l (i l x)) v
+mapS = /\ z , f g : (* -> *) -> * . \ i , v . ana [f] (\ l x. con l (i l x)) v
+
+type Functor : (* -> *) -> *
+type Functor = \f. forall a b. (a -> b) -> f a -> f b
 
 fmapS : forall z : R[* -> *] . 
-        Pi ((\f : * -> *. forall a b : *. (a -> b) -> f a -> f b) z) ->
-        (forall a b : *. (a -> b) -> Sigma z a -> Sigma z b)
+        Pi (Functor z) ->
+        Functor (Sigma z)
 fmapS = /\ z : R[* -> *]. 
-        \ d : Pi ((\f : * -> *. forall a b : *. (a -> b) -> f a -> f b) z) . 
+        \ d : Pi (Functor z) . 
         /\ a b : *. 
         \ f : a -> b, w : Sigma z a . 
           mapS [z] [\ X : * -> *. X a] [\ X : * -> *. X b] (/\ l : L, u : * -> *. \ ll : #l, x : u a. sel d ll [a] [b] f x) w
