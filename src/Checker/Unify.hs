@@ -7,6 +7,8 @@ import Checker.Monad
 import Checker.Types
 import Syntax
 
+import GHC.Stack
+
 unify :: Ty -> Ty -> CheckM (Maybe TyEqu)
 unify (TVar i _ _) (TVar j _ _)
   | i == j = return (Just QRefl)
@@ -34,13 +36,13 @@ unify (TThen pa ta) (TThen px tx) =
 unify a@(TForall xa ka ta) x@(TForall xx kx tx) =  -- To do: equate variables? For now, assuming they're identical
   do ksUnify <- unifyK ka kx
      if xa == xx && ksUnify == Just 0
-     then liftM QForall <$> unify ta tx
+     then liftM QForall <$> bindTy ka (unify ta tx)
      else do trace $ "1 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
 unify a@(TLam xa ka ta) x@(TLam xx kx tx) =  -- To do: as above.  Note: this case is missing from higher.pdf
   do ksUnify <- unifyK ka kx
      if xa == xx && ksUnify == Just 0
-     then liftM QLambda <$> unify ta tx
+     then liftM QLambda <$> bindTy ka (unify ta tx)
      else do trace $ "2 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
 unify actual@(TApp {}) expected = unifyNormalizing actual expected
@@ -145,6 +147,25 @@ unifyNormalizing actual expected =
 
 -- Sigh
 
+shiftT :: Int -> Ty -> Ty
+shiftT n (TVar i x k) 
+  | i >= n = TVar (i + 1) x k
+  | otherwise = TVar i x k
+shiftT n (TThen p t) = TThen (shiftP n p) (shiftT n t) where
+  shiftP n (PLeq y z) = PLeq (shiftT n y) (shiftT n z)
+  shiftP n (PPlus x y z) = PPlus (shiftT n x) (shiftT n y) (shiftT n z)
+shiftT n (TForall x k t) = TForall x k (shiftT (n + 1) t)
+shiftT n (TLam x k t) = TLam x k (shiftT (n + 1) t)
+shiftT n (TApp t u) = TApp (shiftT n t) (shiftT n u)
+shiftT n (TSing t) = TSing (shiftT n t)
+shiftT n (TLabeled l t) = TLabeled (shiftT n l) (shiftT n t)
+shiftT n (TRow ts) = TRow (shiftT n <$> ts)
+shiftT n (TPi t) = TPi (shiftT n t)
+shiftT n (TSigma t) = TSigma (shiftT n t)
+shiftT n (TMapFun t) = TMapFun (shiftT n t)
+shiftT n (TMapArg t) = TMapArg (shiftT n t)
+shiftT n t = t
+
 subst :: Int -> Ty -> Ty -> CheckM Ty
 subst j t (TVar i w k)
   | i == j = return t
@@ -158,8 +179,8 @@ subst v t u@(TUnif (Goal (y, r)) k) =
                      return u'
 subst v t TFun = return TFun
 subst v t (TThen p u) = TThen <$> substp v t p <*> subst v t u
-subst v t (TForall w k u) = TForall w k <$> subst (v + 1) t u
-subst v t (TLam w k u) = TLam w k <$> subst (v + 1) t u
+subst v t (TForall w k u) = TForall w k <$> subst (v + 1) (shiftT 1 t) u
+subst v t (TLam w k u) = TLam w k <$> subst (v + 1) (shiftT 1 t) u
 subst v t (TApp u0 u1) =
   TApp <$> subst v t u0 <*> subst v t u1
 subst v t u@(TLab _) = return u

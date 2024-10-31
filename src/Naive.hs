@@ -4,8 +4,8 @@ module Naive (module Naive) where
 import Control.Monad.Reader (runReaderT)
 import qualified Prettyprinter as P
 import Printer
-
 import Syntax
+import Checker.Unify (shiftT)
 
 -- import Debug.Trace
 trace _ x = x
@@ -123,25 +123,6 @@ eval' h (EOut e)
   | VIn v <- eval h e = v
 eval' h@(E (ht, he)) (EFix x t e) = eval (E (ht, eval h e : he)) e
 eval' _ e = error $ "evaluation failed: " ++ show e
-
-shiftT :: Int -> Ty -> Ty
-shiftT n (TVar i x k) 
-  | i >= n = TVar (i + 1) x k
-  | otherwise = TVar i x k
-shiftT n (TThen p t) = TThen (shiftP n p) (shiftT n t) where
-  shiftP n (PLeq y z) = PLeq (shiftT n y) (shiftT n z)
-  shiftP n (PPlus x y z) = PPlus (shiftT n x) (shiftT n y) (shiftT n z)
-shiftT n (TForall x k t) = TForall x k (shiftT (n + 1) t)
-shiftT n (TLam x k t) = TLam x k (shiftT (n + 1) t)
-shiftT n (TApp t u) = TApp (shiftT n t) (shiftT n u)
-shiftT n (TSing t) = TSing (shiftT n t)
-shiftT n (TLabeled l t) = TLabeled (shiftT n l) (shiftT n t)
-shiftT n (TRow ts) = TRow (shiftT n <$> ts)
-shiftT n (TPi t) = TPi (shiftT n t)
-shiftT n (TSigma t) = TSigma (shiftT n t)
-shiftT n (TMapFun t) = TMapFun (shiftT n t)
-shiftT n (TMapArg t) = TMapArg (shiftT n t)
-shiftT n t = t
 
 substTy :: Env -> Ty -> Ty
 substTy (E (ht, _)) t@(TVar i _ _) = ht !! i
