@@ -17,3 +17,9 @@ f2 = (\ f : forall t. t -> t, p. (#'1 := f (sel p #'2)) ++ (#'2 :=f (sel p #'1))
 -- f3 : Pi {'1 := Pi {}, '2 := Sigma {}} -> Pi {'1 := Sigma {}, '2 := Pi {}}
 -- f3 = (\ f p. (#'1 := f (sel p #'2)) ++ (#'2 :=f (sel p #'1)))
 --      (\ x. x)
+
+id1 : forall a. a -> a
+id1 = /\ a. \ x : a. x
+
+id2 : forall b. b -> b
+id2 = /\ a. \ x : a. x

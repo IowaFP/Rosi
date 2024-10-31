@@ -34,15 +34,15 @@ unify actual (TUnif (Goal (_, r)) k) =
 unify TFun TFun = return (Just QRefl)
 unify (TThen pa ta) (TThen px tx) =
   liftM2 QThen <$> unifyP pa px <*> unify ta tx
-unify a@(TForall xa ka ta) x@(TForall xx kx tx) =  -- To do: equate variables? For now, assuming they're identical
+unify a@(TForall xa ka ta) x@(TForall xx kx tx) =
   do ksUnify <- unifyK ka kx
-     if xa == xx && ksUnify == Just 0
+     if ksUnify == Just 0
      then liftM QForall <$> bindTy ka (unify ta tx)
      else do trace $ "1 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
-unify a@(TLam xa ka ta) x@(TLam xx kx tx) =  -- To do: as above.  Note: this case is missing from higher.pdf
+unify a@(TLam xa ka ta) x@(TLam xx kx tx) =  -- Note: this case is missing from higher.pdf
   do ksUnify <- unifyK ka kx
-     if xa == xx && ksUnify == Just 0
+     if ksUnify == Just 0
      then liftM QLambda <$> bindTy ka (unify ta tx)
      else do trace $ "2 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
