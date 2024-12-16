@@ -15,7 +15,7 @@ type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
 type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
 
 mapS : forall z : R[* -> *], f g : (* -> *) -> *.
-       (\f g z. forall l u. {l := u} < z => #l -> f u -> g u) f g z ->
+       Iter f g z ->
        Sigma (f z) -> Sigma (g z)
 mapS = /\ z , f g : (* -> *) -> * . \ i , v . ana [f] (\ l x. con l (i l x)) v
 
