@@ -5,7 +5,6 @@ import Control.Monad.Reader (runReaderT)
 import qualified Prettyprinter as P
 import Printer
 import Syntax
-import Checker.Unify (shiftT)
 
 -- import Debug.Trace
 trace _ x = x
