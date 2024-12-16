@@ -49,6 +49,7 @@ main = do args <- getArgs
           let evaled = goEval [] checked
               output = filter ((`elem` evals) . fst) evaled
           mapM_ (putDocWLn 120 . uncurry pprBinding) output
+          putStrLn "ok"
   where goCheck d g [] = return []
         goCheck d g (TyDecl x k t : ds) = 
           do t' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType t) $ checkTy t k)

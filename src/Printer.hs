@@ -91,15 +91,15 @@ instance Printable Ty where
        case mk of
          Just k | pk -> ppre s <:> (P.align <$> ppr k)
          _ -> ppre s
-  ppr (TUnif (Goal (s, rmt)) k) =
+  ppr (TUnif n j (Goal (s, rmt)) k) =
     do mt <- liftIO (readIORef rmt)  
        case mt of
          Just t -> ppr t
          Nothing ->
            do pk <- asks printKinds
               if pk
-              then ("%" <> ppre s) <:> (P.align <$> ppr k)
-              else "%" <> ppre s
+              then ("^" <> ppre n <> "," <> ppre j <> "%" <> ppre s) <:> (P.align <$> ppr k)
+              else "^" <> ppre n <> "," <> ppre j <> "%" <> ppre s
   ppr TFun = "(->)"
   ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
   ppr (TForall x k t) = with 0 $ nest 2 $ fillSep ["forall" <+> ppre x <:> ppr k <> ".", ppr t]
@@ -114,6 +114,7 @@ instance Printable Ty where
   ppr (TSigma t) = with 3 $ "Sigma " <> at 4 (ppr t)
   ppr (TMapFun t) = ppr t
   ppr (TMapArg t) = ppr t
+  -- ppr (TShift t) = "^" <> at 4 (ppr t)
   ppr t = "<missing: " <> ppre (show t) <> ">"
 
 instance Printable Pred where

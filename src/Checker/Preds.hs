@@ -11,10 +11,13 @@ import Checker.Monad
 import Checker.Unify
 import Syntax
 
-solve :: (CIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
+import GHC.Stack
+
+solve :: HasCallStack => (CIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
-  do mv <- everything =<< flattenP p
+  do -- mv <- everything . pushShiftsP =<< flattenP p
+     mv <- everything =<< flattenP p
      case mv of
        Just v -> writeRef r (Just v) >> return True
        Nothing -> return False
@@ -27,9 +30,11 @@ solve (cin, p, r) =
   infixr 2 <|>
 
   everything p =
-    prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (zip [0..] (pctxt cin)) p
+    do pctxt' <- mapM flattenP (pctxt cin)
+       trace ("Solving " ++ show p ++ " from " ++ show pctxt') 
+       prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (zip [0..] ({- map pushShiftsP $ -} pctxt cin)) p
 
-  match :: Pred -> (Int, Pred) -> CheckM (Maybe Evid)
+  match :: HasCallStack => Pred -> (Int, Pred) -> CheckM (Maybe Evid)
   match (PLeq y z) (v, PLeq y' z')
     | y == y' && z == z' = return (Just (VVar v))
   match p@(PPlus x y z) (v, q@(PPlus x' y' z'))

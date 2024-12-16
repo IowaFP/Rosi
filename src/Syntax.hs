@@ -53,10 +53,13 @@ of the variable, and the `String` is just for printing purposes.
 
 
 data Ty =
-    TVar Int String (Maybe Kind) | TUnif (Goal Ty) Kind | TFun | TThen Pred Ty | TForall String Kind Ty | TLam String Kind Ty | TApp Ty Ty    
+    TVar Int String (Maybe Kind) 
+  | TUnif Int Int (Goal Ty) Kind  -- we essentially have a delayed shiftTN call here: TUnif j n g k delays a shift of variables above j by n
+  | TFun | TThen Pred Ty | TForall String Kind Ty | TLam String Kind Ty | TApp Ty Ty    
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
   | TMu Ty
   -- Internals
+  -- | TShift Ty
   | TMapFun Ty | TMapArg Ty
   deriving (Data, Eq, Show, Typeable)
 
@@ -65,6 +68,28 @@ data Ty =
 -- MapArg : R[k -> l] -> k -> R[l]
 
 infixr 4 `TThen`  
+
+closed :: Ty -> Bool
+closed t = go 0 t where
+  go n (TVar i _ _) = i < n
+  go _ (TUnif {}) = False
+  go _ TFun = True
+  go n (TThen p t) = closedP p && go n t where
+    closedP (PLeq x y) = all (go n) [x, y]
+    closedP (PPlus x y z) = all (go n) [x, y, z]
+  go n (TForall _ _ t) = go (n + 1) t
+  go n (TLam _ _ t) = go (n + 1) t
+  go n (TApp t u) = all (go n) [t, u]
+  go _ (TLab {}) = True
+  go n (TSing t) = go n t
+  go n (TLabeled l t) = all (go n) [l, t]
+  go n (TRow ts) = all (go n) ts
+  go n (TPi t) = go n t
+  go n (TSigma t) = go n t
+  go n (TMu t) = go n t
+  -- go n (TShift t) = go n t
+  go n (TMapFun t) = go n t
+  go n (TMapArg t) = go n t
 
 quants :: Ty -> ([(String, Kind)], Ty)
 quants (TForall x k t) = ((x, k) : ks, u)
@@ -76,33 +101,36 @@ funTy = TApp . TApp TFun
 
 infixr 5 `funTy`
 
+-- unshift :: Ty -> Ty
+-- unshift t
+--   | closed t = go t
+--   | otherwise = t
+--   where go (TShift t) = go t
+--         go t          = t
+
 label, labeled :: Ty -> Maybe Ty
 
-label (TLabeled l _) = Just l
+-- label (TShift t)     = label t
+label (TLabeled l _) = Just l -- Just (unshift l)
 label _ = Nothing
 
-labeled (TLabeled _ t) = Just t
+-- labeled (TShift t)     = labeled t
+labeled (TLabeled _ t) = Just t -- Just (unshift t)
 labeled _ = Nothing
 
 splitLabel :: Ty -> Maybe (Ty, Ty)
 splitLabel (TLabeled l t) = Just (l, t)
 splitLabel _              = Nothing
 
--- Yes, sadly, actually a thing
-
-idFun :: Ty -> Bool
-idFun (TLam _ k (TVar 0 _ _)) = True
-idFun _ = False
-
 -- I really need to learn SYB
 flattenT :: MonadIO m => Ty -> m Ty
 flattenT t@(TVar i v Nothing) = return t
 flattenT (TVar i v (Just k)) = TVar i v . Just <$> flattenK k
-flattenT t@(TUnif g@(Goal (_, r)) k) = 
+flattenT t@(TUnif j n g@(Goal  (_, r)) k) = 
   do mt <- liftIO $ readIORef r
      case mt of
-       Nothing -> TUnif g <$> flattenK k
-       Just t' -> flattenT t'
+       Nothing -> TUnif n j g <$> flattenK k
+       Just t' -> flattenT (shiftTN j n t')
 flattenT TFun =
   return TFun       
 flattenT (TThen p t) =
@@ -126,6 +154,8 @@ flattenT (TSigma t) =
   TSigma <$> flattenT t
 flattenT (TMu t) =
   TMu <$> flattenT t
+-- flattenT (TShift t) =
+--   TShift <$> flattenT t  
 flattenT (TMapFun t) =
   TMapFun <$> flattenT t
 flattenT (TMapArg t) =
@@ -140,7 +170,7 @@ flattenP (PPlus x y z) =
 kindOf :: HasCallStack => Ty -> Kind
 kindOf (TVar _ _ (Just k)) = k
 kindOf (TVar _ x Nothing) = error $ "internal: unkinded type variable " ++ x
-kindOf (TUnif _ k) = k
+kindOf (TUnif _ _ _ k) = k
 kindOf TFun = KFun KType (KFun KType KType)
 kindOf (TThen _ t) = kindOf t
 kindOf (TForall _ _ t) = kindOf t
@@ -158,11 +188,75 @@ kindOf (TSigma r)
   | KRow k <- kindOf r = k
 kindOf (TMu f) 
   | KFun k _ <- kindOf f = k
+-- kindOf (TShift t) = kindOf t  
 kindOf (TMapFun f) 
   | KFun kd kc <- kindOf f = KFun (KRow kd) (KRow kc)
 kindOf (TMapArg f) 
   | KRow (KFun kd kc) <- kindOf f = KFun kd (KRow kc)
 kindOf t = error $ "internal: kindOf " ++ show t
+
+-- shiftTN j n t shifts variables at or above `j` up by `n`
+shiftTN :: HasCallStack => Int -> Int -> Ty -> Ty
+shiftTN _ 0 t = t
+shiftTN j n (TVar i x k) 
+  | i >= j = 
+    if i + n < j
+    then error "negative shift produced capture"
+    else TVar (i + n) x k
+  | otherwise = TVar i x k
+shiftTN j n (TUnif j' n' g k) = 
+  TUnif (j + j') (n + n') g k  
+shiftTN j n (TThen p t) = TThen (shiftPN j n p) (shiftTN j n t)
+shiftTN j n (TForall x k t) = TForall x k (shiftTN (j + 1) n t)
+shiftTN j n (TLam x k t) = TLam x k (shiftTN (j + 1) n t)
+shiftTN j n (TApp t u) = TApp (shiftTN j n t) (shiftTN j n u)
+shiftTN j n (TSing t) = TSing (shiftTN j n t)
+shiftTN j n (TLabeled l t) = TLabeled (shiftTN j n l) (shiftTN j n t)
+shiftTN j n (TRow ts) = TRow (shiftTN j n <$> ts)
+shiftTN j n (TPi t) = TPi (shiftTN j n t)
+shiftTN j n (TSigma t) = TSigma (shiftTN j n t)
+-- shiftTN j n (TShift t) = TShift (shiftTN (n - 1) j t) -- variables within the shift are larger than they appear
+shiftTN j n (TMapFun t) = TMapFun (shiftTN j n t)
+shiftTN j n (TMapArg t) = TMapArg (shiftTN j n t)
+shiftTN j n t = t
+
+shiftPN :: Int -> Int -> Pred -> Pred 
+shiftPN j n (PLeq y z) = PLeq (shiftTN j n y) (shiftTN j n z)
+shiftPN j n (PPlus x y z) = PPlus (shiftTN j n x) (shiftTN j n y) (shiftTN j n z)
+
+
+-- TODO: What is this doing?1
+shiftT :: Int -> Ty -> Ty
+shiftT n = shiftTN n 1
+
+iterateN :: Int -> (a -> a) -> a -> a
+iterateN 0 _ x = x
+iterateN n f x = iterateN (n - 1) f (f x)
+
+-- pushShifts :: Ty -> Ty
+-- pushShifts = go 0 where
+--   go n t@(TVar {}) = iterateN n TShift t
+--   go n t@(TUnif {}) = iterateN n TShift t
+--   go n (TThen p t) = TThen (goP p) (pushShifts t) where
+--     goP (PLeq x y) = PLeq (go n x) (go n y)
+--     goP (PPlus x y z) = PPlus (go n x) (go n y) (go n z)
+--   go n (TForall x k t) = TForall x k (go n t)
+--   go n (TLam x k t) = TLam x k (go n t)
+--   go n (TApp t u) = TApp (go n t) (go n u)
+--   go n (TSing t) = TSing (go n t)
+--   go n (TLabeled t u) = TLabeled (go n t) (go n u)
+--   go n (TRow ts) = TRow (map (go n) ts)
+--   go n (TPi t) = TPi (go n t)
+--   go n (TSigma t) = TSigma (go n t)
+--   go n (TMu t) = TMu (go n t)
+--   go n (TShift t) = go (n + 1) t
+--   go n (TMapFun t) = TMapFun (go n t)
+--   go n (TMapArg t) = TMapArg (go n t)
+--   go n t = t
+-- 
+-- pushShiftsP :: Pred -> Pred
+-- pushShiftsP (PLeq x y) = PLeq (pushShifts x) (pushShifts y)
+-- pushShiftsP (PPlus x y z) = PPlus (pushShifts x) (pushShifts y) (pushShifts z)
   
 data Term =
     EVar Int String | ELam String Ty Term | EApp Term Term | ETyLam String Kind Term | ETyApp Term Ty

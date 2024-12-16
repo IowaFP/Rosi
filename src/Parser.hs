@@ -227,7 +227,7 @@ term = prefixes branchTerm where
 
   prefix :: Parser (([String], [String]), Term -> Term) -- now this `Term -> Term` trick is really not paying off any longer...
   prefix = do symbol "\\"
-              bs <- commaSep1 (binders ty (\g -> return (TUnif g KType)))
+              bs <- commaSep1 (binders ty (\g -> return (TUnif 0 0 g KType)))
               dot
               return (([], fst <$> concat bs), foldr1 (.) (map (uncurry ELam) (concat bs)))
          <|>
@@ -251,7 +251,7 @@ term = prefixes branchTerm where
                    vx <- newIORef Nothing
                    kx <- newIORef Nothing
                    let rk = KRow (KUnif (Goal ("k$e", kx)))
-                   return $ k (TUnif (Goal ("t$x", rx)) rk) (TUnif (Goal ("t$y", ry)) rk) (TUnif (Goal ("t$z", rz)) rk) (VGoal (Goal ("v$x", vx)))
+                   return $ k (TUnif 0 0 (Goal ("t$x", rx)) rk) (TUnif 0 0 (Goal ("t$y", ry)) rk) (TUnif 0 0 (Goal ("t$z", rz)) rk) (VGoal (Goal ("v$x", vx)))
 
   labTerm = chainl1 appTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
 
@@ -319,17 +319,17 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
   unary k mty mtz t =
     liftIO $
     do ke <- KUnif <$> goal "k$e"
-       ty <- maybe (TUnif <$> goal "t$y" <*> pure (KRow ke)) return mty
-       tz <- maybe (TUnif <$> goal "t$z" <*> pure (KRow ke)) return mtz
+       ty <- maybe (TUnif 0 0 <$> goal "t$y" <*> pure (KRow ke)) return mty
+       tz <- maybe (TUnif 0 0 <$> goal "t$z" <*> pure (KRow ke)) return mtz
        g  <- VGoal <$> goal "v$plus"
        return (k ty tz g t)
 
   binary k mtx mty mtz t u =
     liftIO $
     do ke <- KUnif <$> goal "k$e"
-       tx <- maybe (TUnif <$> goal "t$x" <*> pure (KRow ke)) return mtx
-       ty <- maybe (TUnif <$> goal "t$y" <*> pure (KRow ke)) return mty
-       tz <- maybe (TUnif <$> goal "t$z" <*> pure (KRow ke)) return mtz
+       tx <- maybe (TUnif 0 0 <$> goal "t$x" <*> pure (KRow ke)) return mtx
+       ty <- maybe (TUnif 0 0 <$> goal "t$y" <*> pure (KRow ke)) return mty
+       tz <- maybe (TUnif 0 0 <$> goal "t$z" <*> pure (KRow ke)) return mtz
        g  <- VGoal <$> goal "v$plus"
        return (k tx ty tz g t u)
 

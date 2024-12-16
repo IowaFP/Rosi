@@ -69,7 +69,7 @@ checkTy (TVar i v (Just kv)) expected =
   do (k, _) <- asks ((!! i) . kctxt)
      expectK (TVar i v (Just k)) kv k
      expectK (TVar i v (Just k)) k expected
-checkTy t@(TUnif _ k) expected = expectK t k expected
+checkTy t@(TUnif _ _ _ k) expected = expectK t k expected
 checkTy TFun expected = expectK TFun (KFun KType (KFun KType KType)) expected
 checkTy (TThen pi t) expected =
   TThen <$>
@@ -96,7 +96,6 @@ checkTy (TApp t u) expected =
      expectK (TApp t u) (foldr ($) kcod (replicate (n + m) KRow)) expected
      -- Step 3: build exciting result type
      return (TApp (foldr ($) t' (replicate n TMapArg ++ replicate m TMapFun)) u')
-
 checkTy t@(TLab _) expected = expectK t KLabel expected
 checkTy t@(TSing l) expected =
   do expectK t KType expected
@@ -123,6 +122,8 @@ checkTy t@(TRow ts) expected =
 checkTy (TPi r) expected = TPi <$> checkTy r (KRow expected)
 checkTy (TSigma r) expected = TSigma <$> checkTy r (KRow expected)
 checkTy (TMu f) expected = TMu <$> checkTy f (KFun expected expected)
+-- checkTy (TShift t) expected =
+--   TShift <$> unbindTy (checkTy t expected)
 checkTy t@(TMapFun f) expected =
   do kdom <- kindGoal "d"
      kcod <- kindGoal "c"
