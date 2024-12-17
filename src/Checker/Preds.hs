@@ -32,7 +32,7 @@ solve (cin, p, r) =
   everything p =
     do pctxt' <- mapM flattenP (pctxt cin)
        trace ("Solving " ++ show p ++ " from " ++ show pctxt') 
-       prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (zip [0..] ({- map pushShiftsP $ -} pctxt cin)) p
+       prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (pctxt cin) p
 
   match :: HasCallStack => Pred -> (Int, Pred) -> CheckM (Maybe Evid)
   match (PLeq y z) (v, PLeq y' z')
@@ -64,12 +64,29 @@ solve (cin, p, r) =
     | y == x' && z == z' = return (Just (VPlusL (VVar v)))
   plusLeq _ _ = return Nothing
 
-  byAssump [] p = return Nothing
-  byAssump ((v, ap) : as) p =
-    do a <- (v,) <$> flattenP ap
-       match p a <|>
-         plusLeq p a <|>
-         byAssump as p
+  expand1 :: Pred -> [Pred]
+  expand1 (PPlus x y z) = [PLeq x z, PLeq y z]
+  expand1 (PLeq _ _) = []
+
+  expand2 :: Pred -> Pred -> [Pred]
+  expand2 (PLeq x y) (PLeq z w)
+    | y == z = [PLeq x w]
+    | x == w = [PLeq z y]
+  expand2 _ _ = []
+
+  expandAll :: [Pred] -> [Pred]
+  expandAll = go [] where
+    go qs [] = qs
+    go qs (p : ps) = go (p : qs) (ps' ++ ps) where
+      ps' = expand1 p ++ concatMap (expand2 p) qs
+
+  byAssump as p = 
+    do as' <- mapM flattenP as
+       let as'' = expandAll as'
+       trace ("Expanded " ++ show as' ++ " to " ++ show as'' ++ "; solving " ++ show p)
+       go (zip [0..] as'') p where
+    go [] p = return Nothing
+    go (a : as) p = match p a <|> go as p
 
   force p t u =
     do q <- unify t u
