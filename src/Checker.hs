@@ -1,4 +1,4 @@
-module Checker (runCheckM, runCheckM', checkTy, checkTop, TCtxt(..)) where
+module Checker (runCheckM, runCheckM', checkTy, checkTop, TCtxt(..), traceTypeInference) where
 
 import Control.Monad.Except
 import Control.Monad.Reader

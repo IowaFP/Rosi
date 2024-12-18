@@ -13,13 +13,18 @@ import Data.Data
 import Data.IORef
 import Data.List (elemIndex, nub)
 import GHC.Stack
+import System.IO.Unsafe (unsafePerformIO)
 
 import Syntax
 
-trace :: MonadIO m => String -> m ()
--- trace = liftIO . putStrLn 
-trace _ = return ()
+{-# NOINLINE traceTypeInference #-}
+traceTypeInference :: IORef Bool
+traceTypeInference = unsafePerformIO (newIORef False)
 
+trace :: MonadIO m => String -> m ()
+trace s = liftIO $ 
+  do b <- readIORef traceTypeInference
+     when b $ putStrLn s
 
 readRef :: MonadIO m => IORef a -> m a
 readRef = liftIO . readIORef

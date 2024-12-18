@@ -4,7 +4,8 @@ module Main where
 import Control.Monad (void)
 import Control.Monad.Except (withError)
 import Control.Monad.Reader (runReaderT)
-import Data.List (findIndex)
+import Data.IORef
+import Data.List (findIndex, break)
 import qualified Prettyprinter as P
 import qualified Prettyprinter.Util as P
 import System.Console.GetOpt
@@ -20,29 +21,38 @@ import Printer
 import Scope
 import Syntax
 
-data Flag = Eval String | Input String
+data Flag = Eval String | Input String | TraceTypeInference
   deriving Show
 
-splitFlags :: [Flag] -> ([String], [String])
-splitFlags [] = ([], [])
-splitFlags (Eval s : fs) = (s : evals, files)
-  where (evals, files) = splitFlags fs
-splitFlags (Input s : fs) = (evals, s : files)
-  where (evals, files) = splitFlags fs
+splitFlags :: [Flag] -> ([String], [String], Bool)
+splitFlags [] = ([], [], False)
+splitFlags (Eval s : fs) = (ss ++ evals, files, b)
+  where (evals, files, b) = splitFlags fs
+        ss = split ',' s
+        split c s = go (dropWhile (c ==) s) where
+          go [] = []
+          go s  = s' : go (dropWhile (c ==) s'') where
+            (s', s'') = break (c ==) s          
+splitFlags (Input s : fs) = (evals, s : files, b)
+  where (evals, files, b) = splitFlags fs
+splitFlags (TraceTypeInference : fs) = (evals, files, True)
+  where (evals, files, _) = splitFlags fs
 
 options :: [OptDescr Flag]
 options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
-          , Option ['i'] ["input"] (ReqArg Input "FILE") "input file" ]
+          , Option ['i'] ["input"] (ReqArg Input "FILE") "input file" 
+          , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference" ]
 
 unprog (Prog ds) = ds
 
 main :: IO ()
 main = do args <- getArgs
-          (evals, files) <-
+          (evals, files, traceTI) <-
              case getOpt (ReturnInOrder Input) options args of
                (flags, [], []) -> return (splitFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   exitFailure
+          writeIORef traceTypeInference traceTI
           decls <- concatMap unprog <$> mapM (\fn -> parse fn =<< readFile fn) files
           scoped <- reportErrors $ runScopeM $ scopeProg decls
           checked <- goCheck [] [] scoped 
