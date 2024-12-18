@@ -39,7 +39,7 @@ lookupVar i = asks (lookupV i . tctxt)
 inst :: Term -> Ty -> Ty -> CheckM Term
 inst e (TForall x k t) expected =
   do u <- typeGoal' "t" k
-     t' <- subst 0 u t
+     t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
      inst (ETyApp e u) t' expected
 inst e (TThen p t) expected =
   do vr <- newRef Nothing
@@ -99,7 +99,7 @@ checkTerm0 e0@(ETyApp e t) expected
        et' <- flattenT et
        case et' of
          TForall x k u ->
-           do u' <- subst 0 t u
+           do u' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 t) u
               q <- expectT e0 u' expected
               return (wrap q (ETyApp e' t))
          _ -> fail $ "in " ++ show e0 ++ ": expected " ++ show et' ++ " to be a quantified type"

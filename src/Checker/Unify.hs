@@ -207,8 +207,8 @@ subst v t u@(TUnif j n (Goal (y, r)) k) =
                      return u'
 subst v t TFun = return TFun
 subst v t (TThen p u) = TThen <$> substp v t p <*> subst v t u
-subst v t (TForall w k u) = TForall w k <$> subst (v + 1) (shiftT 1 t) u
-subst v t (TLam w k u) = TLam w k <$> subst (v + 1) (shiftT 1 t) u
+subst v t (TForall w k u) = TForall w k <$> subst (v + 1) (shiftT 0 t) u
+subst v t (TLam w k u) = TLam w k <$> subst (v + 1) (shiftT 0 t) u
 subst v t (TApp u0 u1) =
   TApp <$> subst v t u0 <*> subst v t u1
 subst v t u@(TLab _) = return u
@@ -233,8 +233,8 @@ normalize t@(TVar i _ _) =
        Nothing -> return (t, QRefl)
        Just def -> do (t', q) <- normalize def
                       return (t', QTrans QDefn q)
-normalize (TApp (TLam x k t) u) =
-  do t1 <- subst 0 u t
+normalize t0@(TApp (TLam x k t) u) =
+  do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
      (t2, q) <- normalize t1
      return (t2, QTrans (QBeta x k t u t1) q)
 normalize (TApp (TPi r) t) =
@@ -254,7 +254,7 @@ normalize (TApp (TMapFun f) z)
        return (z, QTrans QMapFun q)
   | TLam v k t <- f
   , KRow (KFun _ _) <- kindOf z =
-    do (t, q) <- normalize =<< subst 0 (TMapArg z) t
+    do (t, q) <- normalize . shiftTN 0 (-1) =<< subst 0 (shiftTN 0 1 (TMapArg z)) t
        return (t, QTrans QMapFun q)
 normalize (TApp (TMapArg (TRow es)) t)
   | Just ls <- mapM label es, Just fs <- mapM labeled es =

@@ -129,7 +129,7 @@ flattenT (TVar i v (Just k)) = TVar i v . Just <$> flattenK k
 flattenT t@(TUnif j n g@(Goal  (_, r)) k) = 
   do mt <- liftIO $ readIORef r
      case mt of
-       Nothing -> TUnif n j g <$> flattenK k
+       Nothing -> TUnif j n g <$> flattenK k
        Just t' -> flattenT (shiftTN j n t')
 flattenT TFun =
   return TFun       
