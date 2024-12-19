@@ -264,6 +264,7 @@ data Term =
   | EPrj Ty Ty Evid Term | EConcat Ty Ty Ty Evid Term Term | EInj Ty Ty Evid Term | EBranch Ty Ty Ty Evid Term Term
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
   | EIn Term Term | EOut Term | EFix String Ty Term 
+  | ETyped Term Ty
   -- Internals
   | EPrLam Pred Term | EPrApp Term Evid | ETyEqu Term TyEqu
   deriving (Data, Eq, Show, Typeable)

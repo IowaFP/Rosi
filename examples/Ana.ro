@@ -3,7 +3,7 @@ sel = \ r l. prj r / l
 
 reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t
 reflect = \ d w. ana (\ l u. sel d l u) w
--- 
+
 -- Need for mapS:
 
 con : forall l : L, t : *, z : R[*]. {l := t} < z => #l -> t -> Sigma z
@@ -12,19 +12,20 @@ con = \l x. inj (l := x)
 type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
 type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
 
--- mapS : forall z : R[* -> *], f g : (* -> *) -> *.
---        Iter f g z ->
---        Sigma (f z) -> Sigma (g z)
--- mapS = /\ z , f g : (* -> *) -> * . \ i , v . ana [f] (\ l x. con l (i l x)) v
+mapS : forall z : R[* -> *], f g : (* -> *) -> *.
+       Iter f g z ->
+       Sigma (f z) -> Sigma (g z)
+mapS = /\ z , f g : (* -> *) -> * . \ i , v . ana [f] (\ l x. con l (i l x)) v
 
--- type Functor : (* -> *) -> *
--- type Functor = \f. forall a b. (a -> b) -> f a -> f b
--- 
--- fmapS : forall z : R[* -> *] . 
---         Pi (Functor z) ->
---         Functor (Sigma z)
--- fmapS = /\ z : R[* -> *]. 
---         \ d : Pi (Functor z) . 
---         /\ a b : *. 
---         \ f : a -> b, w : Sigma z a . 
---           mapS [z] [\ X : * -> *. X a] [\ X : * -> *. X b] (/\ l : L, u : * -> *. \ ll : #l, x : u a. sel d ll [a] [b] f x) w
+type Functor : (* -> *) -> *
+type Functor = \f. forall a b. (a -> b) -> f a -> f b
+
+fmapS : forall z : R[* -> *] . 
+        Pi (Functor z) ->
+        Functor (Sigma z)
+fmapS = /\ z : R[* -> *]. 
+        \ d : Pi (Functor z) . 
+        /\ a b : *. 
+        \ f : a -> b, w : Sigma z a . 
+--          mapS [z] [\ X : * -> *. X a] [\ X : * -> *. X b] (/\ l : L, u : * -> *. \ ll : #l, x : u a. sel d ll [a] [b] f x) w
+          mapS [z] [\ X : * -> *. X a] [\ X : * -> *. X b] (/\ l : L, u : * -> *. \ ll : #l, x : u a. (sel d ll : Functor u) f x) w

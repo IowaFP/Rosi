@@ -180,6 +180,11 @@ checkTerm0 e0@(ESyn phi e) expected =
                                 PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
                                 PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) r `TThen`
                                 TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 4 phi') (TVar 3 "u" (Just k)))
+checkTerm0 e0@(ETyped e t) expected =
+  do (t', _) <- normalize =<< checkTy' e0 t KType
+     e' <- checkTerm e t'  -- any reason to preserve the type ascription?
+     inst e0 t' expected
+     
 
 
 checkTop :: Term -> Ty -> CheckM Term

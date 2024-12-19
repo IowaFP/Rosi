@@ -223,7 +223,7 @@ pr = do t <- arrTy
 --     := / 
 
 term :: Parser Term
-term = prefixes branchTerm where
+term = prefixes typedTerm where
 
   prefix :: Parser (([String], [String]), Term -> Term) -- now this `Term -> Term` trick is really not paying off any longer...
   prefix = do symbol "\\"
@@ -244,6 +244,10 @@ term = prefixes branchTerm where
          Just (bs, f) -> f <$> prefixes rest
 
   op s k = symbol s >> k
+
+  typedTerm = 
+    do t <- branchTerm
+       maybe t (ETyped t) <$> optional (symbol ":" >> ty)
 
   branchTerm = chainl1 labTerm $ choice [op "++" (ebinary EConcat) , op "?" (ebinary EBranch)] where
     ebinary k = liftIO $
@@ -396,10 +400,9 @@ defns tls
                     ty <- lookup x typeDefs
                     return (TyDecl x k ty)
         
-
 parse :: String -> String -> IO Program
 parse fn s =
-  do tls <- evalStateT (runParserT prog fn s) []
+  do tls <- evalStateT (runParserT (prog <* eof) fn s) []
      case tls of
        Left err -> do hPutStrLn stderr (errorBundlePretty err)
                       exitFailure

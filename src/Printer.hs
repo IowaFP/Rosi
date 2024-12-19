@@ -131,18 +131,19 @@ instance Printable Pred where
 instance Printable Term where
   ppr (EVar _ s) = ppre s
   ppr (ELam x t m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
-  ppr (EApp m n) = with 3 $ fillSep [ppr m, at 4 (ppr n)]
+  ppr (EApp m n) = with 4 $ fillSep [ppr m, at 4 (ppr n)]
   ppr (ETyLam x k m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
-  ppr (ETyApp m t) = with 3 $ fillSep [ppr m, brackets (ppr t)]
+  ppr (ETyApp m t) = with 4 $ fillSep [ppr m, brackets (ppr t)]
   ppr (ESing t) = "#" <> at 4 (ppr t)
-  ppr (ELabel l m) = with 2 (fillSep [ppr l <+> ":=", at 3 (ppr m)]) 
-  ppr (EUnlabel m l) = with 2 (fillSep [ppr m <+> "/", at 3 (ppr l)])
-  ppr (EPrj _ _ _ m) = with 3 (fillSep ["prj", at 4 (ppr m)])
-  ppr (EConcat _ _ _ _ m n) = with 1 (fillSep [at 2 (ppr m) <+> "++", ppr n])
-  ppr (EInj _ _ _ m) = with 3 (fillSep ["inj", at 4 (ppr m)])
-  ppr (EBranch _ _ _ _ m n) = with 1 (fillSep [at 2 (ppr m) <+> "?", ppr n])
-  ppr (ESyn f m) = with 3 (fillSep ["syn", brackets (ppr f), at 4 (ppr m)])
-  ppr (EAna f m) = with 3 (fillSep ["ana", brackets (ppr f), at 4 (ppr m)])
+  ppr (ELabel l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)]) 
+  ppr (EUnlabel m l) = with 3 (fillSep [ppr m <+> "/", at 3 (ppr l)])
+  ppr (EPrj _ _ _ m) = with 4 (fillSep ["prj", at 4 (ppr m)])
+  ppr (EConcat _ _ _ _ m n) = with 2 (fillSep [at 2 (ppr m) <+> "++", ppr n])
+  ppr (EInj _ _ _ m) = with 4 (fillSep ["inj", at 4 (ppr m)])
+  ppr (EBranch _ _ _ _ m n) = with 2 (fillSep [at 2 (ppr m) <+> "?", ppr n])
+  ppr (ESyn f m) = with 4 (fillSep ["syn", brackets (ppr f), at 4 (ppr m)])
+  ppr (EAna f m) = with 4 (fillSep ["ana", brackets (ppr f), at 4 (ppr m)])
+  ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   ppr (EFold {}) = "<fold>"
   ppr (EIn {}) = "<in>"
   ppr (EOut {}) = "<out>"

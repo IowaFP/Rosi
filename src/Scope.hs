@@ -79,6 +79,7 @@ instance HasVars Term where
   scope (ESyn t m) = ESyn <$> scope t <*> scope m
   scope (EAna t m) = EAna <$> scope t <*> scope m
   scope (EFold m n1 n2 n3) = EFold <$> scope m <*> scope n1 <*> scope n2 <*> scope n3
+  scope (ETyped m t) = ETyped <$> scope m <*> scope t
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
   scope EPrApp{} = error "scope: EPrApp"
