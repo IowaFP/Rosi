@@ -12,12 +12,13 @@ import Checker.Unify
 import Syntax
 
 import GHC.Stack
+import Data.Bifunctor
 
 solve :: HasCallStack => (CIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
   do -- mv <- everything . pushShiftsP =<< flattenP p
-     mv <- everything =<< flattenP p
+     mv <- everything =<< normalizeP =<< flattenP p
      case mv of
        Just v -> writeRef r (Just v) >> return True
        Nothing -> return False
@@ -34,9 +35,41 @@ solve (cin, p, r) =
        trace ("Solving " ++ show p ++ " from " ++ show pctxt') 
        prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (pctxt cin) p
 
+  sameSet :: Eq a => [a] -> [a] -> Bool
+  sameSet xs ys = all (`elem` ys) xs && all (`elem` xs) ys
+
+  allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
+  allM p xs = and <$> mapM p xs
+
+  sameAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM Bool
+  sameAssocs xs ys =
+    allM (\(xl, xt) -> 
+      case lookup xl ys of
+        Nothing -> return False
+        Just yt -> 
+          do xt' <- fst <$> normalize xt
+             yt' <- fst <$> normalize yt
+             trace $ "4 sameAssocs (" ++ show xt' ++ ") (" ++ show yt' ++ ")"
+             return (xt' == yt')) xs
+
+  -- May want to consider moving away from pattern matching for failure and
+  -- towards using the `Maybe`ness...
+
   match :: HasCallStack => Pred -> (Int, Pred) -> CheckM (Maybe Evid)
   match (PLeq y z) (v, PLeq y' z')
     | y == y' && z == z' = return (Just (VVar v))
+  match (PLeq (TRow es) (TApp (TMapFun f) z)) (v, PLeq (TRow es') z')
+    | z == z'
+    , Just ps <- mapM splitLabel es
+    , Just ps' <- mapM splitLabel es'
+    , sameSet (map fst ps) (map fst ps') =
+      do trace "1 match"
+         b <- sameAssocs ps (map (second (TApp f)) ps')
+         if b
+         then do trace "2 match"
+                 return (Just (VVar v))
+         else do trace "3 no match"
+                 return Nothing
   match p@(PPlus x y z) (v, q@(PPlus x' y' z'))
     | xEqual && yEqual = forceFD z z'
     | xEqual && zEqual = forceFD y y'
@@ -59,11 +92,6 @@ solve (cin, p, r) =
 
   fundeps p q = throwError (ErrTypeMismatchFD p q)
 
-  plusLeq p@(PLeq y z) q@(v, PPlus x' y' z')
-    | y == y' && z == z' = return (Just (VPlusR (VVar v)))
-    | y == x' && z == z' = return (Just (VPlusL (VVar v)))
-  plusLeq _ _ = return Nothing
-
   expand1 :: Pred -> [Pred]
   expand1 (PPlus x y z) = [PLeq x z, PLeq y z]
   expand1 (PLeq _ _) = []
@@ -81,7 +109,7 @@ solve (cin, p, r) =
       ps' = expand1 p ++ concatMap (expand2 p) qs
 
   byAssump as p = 
-    do as' <- mapM flattenP as
+    do as' <- mapM (normalizeP <=< flattenP) as
        let as'' = expandAll as'
        trace ("Expanded " ++ show as' ++ " to " ++ show as'' ++ "; solving " ++ show p)
        go (zip [0..] as'') p where

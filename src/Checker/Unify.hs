@@ -52,8 +52,7 @@ unify0 :: HasCallStack => Ty -> Ty -> CheckM (Maybe TyEqu)
 unify0 (TVar i _ _) (TVar j _ _)
   | i == j = return (Just QRefl)
 unify0 actual t@(TUnif j n (Goal (uvar, r)) k) =
-  do trace ("(" ++ show actual ++ ") ~ (" ++ show t ++ ")")
-     mt <- readRef r
+  do mt <- readRef r
      case mt of
        Just t -> unify actual t
        Nothing ->
@@ -170,8 +169,8 @@ unify0 t u =
 -- Assumption: at least one of actual or expected is a `TApp`
 unifyNormalizing :: HasCallStack => Ty -> Ty -> CheckM (Maybe TyEqu)
 unifyNormalizing actual expected =
-  do (actual', qa) <- normalize actual
-     (expected', qe) <- normalize expected
+  do (actual', qa) <- normalize' actual
+     (expected', qe) <- normalize' expected
      case (flattenQ qa, flattenQ qe) of
        (QRefl, QRefl) ->
          case (actual', expected') of
@@ -226,6 +225,15 @@ substp v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
 substp v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
 
 
+normalize' :: HasCallStack => Ty -> CheckM (Ty, TyEqu)
+normalize' t =
+  do (u, q) <- normalize t
+     theKCtxt <- asks kctxt
+     case q of
+       QRefl -> return (u, q)
+       _     -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
+                   return (u, q)
+
 normalize :: HasCallStack => Ty -> CheckM (Ty, TyEqu)
 normalize t@(TVar i _ _) =
   do (_, mdef) <- asks ((!! i) . kctxt)
@@ -252,10 +260,9 @@ normalize (TApp (TMapFun f) z)
   , v == w =
     do (z, q) <- normalize z
        return (z, QTrans QMapFun q)
-  | TLam v k t <- f
-  , KRow (KFun _ _) <- kindOf z =
-    do (t, q) <- normalize . shiftTN 0 (-1) =<< subst 0 (shiftTN 0 1 (TMapArg z)) t
-       return (t, QTrans QMapFun q)
+  | TLam v k (TApp (TVar 0 _ _) t) <- f = -- le very large sigh...
+    do (z, q) <- normalize (TApp (TMapArg z) (shiftTN 0 (-1) t))  -- what if this fails... more sighs
+       return (z, QTrans QDefn q)
 normalize (TApp (TMapArg (TRow es)) t)
   | Just ls <- mapM label es, Just fs <- mapM labeled es =
     do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
@@ -277,10 +284,21 @@ normalize (TRow ts) =
 normalize (TSigma z) =
   do (z', q) <- normalize z
      return (TSigma z', QCon Sigma q)
+normalize (TPi z) =
+  do (z', q) <- normalize z
+     return (TPi z', QCon Pi q)
 normalize (TForall x k t) =
   do (t', q) <- bindTy k (normalize t)
      return (TForall x k t', q) -- probably should be a congruence rule mentioned around here.... :)
+normalize (TMapFun t) =
+  do (t', q) <- normalize t
+     return (TMapFun t', q)     
 normalize t = return (t, QRefl)
+-- TODO: normalize (p => t) presumably normalizes p and t??
+
+normalizeP :: Pred -> CheckM Pred -- no evidence structure for predicate equality yet soooo....
+normalizeP (PLeq x y) = PLeq <$> (fst <$> normalize x) <*> (fst <$> normalize y)
+normalizeP (PPlus x y z) = PPlus <$> (fst <$> normalize x) <*> (fst <$> normalize y) <*> (fst <$> normalize z)
 
 unifyP :: Pred -> Pred -> CheckM (Maybe PrEqu)
 unifyP (PLeq y z) (PLeq y' z') = liftM2 QLeq <$> unify y y' <*> unify z z'

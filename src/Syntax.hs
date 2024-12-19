@@ -64,8 +64,28 @@ data Ty =
   deriving (Data, Eq, Show, Typeable)
 
 -- Because I keep confusing myself:
--- MapFun : (k -> l) -> R[k] -> R[l]
--- MapArg : R[k -> l] -> k -> R[l]
+-- MapFun : (k -> l) -> (R[k] -> R[l])
+-- MapArg : R[k -> l] -> (k -> R[l])
+-- Reducing MapArg to MapFun....
+-- Can I do: MapArg (Z : R[k1 -> k2] == \X : k1. MapFun (\Y : k1 -> k2. Y X) Z
+--
+-- Need to validate rule:
+--     normalize (TApp (TMapArg (TRow es)) t)
+--       | Just ls <- mapM label es, Just fs <- mapM labeled es =
+--         do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
+--            return (t, QTrans QMapArg q)
+--
+-- So: TApp (TMapArg (TRow es)) t)
+--    --->
+--     TApp (\X. TMapFun (\Y. Y X) es)) t
+--    --->
+--     TMapFun (\Y. Y t) es
+--    --->
+--     TRow ...
+-- seems to work...
+
+-- ???
+
 
 infixr 4 `TThen`  
 
