@@ -57,7 +57,7 @@ kindMismatch t actual expected =
      throwError (ErrKindMismatch t actual' expected')
 
 checkTy' :: Term -> Ty -> Kind -> CheckM Ty
-checkTy' e t k = withError (ErrContextTerm e) (checkTy t k)
+checkTy' e t k = withError (ErrContextTerm e . ErrContextType t) $ checkTy t k
 
 checkTy :: Ty -> Kind -> CheckM Ty
 checkTy (TVar (-1) x _) expected = 
@@ -99,7 +99,8 @@ checkTy (TApp t u) expected =
 checkTy t@(TLab _) expected = expectK t KLabel expected
 checkTy t@(TSing l) expected =
   do expectK t KType expected
-     TSing <$> checkTy l KLabel
+     k <- kindGoal "k"
+     TSing <$> checkTy l k
 checkTy t@(TLabeled l u) expected =
   TLabeled <$>
     checkTy l KLabel <*>

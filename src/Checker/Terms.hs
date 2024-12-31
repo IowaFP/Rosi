@@ -109,7 +109,7 @@ checkTerm0 implicitTyLams e0@(EPrApp e p) expected =
   fail "unimplemented"
 checkTerm0 implicitTyLams e0@(ESing t) expected =
   do q <- expectT e0 (TSing t) expected
-     wrap q . ESing <$> checkTy' e0 t KLabel
+     wrap q . ESing <$> (checkTy' e0 t =<< kindGoal "k")
 checkTerm0 implicitTyLams e0@(ELabel el e) expected =
   do tl <- typeGoal' "l" KLabel
      t <- typeGoal "t"
@@ -122,8 +122,8 @@ checkTerm0 implicitTyLams e0@(EUnlabel e el) expected =
      e' <- checkTerm' implicitTyLams  e (TLabeled tl expected)
      return (EUnlabel e' el')
 checkTerm0 implicitTyLams e0@(EPrj y z v@(VGoal (Goal (_, r))) e) expected =
-  do y' <- checkTy y (KRow (kindOf expected))
-     z' <- checkTy z (KRow (kindOf expected))
+  do y' <- checkTy' e0 y (KRow (kindOf expected))
+     z' <- checkTy' e0 z (KRow (kindOf expected))
      q <- expectT e0 (TPi y') expected
      e' <- checkTerm implicitTyLams e (TPi z')
      require (PLeq y' z') r
@@ -131,9 +131,9 @@ checkTerm0 implicitTyLams e0@(EPrj y z v@(VGoal (Goal (_, r))) e) expected =
 checkTerm0 implicitTyLams (EPrj {}) _ =
   fail "unimplemented: prj with non-goal evidence"
 checkTerm0 implicitTyLams e0@(EConcat x y z v@(VGoal (Goal (_, r))) m n) expected =
-  do x' <- checkTy x (KRow (kindOf expected))
-     y' <- checkTy y (KRow (kindOf expected))
-     z' <- checkTy z (KRow (kindOf expected))
+  do x' <- checkTy' e0 x (KRow (kindOf expected))
+     y' <- checkTy' e0 y (KRow (kindOf expected))
+     z' <- checkTy' e0 z (KRow (kindOf expected))
      q <- expectT e0 (TPi z') expected
      m' <- checkTerm implicitTyLams m (TPi x')
      n' <- checkTerm implicitTyLams n (TPi y')
@@ -142,8 +142,8 @@ checkTerm0 implicitTyLams e0@(EConcat x y z v@(VGoal (Goal (_, r))) m n) expecte
 checkTerm0 implicitTyLams (EConcat {}) _ =
   fail "unimplemented: ++ with non-goal evidence"
 checkTerm0 implicitTyLams e0@(EInj y z v@(VGoal (Goal (_, r))) e) expected =
-  do y' <- checkTy y (KRow (kindOf expected))
-     z' <- checkTy z (KRow (kindOf expected))
+  do y' <- checkTy' e0 y (KRow (kindOf expected))
+     z' <- checkTy' e0 z (KRow (kindOf expected))
      q <- expectT e0 (TSigma z') expected
      e' <- checkTerm implicitTyLams e (TSigma y')
      require (PLeq y' z') r
@@ -151,9 +151,9 @@ checkTerm0 implicitTyLams e0@(EInj y z v@(VGoal (Goal (_, r))) e) expected =
 checkTerm0 implicitTyLams (EInj {}) _ =
   fail "unimplemented: inj with non-goal evidence"
 checkTerm0 implicitTyLams e0@(EBranch x y z v@(VGoal (Goal (_, r))) m n) expected =
-  do x' <- checkTy x (KRow (kindOf expected))
-     y' <- checkTy y (KRow (kindOf expected))
-     z' <- checkTy z (KRow (kindOf expected))
+  do x' <- checkTy' e0 x (KRow (kindOf expected))
+     y' <- checkTy' e0 y (KRow (kindOf expected))
+     z' <- checkTy' e0 z (KRow (kindOf expected))
      t <- typeGoal "t"
      q <- expectT e0 (funTy (TSigma z') t) expected
      t' <- flattenT t
