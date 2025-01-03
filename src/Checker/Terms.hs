@@ -180,8 +180,8 @@ checkTerm0 implicitTyLams e0@(ESyn phi e) expected =
      q <- expectT e0 (TPi (TApp (TMapFun phi') r)) expected
      ESyn phi' <$> checkTerm implicitTyLams e (TForall "l" KLabel $ TForall "u" k $ TForall "y1" (KRow k) $ TForall "z" (KRow k) $ TForall "y2" (KRow k) $
                                 PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
-                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) r `TThen`
-                                TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 4 phi') (TVar 3 "u" (Just k)))
+                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
+                                TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 5 phi') (TVar 3 "u" (Just k)))
 checkTerm0 implicitTyLams e0@(ETyped e t) expected =
   do (t', _) <- normalize =<< checkTy' e0 t KType
      e' <- checkTerm False e t'  -- any reason to preserve the type ascription?
