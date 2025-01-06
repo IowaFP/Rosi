@@ -22,7 +22,7 @@ traceTypeInference :: IORef Bool
 traceTypeInference = unsafePerformIO (newIORef False)
 
 trace :: MonadIO m => String -> m ()
-trace s = liftIO $ 
+trace s = liftIO $
   do b <- readIORef traceTypeInference
      when b $ putStrLn s
 
@@ -35,7 +35,7 @@ writeRef x = liftIO . writeIORef x
 newRef :: MonadIO m => a -> m (IORef a)
 newRef = liftIO . newIORef
 
-type KCtxt = [(Kind, Maybe Ty)] 
+type KCtxt = [(Kind, Maybe Ty)]
 -- capturing type *definitions* in the kinding context as well; quantifier- and
 -- lambda-bound type definitions get a `Nothing` in the second component.
 -- data TCtxt = Emp | Shift TCtxt | Bind Ty TCtxt
@@ -62,7 +62,7 @@ newtype CheckM a = CM (WriterT COut (ReaderT CIn (StateT CSt (ExceptT Error IO))
 
 instance MonadFail CheckM where
   fail s = throwError (ErrOther s)
-  
+
 bindTy :: Kind -> CheckM a -> CheckM a
 bindTy k = local (\env -> env { kctxt = (k, Nothing) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPN 0 1) (pctxt env)  })
 

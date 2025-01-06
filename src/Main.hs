@@ -32,7 +32,7 @@ splitFlags (Eval s : fs) = (ss ++ evals, files, b)
         split c s = go (dropWhile (c ==) s) where
           go [] = []
           go s  = s' : go (dropWhile (c ==) s'') where
-            (s', s'') = break (c ==) s          
+            (s', s'') = break (c ==) s
 splitFlags (Input s : fs) = (evals, s : files, b)
   where (evals, files, b) = splitFlags fs
 splitFlags (TraceTypeInference : fs) = (evals, files, True)
@@ -40,7 +40,7 @@ splitFlags (TraceTypeInference : fs) = (evals, files, True)
 
 options :: [OptDescr Flag]
 options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
-          , Option ['i'] ["input"] (ReqArg Input "FILE") "input file" 
+          , Option ['i'] ["input"] (ReqArg Input "FILE") "input file"
           , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference" ]
 
 unprog (Prog ds) = ds
@@ -55,13 +55,13 @@ main = do args <- getArgs
           writeIORef traceTypeInference traceTI
           decls <- concatMap unprog <$> mapM (\fn -> parse fn =<< readFile fn) files
           scoped <- reportErrors $ runScopeM $ scopeProg decls
-          checked <- goCheck [] [] scoped 
+          checked <- goCheck [] [] scoped
           let evaled = goEval [] checked
               output = filter ((`elem` evals) . fst) evaled
           mapM_ (putDocWLn 120 . uncurry pprBinding) output
           putStrLn "ok"
   where goCheck d g [] = return []
-        goCheck d g (TyDecl x k t : ds) = 
+        goCheck d g (TyDecl x k t : ds) =
           do t' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType t) $ checkTy t k)
              goCheck ((k, Just t') : d) g ds
         goCheck d g (TmDecl v ty te : ds) =
@@ -73,8 +73,8 @@ main = do args <- getArgs
           goCheck d g ds
 
         goEval _ [] = []
-        goEval h ((x, t, m) : ds) = (x, v) : goEval (v : h) ds where 
-          v = eval (E ([], h)) m 
+        goEval h ((x, t, m) : ds) = (x, v) : goEval (v : h) ds where
+          v = eval (E ([], h)) m
 
 reportErrors :: Either Error t -> IO t
 reportErrors (Left err) =

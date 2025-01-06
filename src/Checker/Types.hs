@@ -60,7 +60,7 @@ checkTy' :: Term -> Ty -> Kind -> CheckM Ty
 checkTy' e t k = withError (ErrContextTerm e . ErrContextType t) $ checkTy t k
 
 checkTy :: Ty -> Kind -> CheckM Ty
-checkTy (TVar (-1) x _) expected = 
+checkTy (TVar (-1) x _) expected =
   throwError (ErrOther $ "scoping error: " ++ x ++ " not resolved")
 checkTy (TVar i v Nothing) expected =
   do (k, _) <- asks ((!! i) . kctxt)

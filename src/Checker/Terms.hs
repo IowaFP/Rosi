@@ -45,14 +45,14 @@ inst e (TForall x k t) expected =
      inst (ETyApp e u) t' expected
 inst e (TThen p t) expected =
   do vr <- newRef Nothing
-     p' <- flattenP p 
+     p' <- flattenP p
      trace ("instantiating " ++ show e ++ " requiring " ++ show p')
      require p vr
      inst (EPrApp e (VGoal (Goal ("v", vr)))) t expected
 inst e t expected = flip wrap e <$> expectT e t expected
 
 checkTerm :: Bool -> Term -> Ty -> CheckM Term
-checkTerm implicitTyLams m t = 
+checkTerm implicitTyLams m t =
   do g <- asks tctxt
      trace $ "checkTerm (" ++ show m ++ ") (" ++ show t ++ ") in (" ++ show g ++ ")"
      checkTerm0 implicitTyLams m t
@@ -70,7 +70,7 @@ checkTerm0 implicitTyLams e0@(EPrLam p e) expected =
      wrap q . EPrLam p <$> assume p (checkTerm' implicitTyLams e tcod)
 checkTerm0 implicitTyLams e (TThen p t) =
   EPrLam p <$> assume p (checkTerm implicitTyLams e t)
-checkTerm0 implicitTyLams (EVar (-1) x) expected =   
+checkTerm0 implicitTyLams (EVar (-1) x) expected =
   throwError (ErrOther $ "scoping error: variable " ++ x ++ " not resolved")
 checkTerm0 implicitTyLams e@(EVar i v) expected = flip (inst (EVar i v)) expected =<< flattenT =<< lookupVar i -- . unshift =<< lookupVar i
 checkTerm0 implicitTyLams e0@(ELam v t e) expected =
@@ -186,14 +186,13 @@ checkTerm0 implicitTyLams e0@(ETyped e t) expected =
   do (t', _) <- normalize =<< checkTy' e0 t KType
      e' <- checkTerm False e t'  -- any reason to preserve the type ascription?
      inst e0 t' expected
-     
+
 
 
 checkTop :: Term -> Ty -> CheckM Term
-checkTop m t = 
+checkTop m t =
   do (t', q) <- normalize' t
      m' <- checkTerm True m t'
      return (case q of
                QRefl -> m'
                _ -> ETyEqu m' q)
-       
