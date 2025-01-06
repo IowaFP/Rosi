@@ -1,8 +1,27 @@
 con : forall l t z. {l := t} < z => #l -> t -> Sigma z
 con = \l x. inj (l := x)
 
+-- The version actually formalized in the ICFP'23 development
 reify0 : forall z t. (Sigma z -> t) -> Pi ((\X. X -> t) z)
 reify0 = /\ z t. \f. syn [\X. X -> t] (\l x. f (con l x))
 
--- reify : forall z t. (Sigma z -> t) -> Pi (z -> t)
--- reify = /\ z t. \f. syn [\X. X -> t] (\l x. f (con l x))
+reify : forall z t. (Sigma z -> t) -> Pi (z -> t)
+reify = /\ z t. \f. syn [\X. X -> t] (\l x. f (con l x))
+
+type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
+type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
+
+sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
+sel = \ r l. prj r / l
+
+mapP : forall z : R[* -> *], f g : (* -> *) -> *.
+       Iter f g z ->
+       Pi (f z) -> Pi (g z)
+mapP = /\ z f g. \ i r. syn [g] (\l. i l (sel r l))
+
+type Functor : (* -> *) -> *
+type Functor = \f. forall a b. (a -> b) -> f a -> f b
+
+fmapP : forall z : R[* -> *] . Pi (Functor z) -> Functor (Pi z) -- Why do I need the kind annotation on z??
+fmapP = /\ z. \ d. /\ a b. \ f.
+          mapP [z] [\ X. X a] [\ X. X b] (/\ l u. \ ll. (sel d ll : Functor u) f)

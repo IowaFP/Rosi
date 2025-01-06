@@ -32,7 +32,7 @@ solve (cin, p, r) =
 
   everything p =
     do pctxt' <- mapM flattenP (pctxt cin)
-       trace ("Solving " ++ show p ++ " from " ++ show pctxt') 
+       trace ("Solving " ++ show p ++ " from " ++ show pctxt')
        prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (pctxt cin) p
 
   sameSet :: Eq a => [a] -> [a] -> Bool
@@ -43,10 +43,10 @@ solve (cin, p, r) =
 
   sameAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM Bool
   sameAssocs xs ys =
-    allM (\(xl, xt) -> 
+    allM (\(xl, xt) ->
       case lookup xl ys of
         Nothing -> return False
-        Just yt -> 
+        Just yt ->
           do xt' <- fst <$> normalize xt
              yt' <- fst <$> normalize yt
              trace $ "4 sameAssocs (" ++ show xt' ++ ") (" ++ show yt' ++ ")"
@@ -108,8 +108,9 @@ solve (cin, p, r) =
     go qs (p : ps) = go (p : qs) (ps' ++ ps) where
       ps' = expand1 p ++ concatMap (expand2 p) qs
 
-  byAssump as p = 
+  byAssump as p =
     do as' <- mapM (normalizeP <=< flattenP) as
+       trace ("Expanding " ++ show as')
        let as'' = expandAll as'
        trace ("Expanded " ++ show as' ++ " to " ++ show as'' ++ "; solving " ++ show p)
        go (zip [0..] as'') p where
@@ -176,10 +177,7 @@ solve (cin, p, r) =
   mapFunApp p@(PLeq (TRow []) (TApp (TMapFun f) z)) =
     fmap (VLeqLiftL f) <$> everything (PLeq (TRow []) z)
   mapFunApp p@(PLeq (TRow y) (TApp (TMapFun f) z))
-    | Just (ls, fs, es) <- funCallsFrom y =
-      do mapM_ (force p f) fs
-         fmap (VLeqLiftL f) <$> everything (PLeq (TRow (zipWith TLabeled ls es)) z)
-    | TLam v k (TVar i w _) <- f
+    | TLam v k (TVar i w _) <- f  -- I think this case should actually have been normalized away....
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel y =
       fmap (VPredEq (QLeq (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar i v (Just k)) t t) | t <- ts]) QRefl) .

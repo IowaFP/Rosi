@@ -255,18 +255,30 @@ normalize (TApp (TMapFun f) (TRow es))
   | Just ls <- mapM label es, Just ts <- mapM labeled es =
     do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (TApp f) ts)))
        return (t, QTrans QMapFun q)
+-- The next rule implements `map id == id`
 normalize (TApp (TMapFun f) z)
-  | TLam v k (TVar i w _) <- f     -- shouldn't we just check for i == 0?
-  , v == w =
+  | TLam _ k (TVar 0 _ _) <- f =
     do (z, q) <- normalize z
        return (z, QTrans QMapFun q)
-  | TLam v k (TApp (TVar 0 _ _) t) <- f = -- le very large sigh...
-    do (z, q) <- normalize (TApp (TMapArg z) (shiftTN 0 (-1) t))  -- what if this fails... more sighs
-       return (z, QTrans QDefn q)
+-- The following rules attempt to implement `map f . map g == map (f . g)`
+normalize (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
+  do f' <- subst 0 g f
+     (t, q) <- normalize (TApp (TMapFun (TLam v k f')) z)
+     return (t, QTrans QDefn q)
+normalize (TApp (TMapFun (TLam v (KFun KType KType) f)) (TApp (TMapFun TFun) z)) =
+  do f' <- subst 0 (TApp TFun (TVar 0 v (Just KType))) f
+     (t, q) <- normalize (TApp (TMapFun (TLam v KType f')) z)
+     return (t, QTrans QDefn q)
+normalize (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
+  do (t, q) <- normalize (TApp (TMapFun (TLam v k (TApp TFun f))) z)
+     return (t, QTrans QDefn q)
 normalize (TApp (TMapArg (TRow es)) t)
   | Just ls <- mapM label es, Just fs <- mapM labeled es =
     do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
        return (t, QTrans QMapArg q)
+normalize (TMapArg z)
+  | KRow (KFun k1 k2) <- kindOf z =
+    return (TLam "X" k1 (TApp (TMapFun (TLam "Y" (KFun k1 k2) (TApp (TVar 0 "Y" (Just (KFun k1 k2))) (TVar 1 "X" (Just k1))))) (shiftTN 0 1 z)), QDefn)
 normalize (TApp t1 t2) =
   do (t1', q1) <- normalize t1
      case flattenQ q1 of
@@ -292,7 +304,7 @@ normalize (TForall x k t) =
      return (TForall x k t', q) -- probably should be a congruence rule mentioned around here.... :)
 normalize (TMapFun t) =
   do (t', q) <- normalize t
-     return (TMapFun t', q)     
+     return (TMapFun t', q)
 normalize t = return (t, QRefl)
 -- TODO: normalize (p => t) presumably normalizes p and t??
 
