@@ -33,7 +33,7 @@ solve (cin, p, r) =
   everything p =
     do pctxt' <- mapM flattenP (pctxt cin)
        trace ("Solving " ++ show p ++ " from " ++ show pctxt')
-       prim p <|> mapFunApp p <|> mapArgApp p <|> byAssump (pctxt cin) p
+       prim p <|> mapFunApp p <|> byAssump (pctxt cin) p
 
   sameSet :: Eq a => [a] -> [a] -> Bool
   sameSet xs ys = all (`elem` ys) xs && all (`elem` xs) ys
@@ -149,27 +149,6 @@ solve (cin, p, r) =
     | otherwise                                  = Nothing
     where tyAppFrom (TApp f e) = Just (f, e)
           tyAppFrom _          = Nothing
-
-  mapArgApp p@(PLeq (TApp (TMapArg y) t) (TApp (TMapArg z) t')) =
-    do force p t t'
-       fmap (`VLeqLiftR` t) <$> everything (PLeq y z)
-  mapArgApp p@(PLeq (TRow []) (TApp (TMapArg z) t)) =
-    fmap (`VLeqLiftR` t) <$> everything (PLeq (TRow []) z)
-  mapArgApp p@(PLeq (TRow y) (TApp (TMapArg z) t))
-    | Just (ls, fs, ts) <- funCallsFrom y =
-      do mapM_ (force p t) ts
-         fmap (`VLeqLiftR` t) <$> everything (PLeq (TRow (zipWith TLabeled ls fs)) z)
-  mapArgApp p@(PLeq (TApp (TMapArg y) t) (TRow [])) =
-    fmap (`VLeqLiftR` t) <$> everything (PLeq y (TRow []))
-  mapArgApp p@(PLeq (TApp (TMapArg y) t) (TRow z))
-    | Just (ls, fs, ts) <- funCallsFrom z =
-      do mapM_ (force p t) ts
-         fmap (`VLeqLiftR` t) <$> everything (PLeq y (TRow (zipWith TLabeled ls ts)))
-  mapArgApp p@(PPlus (TApp (TMapArg x) t) (TApp (TMapArg y) u) (TApp (TMapArg z) v)) =
-    do force p t u
-       force p u v
-       fmap (`VPlusLiftR` t) <$> everything (PPlus x y z)
-  mapArgApp _ = return Nothing
 
   mapFunApp p@(PLeq (TApp (TMapFun f) y) (TApp (TMapFun f') z)) =
     do force p f f'
