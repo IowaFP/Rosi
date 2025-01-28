@@ -220,7 +220,7 @@ pr = do t <- arrTy
 -- We need a random precedence table here.  Let's try:
 --
 --     ++ ?
---     := / 
+--     := /
 
 term :: Parser Term
 term = prefixes typedTerm where
@@ -245,7 +245,7 @@ term = prefixes typedTerm where
 
   op s k = symbol s >> k
 
-  typedTerm = 
+  typedTerm =
     do t <- branchTerm
        maybe t (ETyped t) <$> optional (symbol ":" >> ty)
 
@@ -269,7 +269,7 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
   app (BuiltIn s) [] = unexpected (Label $ fromList ("unsaturated " ++ s))
   app _ (BuiltIn s : _) = unexpected (Label $ fromList s)
   app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
-  app (Term t) (Type u : ts) = app (Term (ETyApp t u)) ts
+  app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
   app (BuiltIn "prj") (Term t : ts) =
     do prjt <- unary EPrj Nothing Nothing t
        app (Term prjt) ts
@@ -344,7 +344,7 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                  , ESing <$> (char '#' >> atype)
                  , parens term ]
 
-data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term 
+data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term
   deriving (Data, Eq, Show, Typeable)
 
 topLevel :: Parser ([Char], TL)
@@ -358,10 +358,10 @@ topLevel = item lhs body where
   --
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
-  typeIdentifier = symbol "type" *> ((:) <$> letterChar <*> many alphaNumChar)   
-  body (Left x)  = colon *> ((x,) . KindSig <$> kind) <|> 
+  typeIdentifier = symbol "type" *> ((:) <$> letterChar <*> many alphaNumChar)
+  body (Left x)  = colon *> ((x,) . KindSig <$> kind) <|>
                    symbol "=" *> ((x,) . TypeDef <$> ty)
-  body (Right x) = colon *> ((x,) . TypeSig <$> ty) <|> 
+  body (Right x) = colon *> ((x,) . TypeSig <$> ty) <|>
                    symbol "=" *> ((x,) . TermDef <$> term)
 
 prog :: Parser Program
@@ -396,10 +396,10 @@ defns tls
                     tm <- lookup x termDefs
                     return (TmDecl x ty tm)
                  `mplus`
-                 do k <- lookup x kindSigs 
+                 do k <- lookup x kindSigs
                     ty <- lookup x typeDefs
                     return (TyDecl x k ty)
-        
+
 parse :: String -> String -> IO Program
 parse fn s =
   do tls <- evalStateT (runParserT (prog <* eof) fn s) []

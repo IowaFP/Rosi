@@ -6,6 +6,7 @@ import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
 import Data.IORef
 import Data.List
+import Data.Maybe (isNothing)
 
 import Checker.Monad
 import Checker.Unify
@@ -30,6 +31,13 @@ solve (cin, p, r) =
 
   infixr 2 <|>
 
+  cond :: Monad m => m Bool -> m a -> m a -> m a
+  cond b c a = do b' <- b
+                  if b' then c else a
+
+  suppose :: Monad m => m Bool -> m (Maybe a) -> m (Maybe a)
+  suppose b c = cond b c (return Nothing)
+
   everything p =
     do pctxt' <- mapM flattenP (pctxt cin)
        trace ("Solving " ++ show p ++ " from " ++ show pctxt')
@@ -41,6 +49,11 @@ solve (cin, p, r) =
   allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
   allM p xs = and <$> mapM p xs
 
+  typesEqual :: Ty -> Ty -> CheckM Bool
+  typesEqual t u =
+    do q <- check t u
+       return (not (isNothing q))
+
   sameAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM Bool
   sameAssocs xs ys =
     allM (\(xl, xt) ->
@@ -50,43 +63,56 @@ solve (cin, p, r) =
           do xt' <- fst <$> normalize xt
              yt' <- fst <$> normalize yt
              trace $ "4 sameAssocs (" ++ show xt' ++ ") (" ++ show yt' ++ ")"
-             return (xt' == yt')) xs
+             typesEqual xt' yt') xs
 
-  -- May want to consider moving away from pattern matching for failure and
-  -- towards using the `Maybe`ness...
+  unifyAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM ()
+  unifyAssocs xs ys =
+    mapM_ (\(xl, xt) ->
+      case lookup xl ys of
+        Nothing -> error $ "internal: unifyAssocs called with unmatched assoc lists"
+        Just yt ->
+          do q <- unify xt yt
+             case q of
+               Nothing -> fundeps p q
+               Just _  -> return ()) xs
 
-  match :: HasCallStack => Pred -> (Int, Pred) -> CheckM (Maybe Evid)
-  match (PLeq y z) (v, PLeq y' z')
-    | y == y' && z == z' = return (Just (VVar v))
-  match (PLeq (TRow es) (TApp (TMapFun f) z)) (v, PLeq (TRow es') z')
-    | z == z'
-    , Just ps <- mapM splitLabel es
-    , Just ps' <- mapM splitLabel es'
-    , sameSet (map fst ps) (map fst ps') =
-      do trace "1 match"
-         b <- sameAssocs ps (map (second (TApp f)) ps')
-         if b
-         then do trace "2 match"
-                 return (Just (VVar v))
-         else do trace "3 no match"
-                 return Nothing
-  match p@(PPlus x y z) (v, q@(PPlus x' y' z'))
-    | xEqual && yEqual = forceFD z z'
-    | xEqual && zEqual = forceFD y y'
-    | yEqual && zEqual = forceFD x x'
-    | otherwise = return Nothing
+  matchLeqDirect, matchLeqMap, matchPlusDirect, match :: HasCallStack => Pred -> (Int, Pred) -> CheckM (Maybe Evid)
+  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q
 
-    where xEqual = x == x'
-          yEqual = y == y'
-          zEqual = z == z'
+  matchLeqDirect (PLeq y z) (v, PLeq y' z') =
+    suppose (typesEqual y y') $
+    suppose (typesEqual z z') $
+    return (Just (VVar v))
+  matchLeqDirect _ _ = return Nothing
 
-          forceFD t t' =
+  matchLeqMap (PLeq (TRow es) (TApp (TMapFun f) z)) (v, PLeq (TRow es') z') =
+    suppose (typesEqual z z') $
+    case (mapM splitLabel es, mapM splitLabel es') of
+      (Just ps, Just ps') | sameSet (map fst ps) (map fst ps') ->
+        do trace "1 match"
+           unifyAssocs ps (map (second (TApp f)) ps')
+           return (Just (VVar v))
+           -- cond (sameAssocs ps (map (second (TApp f)) ps'))
+           --      (do trace "2 match"
+           --          return (Just (VVar v)))
+           --      (do trace "3 no match"
+           --          return Nothing)
+      _ -> return Nothing
+  matchLeqMap _ _ = return Nothing
+
+  matchPlusDirect p@(PPlus x y z) (v, q@(PPlus x' y' z')) =
+    suppose (typesEqual x x') $
+      (suppose (typesEqual y y') (forceFD z z') <|>
+       suppose (typesEqual z z') (forceFD y y')) <|>
+    suppose (typesEqual y y') (suppose (typesEqual z z') (forceFD x x'))
+    where forceFD t t' =
             do q <- unify t t'
                case flattenQ <$> q of
                  Just QRefl -> return (Just (VVar v))
-                 _          -> fundeps p q
-
-  match p q = return Nothing
+                 _          ->
+                  do trace $ "matchPlusDirect: unifying (" ++ show t ++ ") and (" ++ show t' ++ ") gave (" ++ show q ++ ")"
+                     fundeps p q
+  matchPlusDirect _ _ = return Nothing
 
   -- question to self: why do I have both the `fundeps` error and the `force` error?
 
@@ -123,6 +149,9 @@ solve (cin, p, r) =
          Just QRefl -> return ()
          _ -> throwError (ErrTypeMismatchPred p t u)
 
+  -- May want to consider moving away from pattern matching for failure and
+  -- towards using the `Maybe`ness...
+
   prim p@(PLeq (TRow y) (TRow z))
     | Just yd <- mapM label y, Just zd <- mapM label z =
       case sequence [elemIndex e zd | e <- yd] of
@@ -149,6 +178,8 @@ solve (cin, p, r) =
     | otherwise                                  = Nothing
     where tyAppFrom (TApp f e) = Just (f, e)
           tyAppFrom _          = Nothing
+
+  -- FIXME: these rules are just wrong
 
   mapFunApp p@(PLeq (TApp (TMapFun f) y) (TApp (TMapFun f') z)) =
     do force p f f'

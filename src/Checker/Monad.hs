@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use fmap" #-}
 
@@ -26,14 +26,10 @@ trace s = liftIO $
   do b <- readIORef traceTypeInference
      when b $ putStrLn s
 
-readRef :: MonadIO m => IORef a -> m a
-readRef = liftIO . readIORef
-
-writeRef :: MonadIO m => IORef a -> a -> m ()
-writeRef x = liftIO . writeIORef x
-
-newRef :: MonadIO m => a -> m (IORef a)
-newRef = liftIO . newIORef
+class Monad m => MonadRef m where
+  readRef :: IORef a -> m a
+  writeRef :: Typeable a => IORef a -> a -> m ()
+  newRef :: Typeable a => a -> m (IORef a)
 
 type KCtxt = [(Kind, Maybe Ty)]
 -- capturing type *definitions* in the kinding context as well; quantifier- and
@@ -63,30 +59,29 @@ newtype CheckM a = CM (WriterT COut (ReaderT CIn (StateT CSt (ExceptT Error IO))
 instance MonadFail CheckM where
   fail s = throwError (ErrOther s)
 
-bindTy :: Kind -> CheckM a -> CheckM a
-bindTy k = local (\env -> env { kctxt = (k, Nothing) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPN 0 1) (pctxt env)  })
+instance MonadRef CheckM where
+  newRef = liftIO . newIORef
+  readRef = liftIO . readIORef
+  writeRef r = liftIO . writeIORef r
 
-defineTy :: Kind -> Ty -> CheckM a -> CheckM a
-defineTy k t = local (\env -> env { kctxt = (k, Just t) : kctxt env, tctxt = shiftE (tctxt env) })
+class (Monad m, MonadError Error m, MonadRef m, MonadIO m, MonadReader CIn m) => MonadCheck m where
+  bindTy :: Kind -> m a -> m a
+  defineTy :: Kind -> Ty -> m a -> m a
+  bind :: Ty -> m a -> m a
+  assume :: Pred -> m a -> m a
+  require :: Pred -> IORef (Maybe Evid) -> m ()
+  fresh :: String -> m String
 
--- Exclusively (so far) for kind checking `TShift t`
-unbindTy :: CheckM a -> CheckM a
-unbindTy = local (\env -> env { kctxt = tail (kctxt env) })
-
-bind :: Ty -> CheckM a -> CheckM a
-bind t = local (\env -> env { tctxt = t : tctxt env })
-
-assume :: Pred -> CheckM a -> CheckM a
-assume g = local (\env -> env { pctxt = g : pctxt env })
-
-require :: Pred -> IORef (Maybe Evid) -> CheckM ()
-require p r =
-  do cin <- ask
-     p' <- flattenP p
-     trace ("requiring " ++ show p') -- show (pushShiftsP p))
-     tell (COut [(cin, p, r)])-- pushShiftsP p, r)])
-
-fresh :: String -> CheckM String
-fresh x = do i <- gets next
-             modify (\st -> st { next = i + 1 })
-             return (x ++ '#' : show i)
+instance MonadCheck CheckM where
+  bindTy k = local (\env -> env { kctxt = (k, Nothing) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPN 0 1) (pctxt env)  })
+  defineTy k t = local (\env -> env { kctxt = (k, Just t) : kctxt env, tctxt = shiftE (tctxt env) })
+  bind t = local (\env -> env { tctxt = t : tctxt env })
+  assume g = local (\env -> env { pctxt = g : pctxt env })
+  require p r =
+    do cin <- ask
+       p' <- flattenP p
+       trace ("requiring " ++ show p') -- show (pushShiftsP p))
+       tell (COut [(cin, p, r)])-- pushShiftsP p, r)])
+  fresh x = do i <- gets next
+               modify (\st -> st { next = i + 1 })
+               return (x ++ '#' : show i)

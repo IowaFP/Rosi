@@ -24,4 +24,4 @@ type Functor = \f. forall a b. (a -> b) -> f a -> f b
 
 fmapP : forall z : R[* -> *] . Pi (Functor z) -> Functor (Pi z) -- Why do I need the kind annotation on z??
 fmapP = /\ z. \ d. /\ a b. \ f.
-          mapP [z] [\ X. X a] [\ X. X b] (/\ l u. \ ll. (sel d ll : Functor u) f)
+          mapP [z] [\ X. X a] [\ X. X b] (/\ l u. \ ll. sel d ll f)

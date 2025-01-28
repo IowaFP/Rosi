@@ -1,14 +1,66 @@
-module Checker.Unify where
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+module Checker.Unify (module Checker.Unify) where
 
 import Control.Monad
+import Control.Monad.Error.Class
 import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
+import Control.Monad.State
+import Control.Monad.Writer
+import Data.Bifunctor (first)
+import Data.Dynamic
+import Data.IORef
+import Data.Maybe (isNothing)
 
 import Checker.Monad
 import Checker.Types
 import Syntax
 
 import GHC.Stack
+
+data Update where
+  U :: IORef a -> a -> Update
+
+perform :: MonadIO m => Update -> m ()
+perform (U ref val) = liftIO $ writeIORef ref val
+
+newtype UnifyM a = UM { runUnifyM :: StateT (Maybe [Dynamic]) (WriterT [Update] CheckM) a }
+  deriving (Functor, Applicative, Monad, MonadWriter [Update], MonadError Error, MonadIO)
+
+liftC :: CheckM a -> UnifyM a
+liftC = UM . lift . lift
+
+instance MonadRef UnifyM where
+  newRef v = UM $ StateT $ \checking -> WriterT (body checking) where
+    body Nothing = do r <- liftIO (newIORef v)
+                      return ((r, Nothing), [])
+    body (Just rs) = do r <- liftIO (newIORef v)
+                        return ((r, Just (toDyn r : rs)), [])
+  readRef = liftIO . readIORef
+  writeRef r v =
+    do v' <- readRef r
+       tell [U r v']
+       liftIO (writeIORef r v)
+
+instance MonadReader CIn UnifyM where
+  ask = UM (lift (lift ask))
+  local f r = UM $ StateT $ \checking -> WriterT $ local f (runWriterT (runStateT (runUnifyM r) checking))
+
+instance MonadCheck UnifyM where
+  bindTy k m = UM $ StateT $ \checking -> WriterT $ bindTy k (runWriterT $ runStateT (runUnifyM m) checking)
+  defineTy k t m = UM $ StateT $ \checking -> WriterT $ defineTy k t (runWriterT $ runStateT (runUnifyM m) checking)
+  bind t m = UM $ StateT $ \checking -> WriterT $ bind t (runWriterT $ runStateT (runUnifyM m) checking)
+  assume g m = UM $ StateT $ \checking -> WriterT $ assume g (runWriterT $ runStateT (runUnifyM m) checking)
+  require p r = UM $ lift $ lift $ require p r
+  fresh = UM . lift . lift . fresh
+
+canUpdate :: Typeable a => IORef a -> UnifyM Bool
+canUpdate r = UM (StateT $ \checking -> WriterT (body checking)) where
+  body Nothing = return ((True, Nothing), [])
+  body (Just rs) = return ((any ok rs, Just rs), [])
+  ok dr = case fromDynamic dr of
+            Just r' -> r == r'
+            Nothing -> False
 
 {--
 
@@ -43,111 +95,210 @@ types). How bad are the error messages?
 
 --}
 
-unify :: HasCallStack => Ty -> Ty -> CheckM (Maybe TyEqu)
+unify, check :: HasCallStack => Ty -> Ty -> CheckM (Maybe TyEqu)
 unify actual expected =
-  do trace ("(" ++ show actual ++ ") ~ (" ++ show expected ++ ")")
-     unify0 actual expected
+  do (result, undoes) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing
+     when (isNothing result) $
+       mapM_ perform undoes
+     return result
 
-unify0 :: HasCallStack => Ty -> Ty -> CheckM (Maybe TyEqu)
+check actual expected =
+  do (result, undoes) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) (Just [])
+     when (isNothing result) $
+       mapM_ perform undoes
+     return result
+
+unify' :: HasCallStack => Ty -> Ty -> UnifyM (Maybe TyEqu)
+unify' actual expected =
+  do trace ("(" ++ show actual ++ ") ~ (" ++ show expected ++ ")")
+     (actual', q) <- normalize actual
+     (expected', q') <- normalize expected -- TODO: do we need to renormalize each time around?
+     let f = case q of
+               QRefl -> id
+               _     -> QTrans q
+         f' = case q' of
+               QRefl -> id
+               _     -> QTrans (QSym q')
+     ((f' . f) <$>) <$> unify0 actual' expected'
+
+unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM (Maybe TyEqu)) -> UnifyM (Maybe TyEqu)
+unifyInstantiating t (TInst (Known is) u) unify = unifyInsts t is u where
+  unifyInsts (TForall _ k t) (TyArg v : is) u =
+     do t' <- subst 0 (shiftTN 0 1 v) t
+        unifyInsts (shiftTN 0 (-1) t') is u
+  unifyInsts (TThen _ t) (PrArg _ : is) u =
+    unifyInsts t is u
+  unifyInsts t [] u = unify t u
+  unifyInsts t is u =
+    do trace $ "7 incoming unification failure: (" ++ show t ++ ") " ++ show is ++ " (" ++ show u ++ ")"
+       return Nothing
+unifyInstantiating t (TInst ig@(Unknown (Goal (_, r))) u) unify =
+  do minsts <- readRef r
+     case minsts of
+       Just insts -> unify0 t (TInst (Known insts) u)  -- still don't think this can happen
+       Nothing
+         | uqs >= tqs ->
+             do writeRef r (Just [])
+                unify t u
+         | otherwise ->
+             do (is, t') <- instantiate (tqs - uqs) t
+                writeRef r (Just is)
+                unify t' u
+
+  where tqs = countQuants t
+        uqs = countInstQuants u
+
+        countQuants, countInstQuants :: Ty -> Int
+        countQuants (TForall _ _ t) = 1 + countQuants t
+        countQuants (TThen _ t) = 1 + countQuants t
+        countQuants t = 0
+        countInstQuants (TInst (Known is) t) = countTypesIn is + countInstQuants t where
+          countTypesIn [] = 0
+          countTypesIn (TyArg _ : is) = 1 + countTypesIn is
+          countTypesIn (PrArg _ : is) = countTypesIn is
+        countInstQuants (TInst (Unknown _) _) = 0 -- hosed here anyway
+        countInstQuants t = countQuants t
+
+        instantiate :: Int -> Ty -> UnifyM ([Inst], Ty)
+        instantiate 0 t = return ([], t)
+        instantiate n (TForall x k t) =
+          do u <- typeGoal' x k
+             t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
+             (is', t'') <- instantiate (n - 1) t'
+             return (TyArg u : is', t'')
+        instantiate n (TThen p t) =
+          do vr <- newRef Nothing
+             require p vr
+             (is, t') <- instantiate (n - 1) t
+             return (PrArg (VGoal (Goal ("v", vr))) : is, t')
+
+unify0 :: HasCallStack => Ty -> Ty -> UnifyM (Maybe TyEqu)
 unify0 (TVar i _ _) (TVar j _ _)
   | i == j = return (Just QRefl)
+unify0 (TUnif j n (Goal (_, r)) t) (TUnif j' n' (Goal (_, r')) t')
+  | j == j', n == n', r == r' = return (Just QRefl)
 unify0 actual t@(TUnif j n (Goal (uvar, r)) k) =
   do mt <- readRef r
      case mt of
-       Just t -> unify actual t
+       Just t -> unify' actual (shiftTN j n t)
        Nothing ->
-         do actual' <- flattenT actual
-            expectK actual' (kindOf actual') k
-            trace ("About to shiftTN (" ++ show j ++ ") (" ++ show (negate n) ++ ") (" ++ show actual' ++ ")")
-            writeRef r (Just (shiftTN j (negate n) actual'))
-            trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN j (negate n) actual'))
-            return (Just QRefl)
+         do chk <- canUpdate r
+            if chk
+            then do actual' <- flattenT actual
+                    expectK actual' (kindOf actual') k
+                    trace ("About to shiftTN (" ++ show j ++ ") (" ++ show (negate n) ++ ") (" ++ show actual' ++ ")")
+                    writeRef r (Just (shiftTN j (negate n) actual'))
+                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN j (negate n) actual'))
+                    return (Just QRefl)
+            else return Nothing
 unify0 (TUnif j n (Goal (uvar, r)) k) expected =
   do mt <- readRef r
      case mt of
-       Just t -> unify t expected
+       Just t -> unify' (shiftTN j n t) expected
        Nothing ->
-         do expected' <- flattenT expected
-            expectK expected' (kindOf expected') k
-            trace ("About to shiftTN (" ++ show j ++ ") (" ++ show (negate n) ++ ") (" ++ show expected' ++ ")")
-            writeRef r (Just (shiftTN j (negate n) expected'))
-            trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN j (negate n) expected'))
-            return (Just QRefl)
+         do chk <- canUpdate r
+            if chk
+            then do expected' <- flattenT expected
+                    expectK expected' (kindOf expected') k
+                    trace ("About to shiftTN (" ++ show j ++ ") (" ++ show (negate n) ++ ") (" ++ show expected' ++ ")")
+                    writeRef r (Just (shiftTN j (negate n) expected'))
+                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN j (negate n) expected'))
+                    return (Just QRefl)
+            else return Nothing
+-- unify0 actual@(TApp {}) expected = unifyNormalizing actual expected
+-- unify0 actual expected@(TApp {}) = unifyNormalizing actual expected
+unify0 t u@(TInst {}) =
+  unifyInstantiating t u unify'
+unify0 t@(TInst {}) u =
+  unifyInstantiating u t (flip unify')
 unify0 TFun TFun = return (Just QRefl)
 unify0 (TThen pa ta) (TThen px tx) =
-  liftM2 QThen <$> unifyP pa px <*> unify ta tx
+  liftM2 QThen <$> unifyP pa px <*> unify' ta tx
+
+unify0 (TApp fa aa) (TApp fx ax) =
+  -- TODO: wrong
+  liftM2 QApp <$> unify' fa fx <*> unify' aa ax
+unify0 (TApp (TMapFun fa) (TRow ts)) tx =
+  do unify' (TRow [TApp fa ta | ta <- ts]) tx
+     return (Just QMapFun)
+unify0 (TApp (TMapFun fa) ra) (TRow []) =
+  do unify' ra (TRow [])
+     return (Just QMapFun)
+unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
+  do gs <- replicateM (length xs) (typeGoal' "t" (kindOf tx))
+     unify' ra (TRow gs)
+     sequence_ [unify' (TApp fa ta) tx | (ta, tx) <- zip gs xs]
+     return (Just QMapFun)
 unify0 a@(TForall xa ka ta) x@(TForall xx kx tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
-     then liftM QForall <$> bindTy ka (unify ta tx)
+     then liftM QForall <$> bindTy ka (unify' ta tx)
      else do trace $ "1 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
 unify0 a@(TLam xa ka ta) x@(TLam xx kx tx) =  -- Note: this case is missing from higher.pdf
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
-     then liftM QLambda <$> bindTy ka (unify ta tx)
+     then liftM QLambda <$> bindTy ka (unify' ta tx)
      else do trace $ "2 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
-unify0 actual@(TApp {}) expected = unifyNormalizing actual expected
-unify0 actual expected@(TApp {}) = unifyNormalizing actual expected
 unify0 (TLab sa) (TLab sx)
   | sa == sx = return (Just QRefl)
 unify0 (TSing ta) (TSing tx) =
-  liftM QSing <$> unify ta tx
+  liftM QSing <$> unify' ta tx
 unify0 (TLabeled la ta) (TLabeled lx tx) =
-  liftM2 QLabeled <$> unify la lx <*> unify ta tx
+  liftM2 QLabeled <$> unify' la lx <*> unify' ta tx
 unify0 (TRow ra) (TRow rx) =
-  liftM QRow . sequence <$> zipWithM unify ra rx
+  liftM QRow . sequence <$> zipWithM unify' ra rx
 unify0 (TPi ra) (TPi rx) =
-  liftM (QCon Pi) <$> unify ra rx
+  liftM (QCon Pi) <$> unify' ra rx
 unify0 (TPi r) u
-  | TRow [t] <- r = liftM (QTrans (QTyConSing Pi (TRow [t]) u)) <$> unify t u
+  | TRow [t] <- r = liftM (QTrans (QTyConSing Pi (TRow [t]) u)) <$> unify' t u
   | TUnif j n (Goal (uvar, tr)) k <- r =
     do mt <- readRef tr
        case mt of
-         Just r' -> unify (TPi r') u
+         Just r' -> unify' (TPi r') u
          Nothing ->
            do expectK r k (KRow (kindOf u))
               trace ("1 binding " ++ uvar ++ " to " ++ show (TRow [u]) ++ " (n = " ++ show n ++ ")")
               writeRef tr (Just (TRow [shiftTN j (negate n) u]))
               return (Just (QTyConSing Pi (TRow [u]) u))
 unify0 t (TPi r)
-  | TRow [u] <- r = liftM (`QTrans` QTyConSing Pi t (TRow [u])) <$> unify t u
+  | TRow [u] <- r = liftM (`QTrans` QTyConSing Pi t (TRow [u])) <$> unify' t u
   | TUnif j n (Goal (uvar, tr)) k <- r =
     do mt <- readRef tr
        case mt of
-         Just r' -> unify t (TPi r')
+         Just r' -> unify' t (TPi r')
          Nothing ->
            do expectK r k (KRow (kindOf t))
               trace ("2 binding " ++ uvar ++ " to " ++ show (TRow [t]) ++ " (n = " ++ show n ++ ")")
               writeRef tr (Just (TRow [shiftTN j (negate n) t]))
               return (Just (QTyConSing Pi (TRow [t]) t))
 unify0 (TSigma ra) (TSigma rx) =
-  liftM (QCon Sigma) <$> unify ra rx
+  liftM (QCon Sigma) <$> unify' ra rx
 unify0 (TSigma r) u
-  | TRow [t] <- r = liftM (QTrans (QTyConSing Sigma (TRow [t]) u)) <$> unify t u
+  | TRow [t] <- r = liftM (QTrans (QTyConSing Sigma (TRow [t]) u)) <$> unify' t u
   | TUnif j n(Goal (uvar, tr)) k <- r =
     do mt <- readRef tr
        case mt of
-         Just r' -> unify (TSigma r') u
+         Just r' -> unify' (TSigma r') u
          Nothing ->
            do expectK r k (KRow (kindOf u))
               trace ("3 binding " ++ uvar ++ " to " ++ show (TRow [u]) ++ " (n = " ++ show n ++ ")")
               writeRef tr (Just (TRow [shiftTN j (negate n) u]))
               return (Just (QTyConSing Sigma (TRow [u]) u))
 unify0 t (TSigma r)
-  | TRow [u] <- r = liftM (`QTrans` QTyConSing Sigma t (TRow [u])) <$> unify t u
+  | TRow [u] <- r = liftM (`QTrans` QTyConSing Sigma t (TRow [u])) <$> unify' t u
   | TUnif j n (Goal (uvar, tr)) k <- r =
     do mt <- readRef tr
        case mt of
-         Just r' -> unify t (TSigma r')
+         Just r' -> unify' t (TSigma r')
          Nothing ->
            do expectK r k (KRow (kindOf t))
               trace ("4 binding " ++ uvar ++ " to " ++ show (TRow [t]) ++ " (n = " ++ show n ++ ")")
               writeRef tr (Just (TRow [shiftTN j (negate n) t]))
               return (Just (QTyConSing Sigma (TRow [t]) t))
 unify0 a@(TMapFun f) x@(TMapFun g) =
-  do q <- unify f g
+  do q <- unify' f g
      case q of
        Just QRefl -> return (Just QRefl)
        Just _     -> return (Just QMapFun)
@@ -155,7 +306,7 @@ unify0 a@(TMapFun f) x@(TMapFun g) =
         do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
 unify0 a@(TMapArg f) x@(TMapArg g) =
-  do q <- unify f g
+  do q <- unify' f g
      case q of
        Just QRefl -> return (Just QRefl)
        Just _     -> return (Just QMapFun)
@@ -167,7 +318,7 @@ unify0 t u =
      return Nothing
 
 -- Assumption: at least one of actual or expected is a `TApp`
-unifyNormalizing :: HasCallStack => Ty -> Ty -> CheckM (Maybe TyEqu)
+unifyNormalizing :: HasCallStack => Ty -> Ty -> UnifyM (Maybe TyEqu)
 unifyNormalizing actual expected =
   do (actual', qa) <- normalize' actual
      (expected', qe) <- normalize' expected
@@ -175,57 +326,67 @@ unifyNormalizing actual expected =
        (QRefl, QRefl) ->
          case (actual', expected') of
            (TApp fa aa, TApp fx ax) ->
-             liftM2 QApp <$> unify fa fx <*> unify aa ax
+             liftM2 QApp <$> unify' fa fx <*> unify' aa ax
            (TApp (TMapFun fa) (TRow ts), tx) ->
-             do unify (TRow [TApp fa ta | ta <- ts]) tx
+             do unify' (TRow [TApp fa ta | ta <- ts]) tx
                 return (Just QMapFun)
            (TApp (TMapFun fa) ra, TRow []) ->
-             do unify ra (TRow [])
+             do unify' ra (TRow [])
                 return (Just QMapFun)
            (TApp (TMapFun fa) ra, TRow xs@(tx:_)) ->
              do gs <- replicateM (length xs) (typeGoal' "t" (kindOf tx))
-                unify ra (TRow gs)
-                sequence_ [unify (TApp fa ta) tx | (ta, tx) <- zip gs xs]
+                unify' ra (TRow gs)
+                sequence_ [unify' (TApp fa ta) tx | (ta, tx) <- zip gs xs]
                 return (Just QMapFun)
            _ -> do trace $ "6 incoming unification failure: " ++ show actual' ++ ", " ++ show expected'
                    return Nothing
        (qa, qe) ->
          liftM (QTrans qa . (`QTrans` QSym qe)) <$>
-         unify actual' expected'
+         unify' actual' expected'
 
-subst :: Int -> Ty -> Ty -> CheckM Ty
-subst j t (TVar i w k)
-  | i == j = return t
-  | otherwise = return (TVar i w k)
-subst v t u@(TUnif j n (Goal (y, r)) k) =
-  do mt <- readRef r
-     case mt of
-       Nothing -> return u
-       Just u  -> do u' <- subst v t (shiftTN j n u)
-                     writeRef r (Just (shiftTN j (negate n) u'))
-                     return u'
-subst v t TFun = return TFun
-subst v t (TThen p u) = TThen <$> substp v t p <*> subst v t u
-subst v t (TForall w k u) = TForall w k <$> subst (v + 1) (shiftT 0 t) u
-subst v t (TLam w k u) = TLam w k <$> subst (v + 1) (shiftT 0 t) u
-subst v t (TApp u0 u1) =
-  TApp <$> subst v t u0 <*> subst v t u1
-subst v t u@(TLab _) = return u
-subst v t (TSing u) = TSing <$> subst v t u
-subst v t (TLabeled l u) = TLabeled <$> subst v t l <*> subst v t u
-subst v t (TRow us) = TRow <$> mapM (subst v t) us
-subst v t (TPi u) = TPi <$> subst v t u
-subst v t (TSigma u) = TSigma <$> subst v t u
-subst v t (TMapFun f) = TMapFun <$> subst v t f
-subst v t (TMapArg f) = TMapArg <$> subst v t f
-subst v t u = error $ "internal: subst " ++ show v ++ " (" ++ show t ++ ") (" ++ show u ++")"
+class HasTyVars t where
+  subst :: MonadRef m => Int -> Ty -> t -> m t
 
-substp :: Int -> Ty -> Pred -> CheckM Pred
-substp v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
-substp v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
+instance HasTyVars Ty where
+  subst j t (TVar i w k)
+    | i == j = return t
+    | otherwise = return (TVar i w k)
+  subst v t u@(TUnif j n (Goal (y, r)) k) =
+    do mt <- readRef r
+       case mt of
+         Nothing -> return u
+         Just u  -> do u' <- subst v t (shiftTN j n u)
+                       writeRef r (Just (shiftTN j (negate n) u'))
+                       return u'
+  subst v t TFun = return TFun
+  subst v t (TThen p u) = TThen <$> subst v t p <*> subst v t u
+  subst v t (TForall w k u) = TForall w k <$> subst (v + 1) (shiftT 0 t) u
+  subst v t (TLam w k u) = TLam w k <$> subst (v + 1) (shiftT 0 t) u
+  subst v t (TApp u0 u1) =
+    TApp <$> subst v t u0 <*> subst v t u1
+  subst v t u@(TLab _) = return u
+  subst v t (TSing u) = TSing <$> subst v t u
+  subst v t (TLabeled l u) = TLabeled <$> subst v t l <*> subst v t u
+  subst v t (TRow us) = TRow <$> mapM (subst v t) us
+  subst v t (TPi u) = TPi <$> subst v t u
+  subst v t (TSigma u) = TSigma <$> subst v t u
+  subst v t (TInst (Known is) u) = TInst <$> (Known <$> mapM substI is) <*> subst v t u where
+    substI (TyArg u) = TyArg <$> subst v t u
+    substI (PrArg v) = return (PrArg v)
+  subst v t (TInst i@(Unknown (Goal (_, r))) u) =
+    do minst <- readRef r
+       case minst of
+         Nothing -> TInst i <$> subst v t u
+         Just is -> subst v t (TInst (Known is) u)
+  subst v t (TMapFun f) = TMapFun <$> subst v t f
+  subst v t (TMapArg f) = TMapArg <$> subst v t f
+  subst v t u = error $ "internal: subst " ++ show v ++ " (" ++ show t ++ ") (" ++ show u ++")"
 
+instance HasTyVars Pred where
+  subst v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
+  subst v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
 
-normalize' :: HasCallStack => Ty -> CheckM (Ty, TyEqu)
+normalize' :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, TyEqu)
 normalize' t =
   do (u, q) <- normalize t
      theKCtxt <- asks kctxt
@@ -234,7 +395,7 @@ normalize' t =
        _     -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
                    return (u, q)
 
-normalize :: HasCallStack => Ty -> CheckM (Ty, TyEqu)
+normalize :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, TyEqu)
 normalize t@(TVar i _ _) =
   do (_, mdef) <- asks ((!! i) . kctxt)
      case mdef of
@@ -260,7 +421,10 @@ normalize (TApp (TMapFun f) z)
   | TLam _ k (TVar 0 _ _) <- f =
     do (z, q) <- normalize z
        return (z, QTrans QMapFun q)
--- The following rules attempt to implement `map f . map g == map (f . g)`
+-- The following rules (attempt to) implement `map f . map g == map (f . g)`.
+-- The need for special cases arises from our various ways to represent type
+-- functions: they're not all `TLam`. There are probably some cases missing: in
+-- particular, I see nothing about nested maps.
 normalize (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
   do f' <- subst 0 g f
      (t, q) <- normalize (TApp (TMapFun (TLam v k f')) z)
@@ -305,23 +469,33 @@ normalize (TForall x k t) =
 normalize (TMapFun t) =
   do (t', q) <- normalize t
      return (TMapFun t', q)
+normalize (TInst ig@(Unknown (Goal (_, r))) t) =
+  do minsts <- readRef r
+     case minsts of
+       Nothing -> first (TInst ig) <$> normalize t
+       Just is -> normalize (TInst (Known is) t)
+normalize (TInst (Known is) t) =
+  do is' <- mapM normI is
+     first (TInst (Known (map fst is'))) <$> normalize t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
+  where normI (TyArg t) = first TyArg <$> normalize t
+        normI (PrArg v) = return (PrArg v, QRefl)
+-- TODO: remaining homomorphic cases
 normalize t = return (t, QRefl)
--- TODO: normalize (p => t) presumably normalizes p and t??
 
-normalizeP :: Pred -> CheckM Pred -- no evidence structure for predicate equality yet soooo....
+normalizeP :: MonadCheck m => Pred -> m Pred -- no evidence structure for predicate equality yet soooo....
 normalizeP (PLeq x y) = PLeq <$> (fst <$> normalize x) <*> (fst <$> normalize y)
 normalizeP (PPlus x y z) = PPlus <$> (fst <$> normalize x) <*> (fst <$> normalize y) <*> (fst <$> normalize z)
 
-unifyP :: Pred -> Pred -> CheckM (Maybe PrEqu)
-unifyP (PLeq y z) (PLeq y' z') = liftM2 QLeq <$> unify y y' <*> unify z z'
-unifyP (PPlus x y z) (PPlus x' y' z') = liftM3 QPlus <$> unify x x' <*> unify y y' <*> unify z z'
+unifyP :: Pred -> Pred -> UnifyM (Maybe PrEqu)
+unifyP (PLeq y z) (PLeq y' z') = liftM2 QLeq <$> unify' y y' <*> unify' z z'
+unifyP (PPlus x y z) (PPlus x' y' z') = liftM3 QPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'
 
-typeGoal :: String -> CheckM Ty
+typeGoal :: MonadCheck m => String -> m Ty
 typeGoal s =
   do s' <- fresh ("t$" ++ s)
      (flip (TUnif 0 0) KType) . Goal . (s',) <$> newRef Nothing
 
-typeGoal' :: String -> Kind -> CheckM Ty
+typeGoal' :: MonadCheck m => String -> Kind -> m Ty
 typeGoal' s k =
   do s' <- fresh ("t$" ++ s)
      (flip (TUnif 0 0) k) . Goal . (s',) <$> newRef Nothing

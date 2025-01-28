@@ -1,7 +1,8 @@
+{-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module Main where
 
-import Control.Monad (void)
+import Control.Monad ((<=<), void, when)
 import Control.Monad.Except (withError)
 import Control.Monad.Reader (runReaderT)
 import Data.IORef
@@ -21,33 +22,36 @@ import Printer
 import Scope
 import Syntax
 
-data Flag = Eval String | Input String | TraceTypeInference
+data Flag = Eval String | Input String | TraceTypeInference | PrintTypedTerms
   deriving Show
 
-splitFlags :: [Flag] -> ([String], [String], Bool)
-splitFlags [] = ([], [], False)
-splitFlags (Eval s : fs) = (ss ++ evals, files, b)
-  where (evals, files, b) = splitFlags fs
+splitFlags :: [Flag] -> ([String], [String], Bool, Bool)
+splitFlags [] = ([], [], False, False)
+splitFlags (Eval s : fs) = (ss ++ evals, files, shouldTrace, shouldPrintTyped)
+  where (evals, files, shouldTrace, shouldPrintTyped) = splitFlags fs
         ss = split ',' s
         split c s = go (dropWhile (c ==) s) where
           go [] = []
           go s  = s' : go (dropWhile (c ==) s'') where
             (s', s'') = break (c ==) s
-splitFlags (Input s : fs) = (evals, s : files, b)
-  where (evals, files, b) = splitFlags fs
-splitFlags (TraceTypeInference : fs) = (evals, files, True)
-  where (evals, files, _) = splitFlags fs
+splitFlags (Input s : fs) = (evals, s : files, shouldTrace, shouldPrintTyped)
+  where (evals, files, shouldTrace, shouldPrintTyped) = splitFlags fs
+splitFlags (TraceTypeInference : fs) = (evals, files, True, shouldPrintTyped)
+  where (evals, files, _, shouldPrintTyped) = splitFlags fs
+splitFlags (PrintTypedTerms : fs) = (evals, files, shouldTrace, True)
+  where (evals, files, shouldTrace, _) = splitFlags fs
 
 options :: [OptDescr Flag]
 options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
           , Option ['i'] ["input"] (ReqArg Input "FILE") "input file"
+          , Option ['t'] [] (NoArg PrintTypedTerms) "print typed terms"
           , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference" ]
 
 unprog (Prog ds) = ds
 
 main :: IO ()
 main = do args <- getArgs
-          (evals, files, traceTI) <-
+          (evals, files, traceTI, printTypedTerms) <-
              case getOpt (ReturnInOrder Input) options args of
                (flags, [], []) -> return (splitFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
@@ -56,6 +60,8 @@ main = do args <- getArgs
           decls <- concatMap unprog <$> mapM (\fn -> parse fn =<< readFile fn) files
           scoped <- reportErrors $ runScopeM $ scopeProg decls
           checked <- goCheck [] [] scoped
+          when printTypedTerms $
+            mapM_ ((putDocWLn 120 . pprTyping) <=< thirdM flattenE) checked
           let evaled = goEval [] checked
               output = filter ((`elem` evals) . fst) evaled
           mapM_ (putDocWLn 120 . uncurry pprBinding) output
@@ -75,6 +81,8 @@ main = do args <- getArgs
         goEval _ [] = []
         goEval h ((x, t, m) : ds) = (x, v) : goEval (v : h) ds where
           v = eval (E ([], h)) m
+
+        thirdM f (a, b, c) = (a, b,) <$> f c
 
 reportErrors :: Either Error t -> IO t
 reportErrors (Left err) =

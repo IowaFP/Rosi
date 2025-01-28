@@ -3,10 +3,10 @@
 sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
 sel = \ r l. prj r / l
 
-upd : forall l : L, t u : *, z1 z2 y1 y2 : R[*]. 
+upd : forall l : L, t u : *, z1 z2 y1 y2 : R[*].
       z1 < {l := t}, z1 + z2 ~ y1, {l := u} + z2 ~ y2
       => #l -> u -> Pi y1 -> Pi y2
-upd = \l u r. (l := u) ++ prj r      
+upd = \l u r. (l := u) ++ prj r
 
 con : forall l : L, t : *, z : R[*]. {l := t} < z => #l -> t -> Sigma z
 con = \l x. inj (l := x)

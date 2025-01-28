@@ -20,29 +20,39 @@ mapS = /\ z f g. \ i v. ana [f] (\ l x. con l (i l x)) v
 type Functor : (* -> *) -> *
 type Functor = \f. forall a b. (a -> b) -> f a -> f b
 
-fmapS : forall z : R[* -> *] . 
+fmapS : forall z : R[* -> *] .
         Pi (Functor z) ->
         Functor (Sigma z)
-fmapS = /\ z : R[* -> *]. 
-        \ d : Pi (Functor z) . 
-        /\ a b : *. 
-        \ f : a -> b, w : Sigma z a . 
-          mapS [z] [\ X : * -> *. X a] [\ X : * -> *. X b] (/\ l : L, u : * -> *. \ ll : #l, x : u a. (sel d ll : Functor u) f x) w
+fmapS = /\ z : R[* -> *].
+        \ d : Pi (Functor z) .
+        /\ a b : *.
+        \ f : a -> b, w : Sigma z a .
+          mapS [z] [\ X : * -> *. X a] [\ X : * -> *. X b] (/\ l : L, u : * -> *. \ ll : #l, x : u a. sel d ll f x) w
 
 -- Can go directly via `ana` as well.
+fmapS1 : forall z : R[* -> *] . Pi (Functor z) -> Functor (Sigma z)
+fmapS1 = \ d. /\ a b. \ f w.
+         ana [\X : * -> *. X a] (\ l x. con l (sel d l f x)) w
 
-fmapS1 : forall z : R[* -> *] . 
-         Pi (Functor z) ->
-         Functor (Sigma z)
-fmapS1 = /\ z : R[* -> *]. 
-         \ d : Pi (Functor z) . 
-         /\ a b : *. 
-         \ f : a -> b, w : Sigma z a . 
-         ana [\X : * -> *. X a] (/\ l u y1 z y2. \ ll : #l, x : u a. con ll ((sel d ll : Functor u) f x)) w
+-- bug here
+-- fmapS20 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
+-- fmapS20 = /\ z. \ d. /\ a b. \ f w.
+--             mapS [z] [\ X. X a] [\ X. X b]
+--               (\ l x. sel d l [a] [b] f x)
+--               w
 
 -- How many annotations can I leave out?
+-- bug here: why do we need to bring `z` into scope? Without doing so, we fail to solve predicates...
 
-fmapS2 : forall z : R[* -> *] . Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
+fmapS2 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
 fmapS2 = /\ z. \ d. /\ a b. \ f.
-          mapS [z] [\ X. X a] [\ X. X b] (/\ l u. \ ll. (sel d ll : Functor u) f)
+          mapS [z] [\ X. X a] [\ X. X b] (\l. sel d l f)
+
+mapS0 : forall z : R[* -> *], f g : (* -> *) -> *. #f -> #g -> Iter f g z -> Sigma (f z) -> Sigma (g z)
+mapS0 = /\ z f g. \ fs gs i v. mapS [z] [f] [g] i v
+
+-- I think once the `z` problem is solved above, this version should work as well.
+
+-- fmapS3 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
+-- fmapS3 = \d. /\ a b. \f. mapS0 #(\X. X a) #(\X. X b) (\l. sel d l f)
 

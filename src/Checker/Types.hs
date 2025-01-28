@@ -14,21 +14,21 @@ kindGoal s =
      return (KUnif (Goal ("k$" ++ s, kr)))
 
   -- Note: just returning a `Ty` here out of convenience; it's always an exactly the input `Ty`.
-expectK :: Ty -> Kind -> Kind -> CheckM Ty
+expectK :: MonadCheck m => Ty -> Kind -> Kind -> m Ty
 expectK t actual expected =
   do i <- expectKR t actual expected
      when (i /= 0) $
        kindMismatch t actual expected
      return t
 
-expectKR :: Ty -> Kind -> Kind -> CheckM Int
+expectKR :: MonadCheck m => Ty -> Kind -> Kind -> m Int
 expectKR t actual expected =
   do mi <- unifyK actual expected
      case mi of
        Nothing -> kindMismatch t actual expected
        Just i  -> return i
 
-unifyK :: Kind -> Kind -> CheckM (Maybe Int)
+unifyK :: MonadCheck m => Kind -> Kind -> m (Maybe Int)
 unifyK KType KType = return (Just 0)
 unifyK KLabel KLabel = return (Just 0)
 unifyK (KUnif (Goal (_, r))) expected =
@@ -50,7 +50,7 @@ unifyK (KFun dActual cActual) (KFun dExpected cExpected) =
 unifyK _ _ =
   return Nothing
 
-kindMismatch :: Ty -> Kind -> Kind -> CheckM a
+kindMismatch :: MonadCheck m => Ty -> Kind -> Kind -> m a
 kindMismatch t actual expected =
   do actual' <- flattenK actual
      expected' <- flattenK expected
@@ -125,6 +125,8 @@ checkTy (TSigma r) expected = TSigma <$> checkTy r (KRow expected)
 checkTy (TMu f) expected = TMu <$> checkTy f (KFun expected expected)
 -- checkTy (TShift t) expected =
 --   TShift <$> unbindTy (checkTy t expected)
+checkTy (TInst ig t) expected =
+  TInst ig <$> checkTy t expected
 checkTy t@(TMapFun f) expected =
   do kdom <- kindGoal "d"
      kcod <- kindGoal "c"

@@ -16,6 +16,9 @@ type RDoc ann = ReaderT PrinterOptions IO (P.Doc ann)
 instance Semigroup (RDoc ann) where
   (<>) = liftA2 (<>)
 
+instance Monoid (RDoc ann) where
+  mempty = return mempty
+
 instance IsString (RDoc ann) where
   fromString = pure . fromString
 
@@ -38,8 +41,9 @@ at n d = local (\po -> po {level = n}) d
 sep :: [RDoc ann] -> RDoc ann
 sep = fmap P.sep . sequence
 
-vsep :: [RDoc ann] -> RDoc ann
+vsep, vcat :: [RDoc ann] -> RDoc ann
 vsep = fmap P.vsep . sequence
+vcat = fmap P.vcat . sequence
 
 fillSep :: [RDoc ann] -> RDoc ann
 fillSep = fmap P.fillSep . sequence
@@ -71,7 +75,7 @@ parens = fmap P.parens
 instance Printable Kind where
   ppr KType = "*"
   ppr KLabel = "L"
-  ppr (KRow k) = "R[" <> ppr k <> "]"  
+  ppr (KRow k) = "R[" <> ppr k <> "]"
   ppr (KFun k1 k2) = with 0 $ fillSep [at 1 (ppr k1) <+> "->", ppr k2]
   ppr (KUnif (Goal (s, mkr))) =
     do mk <- liftIO (readIORef mkr)
@@ -79,11 +83,11 @@ instance Printable Kind where
          Nothing -> "%" <> ppre s
          Just k  -> ppr k
 
--- Precedence table: 
+-- Precedence table:
 --   forall, lambda   0
 --   :=               1
 --   =>, ->           2
---   application      3         
+--   application      3
 
 instance Printable Ty where
   ppr (TVar _ s mk) =
@@ -92,7 +96,7 @@ instance Printable Ty where
          Just k | pk -> ppre s <:> (P.align <$> ppr k)
          _ -> ppre s
   ppr (TUnif n j (Goal (s, rmt)) k) =
-    do mt <- liftIO (readIORef rmt)  
+    do mt <- liftIO (readIORef rmt)
        case mt of
          Just t -> ppr t
          Nothing ->
@@ -114,6 +118,15 @@ instance Printable Ty where
   ppr (TSigma t) = with 3 $ "Sigma " <> at 4 (ppr t)
   ppr (TMapFun t) = ppr t
   ppr (TMapArg t) = ppr t
+  ppr (TInst (Unknown (Goal (s, r))) t) =
+    do minst <- liftIO $ readIORef r
+       case minst of
+         Nothing -> brackets ("%" <> ppre s) <+> parens (ppr t)
+         Just is  -> ppr (TInst (Known is) t)
+  ppr (TInst (Known is) t) =
+    with 3 $ fillSep (map pprI is ++ [ppr t]) where
+      pprI (TyArg t) = brackets (ppr t)
+      pprI (PrArg _) = mempty -- dunno what to put here, honestly...
   -- ppr (TShift t) = "^" <> at 4 (ppr t)
   ppr t = "<missing: " <> ppre (show t) <> ">"
 
@@ -121,28 +134,35 @@ instance Printable Pred where
   ppr (PLeq t u) = fillSep [ppr t <+> "<", ppr u ]
   ppr (PPlus t u v) = fillSep [ppr t <+> "+", ppr u <+> "~", ppr v]
 
--- Precedence table: 
+-- Precedence table:
 --   lambda           0
 --   ++, ?            1
 --   :=               2
---   application      3         
+--   application      3
 
 
 instance Printable Term where
   ppr (EVar _ s) = ppre s
   ppr (ELam x t m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
-  ppr (EApp m n) = with 4 $ fillSep [ppr m, at 4 (ppr n)]
+  ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr (ETyLam x k m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
-  ppr (ETyApp m t) = with 4 $ fillSep [ppr m, brackets (ppr t)]
+  ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
+    pprI (TyArg t) = brackets (ppr t)
+    pprI _         = mempty
+  ppr (EInst m (Unknown (Goal (s, r)))) =
+    do minst <- liftIO $ readIORef r
+       case minst of
+         Nothing -> with 4 (fillSep [ppr m, brackets (ppre s)])
+         Just is -> ppr (EInst m (Known is))
   ppr (ESing t) = "#" <> at 4 (ppr t)
-  ppr (ELabel l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)]) 
+  ppr (ELabel l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)])
   ppr (EUnlabel m l) = with 3 (fillSep [ppr m <+> "/", at 3 (ppr l)])
   ppr (EPrj _ _ _ m) = with 4 (fillSep ["prj", at 4 (ppr m)])
   ppr (EConcat _ _ _ _ m n) = with 2 (fillSep [at 2 (ppr m) <+> "++", ppr n])
   ppr (EInj _ _ _ m) = with 4 (fillSep ["inj", at 4 (ppr m)])
   ppr (EBranch _ _ _ _ m n) = with 2 (fillSep [at 2 (ppr m) <+> "?", ppr n])
-  ppr (ESyn f m) = with 4 (fillSep ["syn", brackets (ppr f), at 4 (ppr m)])
-  ppr (EAna f m) = with 4 (fillSep ["ana", brackets (ppr f), at 4 (ppr m)])
+  ppr (ESyn f m) = with 4 (fillSep ["syn", brackets (ppr f), at 5 (ppr m)])
+  ppr (EAna f m) = with 4 (fillSep ["ana", brackets (ppr f), at 5 (ppr m)])
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   ppr (EFold {}) = "<fold>"
   ppr (EIn {}) = "<in>"
@@ -150,9 +170,7 @@ instance Printable Term where
   ppr (EFix {}) = "<fix>"
   -- Not printing internals (yet)
   ppr (EPrLam _ m) = ppr m
-  ppr (EPrApp m _) = ppr m
   ppr (ETyEqu m _) = ppr m
-
 
 instance Printable Evid where
   ppr _ = "<evid>"
@@ -160,9 +178,11 @@ instance Printable Evid where
 instance Printable TyEqu where
   ppr _ = "<equ>"
 
-
 pprTyDecl :: String -> Ty -> RDoc ann
 pprTyDecl x ty = fillSep [ppre x <+> ":", ppr ty]
+
+pprTyping (x, ty, e) =
+  vcat [fillSep [ppre x <+> ":", ppr ty], fillSep [ppre x <+> "=", ppr e]]
 
 pprTypeError :: Error -> RDoc ann
 pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
@@ -187,4 +207,4 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
 
 f :: Int -> Bool -> RDoc ann -> IO ()
 f n pk d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = pk})
-              putStrLn ""              
+              putStrLn ""

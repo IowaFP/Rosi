@@ -36,11 +36,11 @@ instance HasVars t => HasVars [t] where
   scope = mapM scope
 
 instance HasVars Ty where
-  scope (TVar _ x mk) = 
+  scope (TVar _ x mk) =
     TVar <$> tyvar x <*> pure x <*> pure mk
   -- Wild assumption: scoping happens before any goals have been resolved, so
   -- I'm not going to track down the contents of the goal
-  scope t@TUnif{} = return t  
+  scope t@TUnif{} = return t
   scope t@TFun = return t
   scope (TThen p t) = TThen <$> scope p <*> scope t
   scope (TForall x k t) = TForall x k <$> bindTyVar x (scope t)
@@ -68,7 +68,6 @@ instance HasVars Term where
   scope (ELam x t m) = ELam x <$> scope t <*> bindVar x (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
-  scope (ETyApp m t) = ETyApp <$> scope m <*> scope t
   scope (ESing t) = ESing <$> scope t
   scope (ELabel l m) = ELabel <$> scope l <*> scope m
   scope (EUnlabel m l) = EUnlabel <$> scope m <*> scope l
@@ -80,9 +79,12 @@ instance HasVars Term where
   scope (EAna t m) = EAna <$> scope t <*> scope m
   scope (EFold m n1 n2 n3) = EFold <$> scope m <*> scope n1 <*> scope n2 <*> scope n3
   scope (ETyped m t) = ETyped <$> scope m <*> scope t
+  scope (EInst m (Known is)) = EInst <$> scope m <*> (Known <$> mapM scopeI is) where
+    scopeI (TyArg t) = TyArg <$> scope t
+    scopeI (PrArg v) = return (PrArg v)
+  scope (EInst m (Unknown g)) = EInst <$> scope m <*> return (Unknown g) -- how is this case actually possible?
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
-  scope EPrApp{} = error "scope: EPrApp"
   scope ETyEqu{} = error "scope: ETyEqu"
 
 instance HasVars Decl where

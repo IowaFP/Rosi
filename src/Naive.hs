@@ -47,6 +47,10 @@ instance Printable Value where
 pprBinding :: String -> Value -> RDoc ann
 pprBinding s v = hang 2 (fillSep [ppre s <+> "=", ppr v])
 
+inst :: Env -> Value -> Inst -> Value
+inst h v (PrArg _) = v
+inst h v (TyArg t) = tyapp h v t
+
 tyapp :: Env -> Value -> Ty -> Value
 tyapp h (VTyLam (E (ht, he)) x _ f') t = eval (E (substTy h t : map (shiftT 0) ht, he)) f'
 
@@ -67,7 +71,7 @@ appV h (VAna _ m) k v' = app h (app h (tyapp h m (TLab k)) (VSing (TLab k))) v'
 eval :: Env -> Term -> Value
 eval h e = trace ("Eval: " ++ show e) (eval' h e)
 
-eval' (E (_, he)) (EVar i x) = 
+eval' (E (_, he)) (EVar i x) =
   trace ("Environment: " ++ show he) $
   let result = he !! i in
   trace ("Variable " ++ show x ++ " is " ++ show result) $
@@ -77,10 +81,10 @@ eval' h (EApp f e) = app h (eval h f) (eval h e) where
   -- So yeah, supposed to be call-by-name here... relying on Haskell's laziness to delay evaluation
 
 eval' h (ETyLam s k e) = VTyLam h s k e
-eval' h (ETyApp f t) = tyapp h (eval h f) t
+eval' h (EInst e (Known is)) = foldl (inst h) (eval h e) is
+eval' h e0@(EInst e (Unknown g)) = error $ "unexpected unknown instantiation: " ++ show e0
 eval' h (ETyEqu e _) = eval h e
 eval' h (EPrLam _ e) = eval h e
-eval' h (EPrApp e _) = eval h e
 eval' h (ESing t) = VSing (substTy h t)
 eval' h (ELabel l e)
   | VSing (TLab s) <- eval h l = VLabeled s (eval h e)
@@ -88,24 +92,24 @@ eval' h@(E (_, he)) (EUnlabel e l) = unlabel (eval h e) where
   unlabel (VLabeled _ v) = v  -- ignoring the label entirely here...
   unlabel (VRecord [(_, v)]) = v
   unlabel e@(VSyn _ m)
-    | VSing (TLab s) <- eval h l = 
+    | VSing (TLab s) <- eval h l =
       let result = app h (tyapp h m (TLab s)) (eval h l)  -- the label we're trying to remove is exactly the case we need to synthesize
-      in           
-      trace ("Unlabeling " ++ show e) $ 
-      trace ("Environment: " ++ show he) $ 
-      trace ("Computed " ++ show result) $ 
+      in
+      trace ("Unlabeling " ++ show e) $
+      trace ("Environment: " ++ show he) $
+      trace ("Computed " ++ show result) $
       result
-      
+
   unlabel v = error $ "Wut " ++ show v
 eval' h (EPrj y z _ e)   -- remember: y <= z
   | null ls = VRecord []
   | otherwise = prj (eval h e) where
     ls = dom y
     prj (VRecord fs) = VRecord [(l, th) | (l, th) <- fs, l `elem` ls]
-    prj v@VLabeled{} = v  -- can do dumb projections      
+    prj v@VLabeled{} = v  -- can do dumb projections
     prj v@VSyn{} = v   -- synthesizing fewer fields is the same as synthesizing more fields
     -- alternatively, we could do the computation here:
-    -- prj (VSyn _ m) = VRecord [(l, app (eval h m) (VSing (TLab l))) | l <- ls] 
+    -- prj (VSyn _ m) = VRecord [(l, app (eval h m) (VSing (TLab l))) | l <- ls]
 eval' h e@(EConcat x y _ _ m n) = VRecord (fields xls (eval h m) ++ fields yls (eval h n)) where
   xls = dom x
   yls = dom y
