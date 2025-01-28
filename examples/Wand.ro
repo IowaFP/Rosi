@@ -22,7 +22,7 @@
 wand0 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
   -- Notes: label constants have an initial quote
   -- Records are `Pi z`; I guess variants are `Sigma z`.  (Unicode? still sucks for GHC on Windows)
-wand0 = /\ x y z : R[*], t : *. \ m : Pi x, n : Pi y. 
+wand0 = /\ x y z : R[*], t : *. \ m : Pi x, n : Pi y.
           prj [{'l := t}] [z] ((++) [x] [y] [z] m n) / #'l
   -- Not sure about punning singletons: Do we need to distinguish between the
   -- syntax for singleton #T and the type T?
