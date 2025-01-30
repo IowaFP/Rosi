@@ -253,17 +253,6 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
          Just insts -> return (EInst m (Known insts))
   flattenInsts m = return m
 
--- TODO: suspect this is going by the wayside, but I'll keep it around for now...
-insts :: Term -> Maybe ((Int, String), [Ty])
-insts (EVar i x)           = Just ((i, x), [])
-insts (EInst m (Known is))
-  | Just (v, ts) <- insts m
-  , Just ts' <- tyinsts is = Just (v, ts ++ ts')
-  where tyinsts []             = Just []
-        tyinsts (TyArg t : is) = (t :) <$> tyinsts is
-        tyinsts _              = Nothing
-insts _                    = Nothing
-
 data Evid =
     VVar Int   -- VVars are entirely internal, so I'll only give them de Bruijn indices
   | VGoal (Goal Evid) | VRefl | VTrans Evid Evid | VPredEq PrEqu Evid -- can this happen?
