@@ -76,11 +76,11 @@ bindings and predicate bindings accordingly.
 
 However, it is not so easy to shift a unification variable, because we don't yet
 know what type that unification variable will take on. So unification variables
-"store delayed shifts": a unification variable `TUnif j n ref k` should have its
-variables `> j` shifted up by `n`.
+"store delayed shifts": a unification variable `TUnif n ref k` should have its
+variables shifted up by `n`.
 
-For unification, this means that when we attempt to unify `TUnif j n ref k` with
-`t`, we need to update `ref` with a type u *such that* `shiftTN j n u` produces
+For unification, this means that when we attempt to unify `TUnif n ref k` with
+`t`, we need to update `ref` with a type u *such that* `shiftTN 0 n u` produces
 `t`. We do this by essentially *unshifting* `t`.
 
 Of course, the trick is that *unshifting* a type can fail! For example, this
@@ -175,34 +175,34 @@ unifyInstantiating t (TInst ig@(Unknown (Goal (_, r))) u) unify =
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM (Maybe TyEqu)
 unify0 (TVar i _ _) (TVar j _ _)
   | i == j = return (Just QRefl)
-unify0 (TUnif j n (Goal (_, r)) t) (TUnif j' n' (Goal (_, r')) t')
-  | j == j', n == n', r == r' = return (Just QRefl)
-unify0 actual t@(TUnif j n (Goal (uvar, r)) k) =
+unify0 (TUnif n (Goal (_, r)) t) (TUnif n' (Goal (_, r')) t')
+  | n == n', r == r' = return (Just QRefl)
+unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
   do mt <- readRef r
      case mt of
-       Just t -> unify' actual (shiftTN j n t)
+       Just t -> unify' actual (shiftTN 0 n t)
        Nothing ->
          do chk <- canUpdate r
             if chk
             then do actual' <- flattenT actual
                     expectK actual' (kindOf actual') k
-                    trace ("About to shiftTN (" ++ show j ++ ") (" ++ show (negate n) ++ ") (" ++ show actual' ++ ")")
-                    writeRef r (Just (shiftTN j (negate n) actual'))
-                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN j (negate n) actual'))
+                    trace ("About to shiftTN 0 " ++ show (negate n) ++ " (" ++ show actual' ++ ")")
+                    writeRef r (Just (shiftTN 0 (negate n) actual'))
+                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) actual'))
                     return (Just QRefl)
             else return Nothing
-unify0 (TUnif j n (Goal (uvar, r)) k) expected =
+unify0 (TUnif n (Goal (uvar, r)) k) expected =
   do mt <- readRef r
      case mt of
-       Just t -> unify' (shiftTN j n t) expected
+       Just t -> unify' (shiftTN 0 n t) expected
        Nothing ->
          do chk <- canUpdate r
             if chk
             then do expected' <- flattenT expected
                     expectK expected' (kindOf expected') k
-                    trace ("About to shiftTN (" ++ show j ++ ") (" ++ show (negate n) ++ ") (" ++ show expected' ++ ")")
-                    writeRef r (Just (shiftTN j (negate n) expected'))
-                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN j (negate n) expected'))
+                    trace ("About to shiftTN 0 " ++ show (negate n) ++ " (" ++ show expected' ++ ")")
+                    writeRef r (Just (shiftTN 0 (negate n) expected'))
+                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) expected'))
                     return (Just QRefl)
             else return Nothing
 -- unify0 actual@(TApp {}) expected = unifyNormalizing actual expected
@@ -253,49 +253,49 @@ unify0 (TPi ra) (TPi rx) =
   liftM (QCon Pi) <$> unify' ra rx
 unify0 (TPi r) u
   | TRow [t] <- r = liftM (QTrans (QTyConSing Pi (TRow [t]) u)) <$> unify' t u
-  | TUnif j n (Goal (uvar, tr)) k <- r =
+  | TUnif n (Goal (uvar, tr)) k <- r =
     do mt <- readRef tr
        case mt of
          Just r' -> unify' (TPi r') u
          Nothing ->
            do expectK r k (KRow (kindOf u))
-              trace ("1 binding " ++ uvar ++ " to " ++ show (TRow [u]) ++ " (n = " ++ show n ++ ")")
-              writeRef tr (Just (TRow [shiftTN j (negate n) u]))
+              trace ("1 binding " ++ uvar ++ " to " ++ show (TRow [shiftTN 0 (negate n) u]))
+              writeRef tr (Just (TRow [shiftTN 0 (negate n) u]))
               return (Just (QTyConSing Pi (TRow [u]) u))
 unify0 t (TPi r)
   | TRow [u] <- r = liftM (`QTrans` QTyConSing Pi t (TRow [u])) <$> unify' t u
-  | TUnif j n (Goal (uvar, tr)) k <- r =
+  | TUnif n (Goal (uvar, tr)) k <- r =
     do mt <- readRef tr
        case mt of
          Just r' -> unify' t (TPi r')
          Nothing ->
            do expectK r k (KRow (kindOf t))
-              trace ("2 binding " ++ uvar ++ " to " ++ show (TRow [t]) ++ " (n = " ++ show n ++ ")")
-              writeRef tr (Just (TRow [shiftTN j (negate n) t]))
+              trace ("2 binding " ++ uvar ++ " to " ++ show (TRow [shiftTN 0 (negate n) t]))
+              writeRef tr (Just (TRow [shiftTN 0 (negate n) t]))
               return (Just (QTyConSing Pi (TRow [t]) t))
 unify0 (TSigma ra) (TSigma rx) =
   liftM (QCon Sigma) <$> unify' ra rx
 unify0 (TSigma r) u
   | TRow [t] <- r = liftM (QTrans (QTyConSing Sigma (TRow [t]) u)) <$> unify' t u
-  | TUnif j n(Goal (uvar, tr)) k <- r =
+  | TUnif n (Goal (uvar, tr)) k <- r =
     do mt <- readRef tr
        case mt of
          Just r' -> unify' (TSigma r') u
          Nothing ->
            do expectK r k (KRow (kindOf u))
-              trace ("3 binding " ++ uvar ++ " to " ++ show (TRow [u]) ++ " (n = " ++ show n ++ ")")
-              writeRef tr (Just (TRow [shiftTN j (negate n) u]))
+              trace ("3 binding " ++ uvar ++ " to " ++ show (TRow [shiftTN 0 (negate n) u]))
+              writeRef tr (Just (TRow [shiftTN 0 (negate n) u]))
               return (Just (QTyConSing Sigma (TRow [u]) u))
 unify0 t (TSigma r)
   | TRow [u] <- r = liftM (`QTrans` QTyConSing Sigma t (TRow [u])) <$> unify' t u
-  | TUnif j n (Goal (uvar, tr)) k <- r =
+  | TUnif n (Goal (uvar, tr)) k <- r =
     do mt <- readRef tr
        case mt of
          Just r' -> unify' t (TSigma r')
          Nothing ->
            do expectK r k (KRow (kindOf t))
-              trace ("4 binding " ++ uvar ++ " to " ++ show (TRow [t]) ++ " (n = " ++ show n ++ ")")
-              writeRef tr (Just (TRow [shiftTN j (negate n) t]))
+              trace ("4 binding " ++ uvar ++ " to " ++ show (TRow [shiftTN 0 (negate n) t]))
+              writeRef tr (Just (TRow [shiftTN 0 (negate n) t]))
               return (Just (QTyConSing Sigma (TRow [t]) t))
 unify0 a@(TMapFun f) x@(TMapFun g) =
   do q <- unify' f g
@@ -351,12 +351,12 @@ instance HasTyVars Ty where
   subst j t (TVar i w k)
     | i == j = return t
     | otherwise = return (TVar i w k)
-  subst v t u@(TUnif j n (Goal (y, r)) k) =
+  subst v t u@(TUnif n (Goal (y, r)) k) =
     do mt <- readRef r
        case mt of
          Nothing -> return u
-         Just u  -> do u' <- subst v t (shiftTN j n u)
-                       writeRef r (Just (shiftTN j (negate n) u'))
+         Just u  -> do u' <- subst v t (shiftTN 0 n u)
+                       writeRef r (Just (shiftTN 0 (negate n) u'))
                        return u'
   subst v t TFun = return TFun
   subst v t (TThen p u) = TThen <$> subst v t p <*> subst v t u
@@ -493,9 +493,9 @@ unifyP (PPlus x y z) (PPlus x' y' z') = liftM3 QPlus <$> unify' x x' <*> unify' 
 typeGoal :: MonadCheck m => String -> m Ty
 typeGoal s =
   do s' <- fresh ("t$" ++ s)
-     (flip (TUnif 0 0) KType) . Goal . (s',) <$> newRef Nothing
+     (flip (TUnif 0) KType) . Goal . (s',) <$> newRef Nothing
 
 typeGoal' :: MonadCheck m => String -> Kind -> m Ty
 typeGoal' s k =
   do s' <- fresh ("t$" ++ s)
-     (flip (TUnif 0 0) k) . Goal . (s',) <$> newRef Nothing
+     (flip (TUnif 0) k) . Goal . (s',) <$> newRef Nothing

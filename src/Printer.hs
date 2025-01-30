@@ -95,15 +95,15 @@ instance Printable Ty where
        case mk of
          Just k | pk -> ppre s <:> (P.align <$> ppr k)
          _ -> ppre s
-  ppr (TUnif n j (Goal (s, rmt)) k) =
+  ppr (TUnif n (Goal (s, rmt)) k) =
     do mt <- liftIO (readIORef rmt)
        case mt of
          Just t -> ppr t
          Nothing ->
            do pk <- asks printKinds
               if pk
-              then ("^" <> ppre n <> "," <> ppre j <> "%" <> ppre s) <:> (P.align <$> ppr k)
-              else "^" <> ppre n <> "," <> ppre j <> "%" <> ppre s
+              then ("^" <> ppre n <> "%" <> ppre s) <:> (P.align <$> ppr k)
+              else "^" <> ppre n <> "%" <> ppre s
   ppr TFun = "(->)"
   ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
   ppr (TForall x k t) = with 0 $ nest 2 $ fillSep ["forall" <+> ppre x <:> ppr k <> ".", ppr t]
