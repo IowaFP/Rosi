@@ -65,16 +65,13 @@ instance HasVars Pred where
 
 instance HasVars Term where
   scope (EVar _ x) = EVar <$> var x <*> pure x
+  scope (EConst c) = return (EConst c)
   scope (ELam x t m) = ELam x <$> scope t <*> bindVar x (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
   scope (ESing t) = ESing <$> scope t
   scope (ELabel l m) = ELabel <$> scope l <*> scope m
   scope (EUnlabel m l) = EUnlabel <$> scope m <*> scope l
-  scope (EPrj y z v m) = EPrj <$> scope y <*> scope z <*> pure v <*> scope m
-  scope (EConcat x y z v m n) = EConcat <$> scope x <*> scope y <*> scope z <*> pure v <*> scope m <*> scope n
-  scope (EInj y z v m) = EInj <$> scope y <*> scope z <*> pure v <*> scope m
-  scope (EBranch x y z v m n) = EBranch <$> scope x <*> scope  y <*> scope z <*> pure v <*> scope m <*> scope n
   scope (ESyn t m) = ESyn <$> scope t <*> scope m
   scope (EAna t m) = EAna <$> scope t <*> scope m
   scope (EFold m n1 n2 n3) = EFold <$> scope m <*> scope n1 <*> scope n2 <*> scope n3

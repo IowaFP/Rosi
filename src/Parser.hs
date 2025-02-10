@@ -249,13 +249,8 @@ term = prefixes typedTerm where
     do t <- branchTerm
        maybe t (ETyped t) <$> optional (symbol ":" >> ty)
 
-  branchTerm = chainl1 labTerm $ choice [op "++" (ebinary EConcat) , op "?" (ebinary EBranch)] where
-    ebinary k = liftIO $
-                do [rx, ry, rz] <- replicateM 3 (newIORef Nothing)
-                   vx <- newIORef Nothing
-                   kx <- newIORef Nothing
-                   let rk = KRow (KUnif (Goal ("k$e", kx)))
-                   return $ k (TUnif 0 (Goal ("t$x", rx)) rk) (TUnif 0 (Goal ("t$y", ry)) rk) (TUnif 0 (Goal ("t$z", rz)) rk) (VGoal (Goal ("v$x", vx)))
+  branchTerm = chainl1 labTerm $ choice [op "++" (ebinary CConcat) , op "?" (ebinary CBranch)] where
+    ebinary k = return (\e1 e2 -> EApp (EApp (EConst k) e1) e2)
 
   labTerm = chainl1 appTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
 
@@ -266,52 +261,8 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
              app t ts where
   app (Term t) [] = return t
   app (Type _) _ = unexpected (Label $ fromList "type argument")
-  app (BuiltIn s) [] = unexpected (Label $ fromList ("unsaturated " ++ s))
-  app _ (BuiltIn s : _) = unexpected (Label $ fromList s)
   app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
   app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
-  app (BuiltIn "prj") (Term t : ts) =
-    do prjt <- unary EPrj Nothing Nothing t
-       app (Term prjt) ts
-  app (BuiltIn "prj") (Type y : Term t : ts) =
-    do prjt <- unary EPrj (Just y) Nothing t
-       app (Term prjt) ts
-  app (BuiltIn "prj") (Type y : Type z : Term t : ts) =
-    do prjt <- unary EPrj (Just y) (Just z) t
-       app (Term prjt) ts
-  app (BuiltIn "inj") (Term t : ts) =
-    do injt <- unary EInj Nothing Nothing t
-       app (Term injt) ts
-  app (BuiltIn "inj") (Type y : Term t : ts) =
-    do injt <- unary EInj (Just y) Nothing t
-       app (Term injt) ts
-  app (BuiltIn "inj") (Type y : Type z : Term t : ts) =
-    do injt <- unary EInj (Just y) (Just z) t
-       app (Term injt) ts
-  app (BuiltIn "(++)") (Term t : Term u : ts) =
-    do catt <- binary EConcat Nothing Nothing Nothing t u
-       app (Term catt) ts
-  app (BuiltIn "(++)") (Type x : Term t : Term u : ts) =
-    do catt <- binary EConcat (Just x) Nothing Nothing t u
-       app (Term catt) ts
-  app (BuiltIn "(++)") (Type x : Type y : Term t : Term u : ts) =
-    do catt <- binary EConcat (Just x) (Just y) Nothing t u
-       app (Term catt) ts
-  app (BuiltIn "(++)") (Type x : Type y : Type z : Term t : Term u : ts) =
-    do catt <- binary EConcat (Just x) (Just y) (Just z) t u
-       app (Term catt) ts
-  app (BuiltIn "(?)") (Term t : Term u : ts) =
-    do brnt <- binary EBranch Nothing Nothing Nothing t u
-       app (Term brnt) ts
-  app (BuiltIn "(?)") (Type x : Term t : Term u : ts) =
-    do brnt <- binary EBranch (Just x) Nothing Nothing t u
-       app (Term brnt) ts
-  app (BuiltIn "(?)") (Type x : Type y : Term t : Term u : ts) =
-    do brnt <- binary EBranch (Just x) (Just y) Nothing t u
-       app (Term brnt) ts
-  app (BuiltIn "(?)") (Type x : Type y : Type z : Term t : Term u : ts) =
-    do brnt <- binary EBranch (Just x) (Just y) (Just z) t u
-       app (Term brnt) ts
   app (BuiltIn "ana") (Type phi : Term t : ts) = app (Term (EAna phi t)) ts
   app (BuiltIn "ana") (Term t : ts) = app (Term (EAna (TLam "X" KType (TVar 0 "X" (Just KType))) t)) ts
   app (BuiltIn "syn") (Type phi : Term t : ts) = app (Term (ESyn phi t)) ts
@@ -320,29 +271,23 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
 
   goal s = Goal . (s,) <$> newIORef Nothing
 
-  unary k mty mtz t =
-    liftIO $
-    do ke <- KUnif <$> goal "k$e"
-       ty <- maybe (TUnif 0 <$> goal "t$y" <*> pure (KRow ke)) return mty
-       tz <- maybe (TUnif 0 <$> goal "t$z" <*> pure (KRow ke)) return mtz
-       g  <- VGoal <$> goal "v$plus"
-       return (k ty tz g t)
-
-  binary k mtx mty mtz t u =
-    liftIO $
-    do ke <- KUnif <$> goal "k$e"
-       tx <- maybe (TUnif 0 <$> goal "t$x" <*> pure (KRow ke)) return mtx
-       ty <- maybe (TUnif 0 <$> goal "t$y" <*> pure (KRow ke)) return mty
-       tz <- maybe (TUnif 0 <$> goal "t$z" <*> pure (KRow ke)) return mtz
-       g  <- VGoal <$> goal "v$plus"
-       return (k tx ty tz g t u)
-
-  builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)"]) where
+  -- builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)", "in", "out", "fix"]) where
+  builtIns = choice (map builtIn ["ana", "syn"]) where
     builtIn s = symbol s >> return s
 
-  aterm = choice [ EVar (-1) <$> identifier
+  aterm = choice [ EConst <$> const
+                 , EVar (-1) <$> identifier
                  , ESing <$> (char '#' >> atype)
                  , parens term ]
+
+  const = choice [symbol s >> return k | (s, k) <-
+                   [("prj", CPrj),
+                    ("inj", CInj),
+                    ("(++)", CConcat),
+                    ("(?)", CBranch),
+                    ("in", CIn),
+                    ("out", COut),
+                    ("fix", CFix)]]
 
 data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term
   deriving (Data, Eq, Show, Typeable)

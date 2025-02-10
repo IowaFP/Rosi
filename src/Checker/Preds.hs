@@ -15,7 +15,7 @@ import Syntax
 import GHC.Stack
 import Data.Bifunctor
 
-solve :: HasCallStack => (CIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
+solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
   do -- mv <- everything . pushShiftsP =<< flattenP p
@@ -230,7 +230,7 @@ loop ps =
 
 andSolve :: CheckM a -> CheckM a
 andSolve m =
-  censor (const (COut [])) $
-  do (x, COut goals) <- listen m
+  censor (const (TCOut [])) $
+  do (x, TCOut goals) <- listen m
      loop goals
      return x

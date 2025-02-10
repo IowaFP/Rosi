@@ -204,7 +204,8 @@ shiftTN j n (TApp t u) = TApp (shiftTN j n t) (shiftTN j n u)
 shiftTN j n (TSing t) = TSing (shiftTN j n t)
 shiftTN j n (TLabeled l t) = TLabeled (shiftTN j n l) (shiftTN j n t)
 shiftTN j n (TRow ts) = TRow (shiftTN j n <$> ts)
-shiftTN _ _ TFun = TFun
+shiftTN _ _ t@TFun = t
+shiftTN _ _ t@(TLab s) = t
 shiftTN j n (TPi t) = TPi (shiftTN j n t)
 shiftTN j n (TSigma t) = TSigma (shiftTN j n t)
 -- shiftTN j n (TShift t) = TShift (shiftTN (n - 1) j t) -- variables within the shift are larger than they appear
@@ -224,23 +225,19 @@ shiftPN j n (PPlus x y z) = PPlus (shiftTN j n x) (shiftTN j n y) (shiftTN j n z
 shiftT :: Int -> Ty -> Ty
 shiftT j = shiftTN j 1
 
-data Inst = TyArg Ty | PrArg Evid
-  deriving (Data, Eq, Show, Typeable)
-
-data Insts = Known [Inst] | Unknown (Goal [Inst])
-  deriving (Data, Eq, Show, Typeable)
+data Const =
+    CPrj | CConcat | CInj | CBranch | CIn | COut | CFix
+    deriving (Data, Eq, Show, Typeable)
+    -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
+    -- TODO: can treat label and unlabel as constants with provided type argument?
 
 data Term =
-    EVar Int String | ELam String Ty Term | EApp Term Term | ETyLam String Kind Term -- | ETyApp Term Ty
-  | EInst Term Insts
+    EVar Int String | ELam String Ty Term | EApp Term Term
+  | ETyLam String Kind Term  | EPrLam Pred Term | EInst Term Insts
   | ESing Ty | ELabel Term Term | EUnlabel Term Term
-  | EPrj Ty Ty Evid Term | EConcat Ty Ty Ty Evid Term Term | EInj Ty Ty Evid Term | EBranch Ty Ty Ty Evid Term Term
+  | EConst Const
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
-  | EIn Term Term | EOut Term | EFix String Ty Term
-  | ETyped Term Ty
-  -- Internals
-  | EPrLam Pred Term -- | EPrApp Term Evid
-  | ETyEqu Term TyEqu
+  | ETyEqu Term TyEqu | ETyped Term Ty
   deriving (Data, Eq, Show, Typeable)
 
 flattenE :: MonadIO m => Term -> m Term

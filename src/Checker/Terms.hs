@@ -111,50 +111,54 @@ checkTerm0 implicitTyLams e0@(EUnlabel e el) expected =
      elimForm expected $ \expected ->
        do e' <- checkTerm' implicitTyLams e (TLabeled tl expected)
           return (EUnlabel e' el')
-checkTerm0 implicitTyLams e0@(EPrj y z v@(VGoal (Goal (_, r))) e) expected =
-  do y' <- checkTy' e0 y (KRow (kindOf expected))
-     z' <- checkTy' e0 z (KRow (kindOf expected))
-     elimForm expected $ \expected ->
-       do q <- expectT e0 (TPi y') expected
-          e' <- checkTerm implicitTyLams e (TPi z')
-          require (PLeq y' z') r
-          return (wrap q (EPrj y' z' v e'))  -- but let's go ahead and flatten this term...
-checkTerm0 implicitTyLams (EPrj {}) _ =
-  fail "unimplemented: prj with non-goal evidence"
-checkTerm0 implicitTyLams e0@(EConcat x y z v@(VGoal (Goal (_, r))) m n) expected =
-  do x' <- checkTy' e0 x (KRow (kindOf expected))
-     y' <- checkTy' e0 y (KRow (kindOf expected))
-     z' <- checkTy' e0 z (KRow (kindOf expected))
-     q <- expectT e0 (TPi z') expected
-     m' <- checkTerm implicitTyLams m (TPi x')
-     n' <- checkTerm implicitTyLams n (TPi y')
-     require (PPlus x' y' z') r
-     return (wrap q (EConcat x' y' z' v m' n'))
-checkTerm0 implicitTyLams (EConcat {}) _ =
-  fail "unimplemented: ++ with non-goal evidence"
-checkTerm0 implicitTyLams e0@(EInj y z v@(VGoal (Goal (_, r))) e) expected =
-  do y' <- checkTy' e0 y (KRow (kindOf expected))
-     z' <- checkTy' e0 z (KRow (kindOf expected))
-     q <- expectT e0 (TSigma z') expected
-     e' <- checkTerm implicitTyLams e (TSigma y')
-     require (PLeq y' z') r
-     return (wrap q (EPrj y' z' v e'))  -- but let's go ahead and flatten this term...
-checkTerm0 implicitTyLams (EInj {}) _ =
-  fail "unimplemented: inj with non-goal evidence"
-checkTerm0 implicitTyLams e0@(EBranch x y z v@(VGoal (Goal (_, r))) m n) expected =
-  do x' <- checkTy' e0 x (KRow (kindOf expected))
-     y' <- checkTy' e0 y (KRow (kindOf expected))
-     z' <- checkTy' e0 z (KRow (kindOf expected))
-     t <- typeGoal "t"
-     elimForm expected $ \expected ->
-       do q <- expectT e0 (funTy (TSigma z') t) expected
-          t' <- flattenT t
-          m' <- checkTerm implicitTyLams m (funTy (TSigma x') t')
-          n' <- checkTerm implicitTyLams n (funTy (TSigma y') t')
-          require (PPlus x' y' z') r
-          return (wrap q (EBranch x' y' z' v m' n'))
-checkTerm0 implicitTyLams (EBranch {}) _ =
-  fail "unimplemented: ++ with non-goal evidence"
+checkTerm0 _ e@(EConst c) expected =
+  do ir <- newRef Nothing
+     t <- constType c
+     expectT e t (TInst (Unknown (Goal ("i", ir))) expected)
+     return (EInst e (Unknown (Goal ("i", ir))))
+  where -- This is necessary because I don't yet support kind polymorphism, so I can't express the
+        -- types of the constants directly
+        constType CPrj =
+          do k <- kindGoal "r"
+             return (TForall "y" (KRow k) $ TForall "z" (KRow k) $
+                       PLeq (TVar 1 "y" (Just (KRow k))) (TVar 0 "z" (Just (KRow k))) `TThen`
+                         TPi (TVar 0 "z" (Just (KRow k))) `funTy` TPi (TVar 1 "y" (Just (KRow k))))
+        constType CInj =
+          do k <- kindGoal "r"
+             return (TForall "y" (KRow k) $ TForall "z" (KRow k) $
+                       PLeq (TVar 1 "y" (Just (KRow k))) (TVar 0 "z" (Just (KRow k))) `TThen`
+                         TSigma (TVar 1 "y" (Just (KRow k))) `funTy` TSigma (TVar 0 "z" (Just (KRow k))))
+        constType CConcat =
+          do k <- kindGoal "r"
+             let tvar 2 = TVar 2 "x" (Just (KRow k))
+                 tvar 1 = TVar 1 "y" (Just (KRow k))
+                 tvar 0 = TVar 0 "z" (Just (KRow k))
+             return (TForall "x" (KRow k) $ TForall "y" (KRow k) $ TForall "z" (KRow k) $
+                       PPlus (tvar 2) (tvar 1) (tvar 0) `TThen`
+                         TPi (tvar 2) `funTy` TPi (tvar 1) `funTy` TPi (tvar 0))
+        constType CBranch =
+          do k <- kindGoal "r"
+             let tvar 3 = TVar 3 "x" (Just (KRow k))
+                 tvar 2 = TVar 2 "y" (Just (KRow k))
+                 tvar 1 = TVar 1 "z" (Just (KRow k))
+                 tvar 0 = TVar 0 "t" (Just KType)
+             return (TForall "x" (KRow k) $ TForall "y" (KRow k) $ TForall "z" (KRow k) $ TForall "t" KType $
+                       PPlus (tvar 3) (tvar 2) (tvar 1) `TThen`
+                         (TSigma (tvar 3) `funTy` tvar 0) `funTy`
+                         (TSigma (tvar 2) `funTy` tvar 0) `funTy`
+                         (TSigma (tvar 1) `funTy` tvar 0))
+        constType CIn =
+          return (TForall "f" (KType `KFun` KType) $
+                    f `TApp` TMu f `funTy` TMu f) where
+          f = TVar 0 "f" (Just (KType `KFun` KType))
+        constType COut =
+          return (TForall "f" (KType `KFun` KType) $
+                    TMu f `funTy` f `TApp` TMu f) where
+          f = TVar 0 "f" (Just (KType `KFun` KType))
+        constType CFix =
+          return (TForall "a" KType $
+                   (a `funTy` a) `funTy` a) where
+          a = TVar 0 "a" (Just KType)
 checkTerm0 implicitTyLams e0@(EAna phi e) expected =
   do k <- kindGoal "k"
      phi' <- checkTy' e0 phi (KFun k KType)

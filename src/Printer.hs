@@ -144,6 +144,10 @@ instance Printable Pred where
 instance Printable Term where
   ppr (EVar _ s) = ppre s
   ppr (ELam x t m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
+  ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
+    with 1 $ fillSep [at 2 (ppr e1), "++", ppr e2]
+  ppr (EApp (EApp (EInst (EConst CBranch) _) e1) e2) =
+    with 1 $ fillSep [at 2 (ppr e1), "?", ppr e2]
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr (ETyLam x k m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
   ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
@@ -157,17 +161,18 @@ instance Printable Term where
   ppr (ESing t) = "#" <> at 4 (ppr t)
   ppr (ELabel l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)])
   ppr (EUnlabel m l) = with 3 (fillSep [ppr m <+> "/", at 3 (ppr l)])
-  ppr (EPrj _ _ _ m) = with 4 (fillSep ["prj", at 4 (ppr m)])
-  ppr (EConcat _ _ _ _ m n) = with 2 (fillSep [at 2 (ppr m) <+> "++", ppr n])
-  ppr (EInj _ _ _ m) = with 4 (fillSep ["inj", at 4 (ppr m)])
-  ppr (EBranch _ _ _ _ m n) = with 2 (fillSep [at 2 (ppr m) <+> "?", ppr n])
+  ppr (EConst c) = name c where
+    name CPrj = "prj"
+    name CConcat = "(++)"
+    name CInj = "inj"
+    name CBranch = "(?)"
+    name CIn = "in"
+    name COut = "out"
+    name CFix = "fix"
   ppr (ESyn f m) = with 4 (fillSep ["syn", brackets (ppr f), at 5 (ppr m)])
   ppr (EAna f m) = with 4 (fillSep ["ana", brackets (ppr f), at 5 (ppr m)])
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   ppr (EFold {}) = "<fold>"
-  ppr (EIn {}) = "<in>"
-  ppr (EOut {}) = "<out>"
-  ppr (EFix {}) = "<fix>"
   -- Not printing internals (yet)
   ppr (EPrLam _ m) = ppr m
   ppr (ETyEqu m _) = ppr m

@@ -47,14 +47,14 @@ lookupV n (_ : ts) = lookupV (n - 1) ts
 shiftE :: TCtxt -> TCtxt
 shiftE = map (shiftTN 0 1)
 
-newtype CSt = CSt { next :: Int }
-data CIn = CIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt }
-type Problem = (CIn, Pred, IORef (Maybe Evid))
-newtype COut = COut { goals :: [Problem] }
+newtype TCSt = TCSt { next :: Int }
+data TCIn = TCIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt }
+type Problem = (TCIn, Pred, IORef (Maybe Evid))
+newtype TCOut = TCOut { goals :: [Problem] }
   deriving (Semigroup, Monoid)
 
-newtype CheckM a = CM (WriterT COut (ReaderT CIn (StateT CSt (ExceptT Error IO))) a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader CIn, MonadState CSt, MonadWriter COut, MonadError Error)
+newtype CheckM a = CM (WriterT TCOut (ReaderT TCIn (StateT TCSt (ExceptT Error IO))) a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader TCIn, MonadState TCSt, MonadWriter TCOut, MonadError Error)
 
 instance MonadFail CheckM where
   fail s = throwError (ErrOther s)
@@ -64,7 +64,7 @@ instance MonadRef CheckM where
   readRef = liftIO . readIORef
   writeRef r = liftIO . writeIORef r
 
-class (Monad m, MonadError Error m, MonadRef m, MonadIO m, MonadReader CIn m) => MonadCheck m where
+class (Monad m, MonadError Error m, MonadRef m, MonadIO m, MonadReader TCIn m) => MonadCheck m where
   bindTy :: Kind -> m a -> m a
   defineTy :: Kind -> Ty -> m a -> m a
   bind :: Ty -> m a -> m a
@@ -80,8 +80,8 @@ instance MonadCheck CheckM where
   require p r =
     do cin <- ask
        p' <- flattenP p
-       trace ("requiring " ++ show p') -- show (pushShiftsP p))
-       tell (COut [(cin, p, r)])-- pushShiftsP p, r)])
+       trace ("requiring " ++ show p')
+       tell (TCOut [(cin, p, r)])
   fresh x = do i <- gets next
                modify (\st -> st { next = i + 1 })
                return (x ++ '#' : show i)

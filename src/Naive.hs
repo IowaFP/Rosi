@@ -77,9 +77,31 @@ eval' (E (_, he)) (EVar i x) =
   trace ("Variable " ++ show x ++ " is " ++ show result) $
   he !! i
 eval' h (ELam s t e) = VLam h s t e
+eval' h (EApp (EInst (EConst CPrj) (Known [TyArg y, TyArg z, _])) e)   -- remember: y <= z
+  | null ls = VRecord []
+  | otherwise = prj (eval h e) where
+    ls = dom y
+    prj (VRecord fs) = VRecord [(l, th) | (l, th) <- fs, l `elem` ls]
+    prj v@VLabeled{} = v  -- can do dumb projections
+    prj v@VSyn{} = v   -- synthesizing fewer fields is the same as synthesizing more fields
+    -- alternatively, we could do the computation here:
+    -- prj (VSyn _ m) = VRecord [(l, app (eval h m) (VSing (TLab l))) | l <- ls]
+eval' h e@(EApp (EInst (EApp (EInst (EConst CConcat) (Known [TyArg x, TyArg y, _, _])) m) (Known [])) n) =
+  VRecord (fields xls (eval h m) ++ fields yls (eval h n)) where
+  xls = dom x
+  yls = dom y
+  fields _ (VRecord fs) = fs
+  fields _ (VLabeled s th) = [(s, th)]
+  fields ls (VSyn _ m) = [(l, app h m (VSing (TLab l))) | l <- ls]
+  fields _ _ = error $ "evaluation failed: " ++ show e
+eval' h (EApp (EInst (EConst CInj) (Known [TyArg y, TyArg z, _])) e) = eval h e
+eval' h (EApp (EInst (EApp (EInst (EConst CBranch) (Known [TyArg x, TyArg y, _, _, _])) f) (Known [])) g) = VBranch (dom x) (eval h f) (eval h g)
+eval' h (EApp (EInst (EConst CIn) _) e) = VIn (eval h e) -- also treating in like a constructor... probably will need that functor evidence eventually, but meh
+eval' h (EApp (EInst (EConst COut) _) e)
+  | VIn v <- eval h e = v
+-- eval' h@(E (ht, he)) (EFix x t e) = eval (E (ht, eval h e : he)) e
 eval' h (EApp f e) = app h (eval h f) (eval h e) where
   -- So yeah, supposed to be call-by-name here... relying on Haskell's laziness to delay evaluation
-
 eval' h (ETyLam s k e) = VTyLam h s k e
 eval' h (EInst e (Known is)) = foldl (inst h) (eval h e) is
 eval' h e0@(EInst e (Unknown g)) = error $ "unexpected unknown instantiation: " ++ show e0
@@ -101,30 +123,8 @@ eval' h@(E (_, he)) (EUnlabel e l) = unlabel (eval h e) where
       result
 
   unlabel v = error $ "Wut " ++ show v
-eval' h (EPrj y z _ e)   -- remember: y <= z
-  | null ls = VRecord []
-  | otherwise = prj (eval h e) where
-    ls = dom y
-    prj (VRecord fs) = VRecord [(l, th) | (l, th) <- fs, l `elem` ls]
-    prj v@VLabeled{} = v  -- can do dumb projections
-    prj v@VSyn{} = v   -- synthesizing fewer fields is the same as synthesizing more fields
-    -- alternatively, we could do the computation here:
-    -- prj (VSyn _ m) = VRecord [(l, app (eval h m) (VSing (TLab l))) | l <- ls]
-eval' h e@(EConcat x y _ _ m n) = VRecord (fields xls (eval h m) ++ fields yls (eval h n)) where
-  xls = dom x
-  yls = dom y
-  fields _ (VRecord fs) = fs
-  fields _ (VLabeled s th) = [(s, th)]
-  fields ls (VSyn _ m) = [(l, app h m (VSing (TLab l))) | l <- ls]
-  fields _ _ = error $ "evaluation failed: " ++ show e
-eval' h (EInj _ _ _ e) = eval h e
-eval' h (EBranch x y z _ f g) = VBranch (dom x) (eval h f) (eval h g)
 eval' h (EAna f m) = VAna f (eval h m)
 eval' h (ESyn f m) = VSyn f (eval h m)
-eval' h (EIn _ e) = VIn (eval h e) -- also treating in like a constructor... probably will need that functor evidence eventually, but meh
-eval' h (EOut e)
-  | VIn v <- eval h e = v
-eval' h@(E (ht, he)) (EFix x t e) = eval (E (ht, eval h e : he)) e
 eval' _ e = error $ "evaluation failed: " ++ show e
 
 substTy :: Env -> Ty -> Ty
