@@ -35,7 +35,7 @@ fmapS1 = \ d. /\ a b. \ f w.
          ana [\X : * -> *. X a] (\ l x. con l (sel d l f x)) w
 
 -- bug here
--- fmapS20 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
+-- fmapS20 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
 -- fmapS20 = /\ z. \ d. /\ a b. \ f w.
 --             mapS [z] [\ X. X a] [\ X. X b]
 --               (\ l x. sel d l [a] [b] f x)
@@ -44,17 +44,12 @@ fmapS1 = \ d. /\ a b. \ f w.
 -- How many annotations can I leave out?
 -- bug here: why do we need to bring `z` into scope? Without doing so, we fail to solve predicates...
 
-fmapS2 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
-fmapS2 = /\ z. \ d. /\ a b. \ f.
-          mapS [z] [\ X. X a] [\ X. X b] (\l. sel d l f)
-
-fmapS21 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
-fmapS21 = \ d. /\ a b. \ f.
-            mapS [\ X. X a] [\ X. X b] (\l. sel d l f)
-
+fmapS2 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
+fmapS2 = \ d. /\ a b. \ f.
+          mapS [\ X. X a] [\ X. X b] (\l. sel d l f)
 
 mapS0 : forall z : R[* -> *], f g : (* -> *) -> *. #f -> #g -> Iter f g z -> Sigma (f z) -> Sigma (g z)
-mapS0 = /\ z f g. \ fs gs i v. mapS [z] [f] [g] i v
+mapS0 = \ fs gs i v. mapS i v
 
 -- I think once the `z` problem is solved above, this version should work as well.
 
