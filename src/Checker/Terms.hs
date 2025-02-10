@@ -85,7 +85,8 @@ checkTerm0 implicitTyLams e0@(EInst e (Unknown ig)) expected =
   fail $ "in " ++ show e0 ++ ": unexpected instantiation hole in type checking"
 checkTerm0 implicitTyLams e0@(EInst e is) expected =
   do is' <- checkInsts is
-     EInst <$> checkTerm implicitTyLams e (TInst is' expected) <*> pure is'
+     elimForm expected $ \expected ->
+       EInst <$> checkTerm implicitTyLams e (TInst is' expected) <*> pure is'
   where checkInsts :: Insts -> CheckM Insts
         checkInsts (Unknown _) = error "internal: why am I type checking an unknown instantiation?"
         checkInsts (Known is) = Known <$> mapM checkInst is

@@ -63,6 +63,12 @@ data Ty =
   | TInst Insts Ty | TMapArg Ty
   deriving (Data, Eq, Show, Typeable)
 
+data Inst = TyArg Ty | PrArg Evid
+  deriving (Data, Eq, Show, Typeable)
+
+data Insts = Known [Inst] | Unknown (Goal [Inst])
+  deriving (Data, Eq, Show, Typeable)
+
 -- Because I keep confusing myself:
 -- MapFun : (k -> l) -> (R[k] -> R[l])
 -- MapArg : R[k -> l] -> (k -> R[l])
@@ -93,7 +99,6 @@ funTy = TApp . TApp TFun
 
 infixr 5 `funTy`
 
-
 label, labeled :: Ty -> Maybe Ty
 
 label (TLabeled l _) = Just l -- Just (unshift l)
@@ -105,6 +110,23 @@ labeled _ = Nothing
 splitLabel :: Ty -> Maybe (Ty, Ty)
 splitLabel (TLabeled l t) = Just (l, t)
 splitLabel _              = Nothing
+
+data Quant = QuForall String Kind | QuThen Pred
+  deriving (Data, Eq, Show, Typeable)
+
+quants :: Ty -> ([Quant], Ty)
+quants (TForall x k t) = first (QuForall x k :) (quants t)
+quants (TThen p t) = first (QuThen p :) (quants t)
+quants t = ([], t)
+
+quantify :: [Quant] -> Ty -> Ty
+quantify [] t = t
+quantify (QuForall x k : qus) t = TForall x k (quantify qus t)
+quantify (QuThen p : qus) t = TThen p (quantify qus t)
+
+insts :: Ty -> ([Insts], Ty)
+insts (TInst is t) = first (is :) (insts t)
+insts t = ([], t)
 
 -- I really need to learn SYB
 flattenT :: MonadIO m => Ty -> m Ty
@@ -221,6 +243,9 @@ shiftTN _ _ t = error $ "shiftTN: unhandled: " ++ show t
 shiftPN :: Int -> Int -> Pred -> Pred
 shiftPN j n (PLeq y z) = PLeq (shiftTN j n y) (shiftTN j n z)
 shiftPN j n (PPlus x y z) = PPlus (shiftTN j n x) (shiftTN j n y) (shiftTN j n z)
+
+shiftEN :: Int -> Int -> Term -> Term
+shiftEN j n = everywhere (mkT (shiftTN j n))
 
 shiftT :: Int -> Ty -> Ty
 shiftT j = shiftTN j 1

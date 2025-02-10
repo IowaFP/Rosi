@@ -7,9 +7,10 @@ import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Bifunctor (first)
+import Data.Bifunctor (first, second)
 import Data.Dynamic
 import Data.IORef
+import Data.List (partition)
 import Data.Maybe (isNothing)
 
 import Checker.Monad
@@ -42,7 +43,7 @@ instance MonadRef UnifyM where
        tell [U r v']
        liftIO (writeIORef r v)
 
-instance MonadReader CIn UnifyM where
+instance MonadReader TCIn UnifyM where
   ask = UM (lift (lift ask))
   local f r = UM $ StateT $ \checking -> WriterT $ local f (runWriterT (runStateT (runUnifyM r) checking))
 
@@ -121,43 +122,57 @@ unify' actual expected =
                _     -> QTrans (QSym q')
      ((f' . f) <$>) <$> unify0 actual' expected'
 
+
+-- This function handles unification cases `t ~ u` where `u` starts with some
+-- instantiation variables. If `t` start with instantiation variables instead,
+-- pass it as `u` but pass `flip unify` as the third argument.
 unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM (Maybe TyEqu)) -> UnifyM (Maybe TyEqu)
-unifyInstantiating t (TInst (Known is) u) unify = unifyInsts t is u where
-  unifyInsts (TForall _ k t) (TyArg v : is) u =
-     do t' <- subst 0 (shiftTN 0 1 v) t
-        unifyInsts (shiftTN 0 (-1) t') is u
-  unifyInsts (TThen _ t) (PrArg _ : is) u =
-    unifyInsts t is u
-  unifyInsts t [] u = unify t u
-  unifyInsts t is u =
-    do trace $ "7 incoming unification failure: (" ++ show t ++ ") " ++ show is ++ " (" ++ show u ++ ")"
-       return Nothing
-unifyInstantiating t (TInst ig@(Unknown (Goal (_, r))) u) unify =
-  do minsts <- readRef r
-     case minsts of
-       Just insts -> unify0 t (TInst (Known insts) u)  -- still don't think this can happen
-       Nothing
-         | uqs >= tqs ->
-             do writeRef r (Just [])
-                unify t u
-         | otherwise ->
-             do (is, t') <- instantiate (tqs - uqs) t
-                writeRef r (Just is)
-                unify t' u
+unifyInstantiating t u unify
+  | Just matches <- match (reverse uis) (reverse (take (length tqs - nuqs) tqs)) =
+      do t' <- instantiates (reverse matches) t
+         unify t' u'
+  | otherwise =
+      do trace $ "7 incoming unification failure: (" ++ show t ++ ") (" ++ show u ++ ")"
+         return Nothing
+  where (tqs, _) = quants t
+        (uis, u') = insts u
+        nuqs      = length (fst (quants u'))
 
-  where tqs = countQuants t
-        uqs = countInstQuants u
+        -- match needs its arguments **reversed** from their appearance in the type
+        match :: [Insts] -> [Quant] -> Maybe [Either (Ty, Kind) (Goal [Inst], [Quant])]
+        match [] [] = return []
+        match [Unknown g] qs = return [Right (g, reverse qs)]
+        match (Unknown g : is@(Known _ : _)) qs = (Right (g, reverse thens) :) <$> match is rest where
+          isThen (QuThen _) = True
+          isThen _          = False
+          (thens, rest) = partition isThen qs
+        match (Unknown g : is@(Unknown _ : _)) qs =  -- still think this shouldn't be possible, clearly I don't understand my own code
+          (Right (g, []) :) <$> match is qs
+        match (Known is : is') qs =
+          do (ms, qs') <- matchKnown is qs
+             (ms ++) <$> match is' qs'
+          where matchKnown [] qs = return ([], qs)
+                matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (t, k) :)) <$> matchKnown is qs
+                matchKnown (PrArg _ : _) _ = Nothing
+                matchKnown _ [] = Nothing
+        match is qs = error $ "ruh-roh: " ++ show is ++ " " ++ show qs
 
-        countQuants, countInstQuants :: Ty -> Int
-        countQuants (TForall _ _ t) = 1 + countQuants t
-        countQuants (TThen _ t) = 1 + countQuants t
-        countQuants t = 0
-        countInstQuants (TInst (Known is) t) = countTypesIn is + countInstQuants t where
-          countTypesIn [] = 0
-          countTypesIn (TyArg _ : is) = 1 + countTypesIn is
-          countTypesIn (PrArg _ : is) = countTypesIn is
-        countInstQuants (TInst (Unknown _) _) = 0 -- hosed here anyway
-        countInstQuants t = countQuants t
+        -- Need to write function to apply list of instantiations derived from
+        -- `match` above. Problem is (a) need to work outside in, but (b)
+        -- instantiation (as demonstrated below) needs to operate on the
+        -- remainder of the type, which has been somewhat disassembled
+        --
+        -- Approach: go back to original type, using list of insts to guide
+        -- instantiation??
+        instantiates :: [Either (Ty, Kind) (Goal [Inst], [Quant])] -> Ty -> UnifyM Ty
+        instantiates [] t = return t
+        instantiates (Left (u, _) : is) (TForall x k t) =
+            do t' <- subst 0 (shiftTN 0 1 u) t
+               instantiates is (shiftTN 0 (-1) t')
+        instantiates (Right (Goal (_, r), qs) : is) t =
+          do (is', t') <- instantiate (length qs) t
+             writeRef r (Just is')
+             instantiates is t'
 
         instantiate :: Int -> Ty -> UnifyM ([Inst], Ty)
         instantiate 0 t = return ([], t)
