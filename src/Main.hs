@@ -62,8 +62,8 @@ main = do args <- getArgs
           checked <- goCheck [] [] scoped
           when printTypedTerms $
             mapM_ ((putDocWLn 120 . pprTyping) <=< thirdM flattenE) checked
-          let evaled = goEval [] checked
-              output = filter ((`elem` evals) . fst) evaled
+          evaled <- goEval [] checked
+          let output = filter ((`elem` evals) . fst) evaled
           mapM_ (putDocWLn 120 . uncurry pprBinding) output
           putStrLn "ok"
   where goCheck d g [] = return []
@@ -78,9 +78,11 @@ main = do args <- getArgs
         goCheck d g (TyDecl {} : ds) =
           goCheck d g ds
 
-        goEval _ [] = []
-        goEval h ((x, t, m) : ds) = (x, v) : goEval (v : h) ds where
-          v = eval (E ([], h)) m
+        goEval _ [] = return []
+        goEval h ((x, t, m) : ds) =
+          do m' <- flattenE m
+             let v = eval (E ([], h)) m'
+             ((x, v) :) <$> goEval (v : h) ds
 
         thirdM f (a, b, c) = (a, b,) <$> f c
 
