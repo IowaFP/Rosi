@@ -107,11 +107,12 @@ solve (cin, p, r) =
     suppose (typesEqual y y') (suppose (typesEqual z z') (forceFD x x'))
     where forceFD t t' =
             do q <- unify t t'
-               case flattenQ <$> q of
-                 Just QRefl -> return (Just (VVar v))
-                 _          ->
-                  do trace $ "matchPlusDirect: unifying (" ++ show t ++ ") and (" ++ show t' ++ ") gave (" ++ show q ++ ")"
-                     fundeps p q
+               return (Just (VVar v))
+               -- case flattenQ <$> q of
+               --   Just QRefl -> return (Just (VVar v))
+               --   _          ->
+               --    do trace $ "matchPlusDirect: unifying (" ++ show t ++ ") and (" ++ show t' ++ ") gave (" ++ show q ++ ")"
+               --       fundeps p q
   matchPlusDirect _ _ = return Nothing
 
   -- question to self: why do I have both the `fundeps` error and the `force` error?
@@ -145,9 +146,10 @@ solve (cin, p, r) =
 
   force p t u =
     do q <- unify t u
-       case flattenQ <$> q of
-         Just QRefl -> return ()
-         _ -> throwError (ErrTypeMismatchPred p t u)
+       return ()
+       -- case flattenQ <$> q of
+       --   Just QRefl -> return ()
+       --   _ -> throwError (ErrTypeMismatchPred p t u)
 
   -- May want to consider moving away from pattern matching for failure and
   -- towards using the `Maybe`ness...
