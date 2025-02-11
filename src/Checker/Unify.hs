@@ -241,7 +241,7 @@ unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
                     trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) actual'))
                     return (Just VRefl)
             else return Nothing
-unify0 (TUnif n (Goal (uvar, r)) k) expected =
+unify0 actual@(TUnif n (Goal (uvar, r)) k) expected =
   do mt <- readRef r
      case mt of
        Just t -> unify' (shiftTN 0 n t) expected
@@ -325,6 +325,8 @@ unify0 (TSigma r) u
 unify0 t (TSigma r)
   | TRow [u] <- r = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' t u
   | TLabeled tl tt <- t = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' (TRow [t]) r
+unify0 (TMu f) (TMu g) =
+  liftM (VEqCon Mu) <$> unify' f g
 unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
   do q <- unify' f g
      case q of
@@ -367,6 +369,7 @@ instance HasTyVars Ty where
   subst v t (TRow us) = TRow <$> mapM (subst v t) us
   subst v t (TPi u) = TPi <$> subst v t u
   subst v t (TSigma u) = TSigma <$> subst v t u
+  subst v t (TMu u) = TMu <$> subst v t u
   subst v t (TInst (Known is) u) = TInst <$> (Known <$> mapM substI is) <*> subst v t u where
     substI (TyArg u) = TyArg <$> subst v t u
     substI (PrArg v) = return (PrArg v)

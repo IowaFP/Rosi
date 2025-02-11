@@ -200,6 +200,7 @@ atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
                , TSing <$> (char '#' >> atype)
                , TSigma <$> (symbol "Sigma" >> atype)
                , TPi <$> (symbol "Pi" >> atype)
+               , TMu <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
                , flip (TVar (-1)) Nothing <$> identifier
                , parens ty ]

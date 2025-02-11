@@ -99,7 +99,7 @@ eval' h (EApp (EInst (EApp (EInst (EConst CBranch) (Known [TyArg x, TyArg y, _, 
 eval' h (EApp (EInst (EConst CIn) _) e) = VIn (eval h e) -- also treating in like a constructor... probably will need that functor evidence eventually, but meh
 eval' h (EApp (EInst (EConst COut) _) e)
   | VIn v <- eval h e = v
--- eval' h@(E (ht, he)) (EFix x t e) = eval (E (ht, eval h e : he)) e
+eval' h e@(EApp (EInst (EConst CFix) is) f) = eval h (EApp f e)
 eval' h (EApp f e) = app h (eval h f) (eval h e) where
   -- So yeah, supposed to be call-by-name here... relying on Haskell's laziness to delay evaluation
 eval' h (ETyLam s (Just k) e) = VTyLam h s k e

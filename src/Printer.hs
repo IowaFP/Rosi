@@ -116,8 +116,9 @@ instance Printable Ty where
   ppr (TSing t) = "#" <> at 5 (ppr t)
   ppr (TLabeled l t) = fillSep [ppr l <+> ":=", ppr t]
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
-  ppr (TPi t) = with 3 $ "Pi " <> at 4 (ppr t)
-  ppr (TSigma t) = with 3 $ "Sigma " <> at 4 (ppr t)
+  ppr (TPi t) = with 3 $ "Pi" <+> at 4 (ppr t)
+  ppr (TSigma t) = with 3 $ "Sigma" <+> at 4 (ppr t)
+  ppr (TMu t) = with 3 $ "Mu" <+> at 4 (ppr t)
   ppr (TMapFun t) = ppr t
   ppr (TMapArg t) = ppr t
   ppr (TInst (Unknown (Goal (s, r))) t) =

@@ -239,7 +239,7 @@ shiftTN _ _ t@TFun = t
 shiftTN _ _ t@(TLab s) = t
 shiftTN j n (TPi t) = TPi (shiftTN j n t)
 shiftTN j n (TSigma t) = TSigma (shiftTN j n t)
--- shiftTN j n (TShift t) = TShift (shiftTN (n - 1) j t) -- variables within the shift are larger than they appear
+shiftTN j n (TMu t) = TMu (shiftTN j n t)
 shiftTN j n (TMapFun t) = TMapFun (shiftTN j n t)
 shiftTN j n (TMapArg t) = TMapArg (shiftTN j n t)
 shiftTN j n (TInst is t) = TInst (shiftIs j n is) (shiftTN j n t) where
@@ -338,7 +338,7 @@ data Evid =
   | VEqLeq Evid Evid | VEqPlus Evid Evid Evid
   deriving (Data, Eq, Show, Typeable)
 
-data TyCon = Pi | Sigma
+data TyCon = Pi | Sigma | Mu
   deriving (Data, Eq, Show, Typeable)
 
 foldUnary :: (Evid -> Evid) -> Evid -> Evid
