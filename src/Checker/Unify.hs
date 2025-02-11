@@ -386,7 +386,7 @@ normalize t@(TVar i _ _) =
   do (_, mdef) <- asks ((!! i) . kctxt)
      case mdef of
        Nothing -> return (t, QRefl)
-       Just def -> do (t', q) <- normalize def
+       Just def -> do (t', q) <- normalize (shiftTN 0 (i + 1) def)
                       return (t', QTrans QDefn q)
 normalize t0@(TApp (TLam x k t) u) =
   do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
