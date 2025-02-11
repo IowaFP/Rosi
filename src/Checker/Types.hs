@@ -123,8 +123,6 @@ checkTy t@(TRow ts) expected =
 checkTy (TPi r) expected = TPi <$> checkTy r (KRow expected)
 checkTy (TSigma r) expected = TSigma <$> checkTy r (KRow expected)
 checkTy (TMu f) expected = TMu <$> checkTy f (KFun expected expected)
--- checkTy (TShift t) expected =
---   TShift <$> unbindTy (checkTy t expected)
 checkTy (TInst ig t) expected =
   TInst ig <$> checkTy t expected
 checkTy t@(TMapFun f) expected =

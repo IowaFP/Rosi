@@ -220,8 +220,6 @@ unify0 (TUnif n (Goal (uvar, r)) k) expected =
                     trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) expected'))
                     return (Just QRefl)
             else return Nothing
--- unify0 actual@(TApp {}) expected = unifyNormalizing actual expected
--- unify0 actual expected@(TApp {}) = unifyNormalizing actual expected
 unify0 t u@(TInst {}) =
   unifyInstantiating t u unify'
 unify0 t@(TInst {}) u =
@@ -331,33 +329,6 @@ unify0 a@(TMapArg f) x@(TMapArg g) =
 unify0 t u =
   do trace $ "5 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
      return Nothing
-
--- Assumption: at least one of actual or expected is a `TApp`
-unifyNormalizing :: HasCallStack => Ty -> Ty -> UnifyM (Maybe TyEqu)
-unifyNormalizing actual expected =
-  do (actual', qa) <- normalize' actual
-     (expected', qe) <- normalize' expected
-     case (flattenQ qa, flattenQ qe) of
-       (QRefl, QRefl) ->
-         case (actual', expected') of
-           (TApp fa aa, TApp fx ax) ->
-             liftM2 QApp <$> unify' fa fx <*> unify' aa ax
-           (TApp (TMapFun fa) (TRow ts), tx) ->
-             do unify' (TRow [TApp fa ta | ta <- ts]) tx
-                return (Just QMapFun)
-           (TApp (TMapFun fa) ra, TRow []) ->
-             do unify' ra (TRow [])
-                return (Just QMapFun)
-           (TApp (TMapFun fa) ra, TRow xs@(tx:_)) ->
-             do gs <- replicateM (length xs) (typeGoal' "t" (kindOf tx))
-                unify' ra (TRow gs)
-                sequence_ [unify' (TApp fa ta) tx | (ta, tx) <- zip gs xs]
-                return (Just QMapFun)
-           _ -> do trace $ "6 incoming unification failure: " ++ show actual' ++ ", " ++ show expected'
-                   return Nothing
-       (qa, qe) ->
-         liftM (QTrans qa . (`QTrans` QSym qe)) <$>
-         unify' actual' expected'
 
 class HasTyVars t where
   subst :: MonadRef m => Int -> Ty -> t -> m t
