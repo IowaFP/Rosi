@@ -4,7 +4,7 @@ module Parser where
 import Syntax
 
 import Control.Monad (foldM, mplus, replicateM, void, when)
-import Control.Monad.IO.Class (liftIO)
+-- import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader
 import Control.Monad.State
 
@@ -18,7 +18,7 @@ import Data.Void (Void)
 import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure)
 
-import Text.Megaparsec
+import Text.Megaparsec hiding (State)
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as P
 import Text.Megaparsec.Error
@@ -48,11 +48,12 @@ chainl1 p op =
   where down lhs [] = lhs
         down lhs ((op, rhs) : rhss) = down (op lhs rhs) rhss
 
-ps p s = putStrLn . either errorBundlePretty show =<< runReaderT (evalStateT (runParserT p "" s) []) ([], [])
+ps :: Show t => Parser t -> String -> IO ()
+ps p s = putStrLn $ either errorBundlePretty show $ evalState (runParserT p "" s) []
 
 --------------------------------------------------------------------------------
 
-type Parser = ParsecT Void [Char] (StateT [(Ordering, Pos)] IO)
+type Parser = ParsecT Void [Char] (State [(Ordering, Pos)])
 
 pushIndent :: Ordering -> Pos -> Parser ()
 pushIndent o n = lift (modify ((o, n) :))
@@ -142,15 +143,11 @@ kind = chainr1 akind (symbol "->" >> return KFun) where
                   , do symbol "R"
                        KRow <$> brackets kind ]
 
-binders :: Parser t -> (Goal t -> IO t) -> Parser [(String, t)]
-binders p unif =
+binders :: Parser t -> Parser [(String, Maybe t)]
+binders p =
   do xs <- some identifier
      m <- optional $ do colon >> p
-     case m of
-       Just t -> return [(x, t) | x <- xs]
-       Nothing -> mapM (\x -> do r <- liftIO $ newIORef Nothing
-                                 t <- liftIO $ unif (Goal ("g$" ++ x, r))
-                                 return (x, t)) xs
+     return (map (, m) xs)
 
 ty :: Parser Ty
 ty = do (xss, pfs) <- unzip <$> many prefix
@@ -159,11 +156,11 @@ ty = do (xss, pfs) <- unzip <$> many prefix
   prefix :: Parser ([String], Ty -> Ty)
   prefix = choice
              [ do symbol "\\"
-                  bs <- commaSep1 (binders kind (return . KUnif))
+                  bs <- commaSep1 (binders kind)
                   dot
                   return (fst <$> concat bs, foldr (\(v, k) f -> TLam v k . f) id (concat bs))
              , do symbol "forall"
-                  bs <- commaSep1 (binders kind (return . KUnif))
+                  bs <- commaSep1 (binders kind)
                   dot
                   return (fst <$> concat bs, foldr (\(v, k) f -> TForall v k . f) id (concat bs)) ]
 
@@ -227,12 +224,12 @@ term = prefixes typedTerm where
 
   prefix :: Parser (([String], [String]), Term -> Term) -- now this `Term -> Term` trick is really not paying off any longer...
   prefix = do symbol "\\"
-              bs <- commaSep1 (binders ty (\g -> return (TUnif 0 g KType)))
+              bs <- commaSep1 (binders ty)
               dot
               return (([], fst <$> concat bs), foldr1 (.) (map (uncurry ELam) (concat bs)))
          <|>
            do symbol "/\\"
-              bs <- commaSep1 (binders kind (return . KUnif))
+              bs <- commaSep1 (binders kind)
               dot
               return ((fst <$> concat bs, []), foldr1 (.) (map (uncurry ETyLam) (concat bs)))
 
@@ -264,9 +261,9 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
   app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
   app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
   app (BuiltIn "ana") (Type phi : Term t : ts) = app (Term (EAna phi t)) ts
-  app (BuiltIn "ana") (Term t : ts) = app (Term (EAna (TLam "X" KType (TVar 0 "X" (Just KType))) t)) ts
+  app (BuiltIn "ana") (Term t : ts) = app (Term (EAna (TLam "X" (Just KType) (TVar 0 "X" (Just KType))) t)) ts
   app (BuiltIn "syn") (Type phi : Term t : ts) = app (Term (ESyn phi t)) ts
-  app (BuiltIn "syn") (Term t : ts) = app (Term (ESyn (TLam "X" KType (TVar 0 "X" (Just KType))) t)) ts
+  app (BuiltIn "syn") (Term t : ts) = app (Term (ESyn (TLam "X" (Just KType) (TVar 0 "X" (Just KType))) t)) ts
   app (BuiltIn s) _ = unexpected (Label $ fromList ("ill-formed " ++ s))
 
   goal s = Goal . (s,) <$> newIORef Nothing
@@ -347,7 +344,7 @@ defns tls
 
 parse :: String -> String -> IO Program
 parse fn s =
-  do tls <- evalStateT (runParserT (prog <* eof) fn s) []
+  do let tls = evalState (runParserT (prog <* eof) fn s) []
      case tls of
        Left err -> do hPutStrLn stderr (errorBundlePretty err)
                       exitFailure

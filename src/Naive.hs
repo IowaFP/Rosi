@@ -34,9 +34,9 @@ instance Show Value where
 -- ?        1
 -- in       2
 instance Printable Value where
-  ppr (VTyLam _ x k m) = with 0 $ ppr (ETyLam x k m)
+  ppr (VTyLam _ x k m) = with 0 $ ppr (ETyLam x (Just k) m)
   ppr (VPrLam _ p m) = with 0 $ ppr (EPrLam p m)
-  ppr (VLam _ x t m) = ppr (ELam x t m)
+  ppr (VLam _ x t m) = ppr (ELam x (Just t) m)
   ppr (VIn v) = "in" <+> at 3 (ppr v)
   ppr (VLabeled s v) = fillSep [ppre s <+> ":=", ppr v]
   ppr (VRecord ps) = hang 2 $ parens $ fillSep $ punctuate "," [fillSep [ppre s <+> ":=", ppr m] | (s, m) <- ps]
@@ -76,7 +76,7 @@ eval' (E (_, he)) (EVar i x) =
   let result = he !! i in
   trace ("Variable " ++ show x ++ " is " ++ show result) $
   he !! i
-eval' h (ELam s t e) = VLam h s t e
+eval' h (ELam s (Just t) e) = VLam h s t e
 eval' h (EApp (EInst (EConst CPrj) (Known [TyArg y, TyArg z, _])) e)   -- remember: y <= z
   | null ls = VRecord []
   | otherwise = prj (eval h e) where
@@ -102,7 +102,7 @@ eval' h (EApp (EInst (EConst COut) _) e)
 -- eval' h@(E (ht, he)) (EFix x t e) = eval (E (ht, eval h e : he)) e
 eval' h (EApp f e) = app h (eval h f) (eval h e) where
   -- So yeah, supposed to be call-by-name here... relying on Haskell's laziness to delay evaluation
-eval' h (ETyLam s k e) = VTyLam h s k e
+eval' h (ETyLam s (Just k) e) = VTyLam h s k e
 eval' h (EInst e (Known is)) = foldl (inst h) (eval h e) is
 eval' h e0@(EInst e (Unknown g)) = error $ "unexpected unknown instantiation: " ++ show e0
 eval' h (ETyEqu e _) = eval h e
@@ -131,8 +131,8 @@ substTy :: Env -> Ty -> Ty
 substTy (E (ht, _)) t@(TVar i _ _) = ht !! i
 substTy h TUnif{} = error "substTy: TUnif"
 substTy h (TThen p t) = TThen p (substTy h t)
-substTy (E (ht, he)) (TForall x k t) = TForall x k (substTy (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
-substTy (E (ht, he)) (TLam x k t) = TLam x k (substTy (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
+substTy (E (ht, he)) (TForall x (Just k) t) = TForall x (Just k) (substTy (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
+substTy (E (ht, he)) (TLam x (Just k) t) = TLam x (Just k) (substTy (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
 substTy h (TApp t u) = TApp (substTy h t) (substTy h u)
 substTy h t@TLab {} = t
 substTy h (TSing t) = TSing (substTy h t)

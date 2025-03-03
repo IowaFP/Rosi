@@ -189,7 +189,7 @@ solve (cin, p, r) =
   mapFunApp p@(PLeq (TRow []) (TApp (TMapFun f) z)) =
     fmap (VLeqLiftL f) <$> everything (PLeq (TRow []) z)
   mapFunApp p@(PLeq (TRow y) (TApp (TMapFun f) z))
-    | TLam v k (TVar i w _) <- f  -- I think this case should actually have been normalized away....
+    | TLam v (Just k) (TVar i w _) <- f  -- I think this case should actually have been normalized away....
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel y =
       fmap (VPredEq (QLeq (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar i v (Just k)) t t) | t <- ts]) QRefl) .
@@ -200,7 +200,7 @@ solve (cin, p, r) =
     | Just (ls, fs, es) <- funCallsFrom z =
       do mapM_ (force p f) fs
          fmap (VLeqLiftL f) <$> everything (PLeq y (TRow (zipWith TLabeled ls es)))
-    | TLam v k (TVar i w _) <- f
+    | TLam v (Just k) (TVar i w _) <- f
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel z =
       fmap (VPredEq (QLeq QRefl (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar i v (Just k)) t t) | t <- ts])) .

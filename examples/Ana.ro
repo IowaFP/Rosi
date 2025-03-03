@@ -34,12 +34,11 @@ fmapS1 : forall z : R[* -> *] . Pi (Functor z) -> Functor (Sigma z)
 fmapS1 = \ d. /\ a b. \ f w.
          ana [\X : * -> *. X a] (\ l x. con l (sel d l f x)) w
 
--- bug here
--- fmapS20 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
--- fmapS20 = /\ z. \ d. /\ a b. \ f w.
---             mapS [z] [\ X. X a] [\ X. X b]
---               (\ l x. sel d l [a] [b] f x)
---               w
+fmapS20 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
+fmapS20 = /\ z. \ d. /\ a b. \ f w.
+            mapS [z] [\ X. X a] [\ X. X b]
+              (\ l x. sel d l [a] [b] f x)
+              w
 
 -- How many annotations can I leave out?
 -- bug here: why do we need to bring `z` into scope? Without doing so, we fail to solve predicates...
@@ -52,7 +51,6 @@ mapS0 : forall z : R[* -> *], f g : (* -> *) -> *. #f -> #g -> Iter f g z -> Sig
 mapS0 = \ fs gs i v. mapS i v
 
 -- I think once the `z` problem is solved above, this version should work as well.
-
 fmapS3 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
 fmapS3 = \d. /\ a b. \f. mapS0 #(\X. X a) #(\X. X b) (\l. sel d l f)
 

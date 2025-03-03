@@ -106,8 +106,10 @@ instance Printable Ty where
               else "^" <> ppre n <> "%" <> ppre s
   ppr TFun = "(->)"
   ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
-  ppr (TForall x k t) = with 0 $ nest 2 $ fillSep ["forall" <+> ppre x <:> ppr k <> ".", ppr t]
-  ppr (TLam x k t) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr k <> ".", ppr t]
+  ppr (TForall x (Just k) t) = with 0 $ nest 2 $ fillSep ["forall" <+> ppre x <:> ppr k <> ".", ppr t]
+  ppr (TForall x Nothing t) = with 0 $ nest 2 $ fillSep ["forall" <+> ppre x <> ".", ppr t]
+  ppr (TLam x (Just k) t) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr k <> ".", ppr t]
+  ppr (TLam x Nothing t) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <> ".", ppr t]
   ppr (TApp (TApp TFun t) u) = with 2 $ fillSep [at 3 (ppr t) <+> "->", ppr u]
   ppr (TApp t u) = with 3 $ fillSep [at 3 (ppr t), at 4 (ppr u)]
   ppr (TLab s) = "'" <> ppre s
@@ -143,13 +145,15 @@ instance Printable Pred where
 
 instance Printable Term where
   ppr (EVar _ s) = ppre s
-  ppr (ELam x t m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
+  ppr (ELam x (Just t) m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
+  ppr (ELam x Nothing m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <> ".", ppr m]
   ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "++", ppr e2]
   ppr (EApp (EApp (EInst (EConst CBranch) _) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "?", ppr e2]
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
-  ppr (ETyLam x k m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
+  ppr (ETyLam x (Just k) m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
+  ppr (ETyLam x Nothing m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <> ".", ppr m]
   ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
     pprI (TyArg t) = brackets (ppr t)
     pprI _         = mempty

@@ -75,12 +75,18 @@ checkTy (TThen pi t) expected =
   TThen <$>
     checkPred pi <*>
     checkTy t expected
-checkTy (TForall x k t) expected =
-  TForall x k <$> bindTy k (checkTy t expected)
-checkTy t@(TLam x k u) expected =
-  do k' <- kindGoal "d"
+checkTy (TForall x Nothing t) expected =
+  do k <- kindGoal "d"
+     checkTy (TForall x (Just k) t) expected
+checkTy (TForall x (Just k) t) expected =
+  TForall x (Just k) <$> bindTy k (checkTy t expected)
+checkTy t@(TLam x Nothing u) expected =
+  do k <- kindGoal "d"
+     checkTy (TLam x (Just k) u) expected
+checkTy t@(TLam x (Just k) u) expected =
+  do k' <- kindGoal "cod"
      expectK t (KFun k k') expected
-     TLam x k <$> bindTy k (checkTy u k')
+     TLam x (Just k) <$> bindTy k (checkTy u k')
 checkTy (TApp t u) expected =
   do -- Step 1: work out the function's kind, including potential lifting
      kfun <- kindGoal "f"

@@ -56,7 +56,7 @@ of the variable, and the `String` is just for printing purposes.
 data Ty =
     TVar Int String (Maybe Kind)
   | TUnif Int (Goal Ty) Kind  -- we essentially have a delayed shiftTN call here: TUnif n g k delays a shift of variables by n
-  | TFun | TThen Pred Ty | TForall String Kind Ty | TLam String Kind Ty | TApp Ty Ty
+  | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
   | TMu Ty | TMapFun Ty
   -- Internals
@@ -115,13 +115,14 @@ data Quant = QuForall String Kind | QuThen Pred
   deriving (Data, Eq, Show, Typeable)
 
 quants :: Ty -> ([Quant], Ty)
-quants (TForall x k t) = first (QuForall x k :) (quants t)
+quants (TForall x (Just k) t) = first (QuForall x k :) (quants t)
+quants (TForall x Nothing t) = error "quants: forall without kind"
 quants (TThen p t) = first (QuThen p :) (quants t)
 quants t = ([], t)
 
 quantify :: [Quant] -> Ty -> Ty
 quantify [] t = t
-quantify (QuForall x k : qus) t = TForall x k (quantify qus t)
+quantify (QuForall x k : qus) t = TForall x (Just k) (quantify qus t)
 quantify (QuThen p : qus) t = TThen p (quantify qus t)
 
 insts :: Ty -> ([Insts], Ty)
@@ -142,9 +143,9 @@ flattenT TFun =
 flattenT (TThen p t) =
   TThen <$> flattenP p <*> flattenT t
 flattenT (TForall x k t) =
-  TForall x <$> flattenK k <*> flattenT t
+  TForall x <$> traverse flattenK k <*> flattenT t
 flattenT (TLam x k t) =
-  TLam x <$> flattenK k <*> flattenT t
+  TLam x <$> traverse flattenK k <*> flattenT t
 flattenT (TApp t u) =
   TApp <$> flattenT t <*> flattenT u
 flattenT t@(TLab _) = return t
@@ -188,7 +189,8 @@ kindOf (TUnif _ _ k) = k
 kindOf TFun = KFun KType (KFun KType KType)
 kindOf (TThen _ t) = kindOf t
 kindOf (TForall _ _ t) = kindOf t
-kindOf (TLam x k t) = KFun k (kindOf t)
+kindOf (TLam x (Just k) t) = KFun k (kindOf t)
+kindOf (TLam x Nothing t) = error "kindOf: TLam without kind"
 kindOf (TApp f _)
   | KFun _ k <- kindOf f = k
 kindOf (TLab _) = KLabel
@@ -233,19 +235,35 @@ shiftTN j n (TSigma t) = TSigma (shiftTN j n t)
 -- shiftTN j n (TShift t) = TShift (shiftTN (n - 1) j t) -- variables within the shift are larger than they appear
 shiftTN j n (TMapFun t) = TMapFun (shiftTN j n t)
 shiftTN j n (TMapArg t) = TMapArg (shiftTN j n t)
-shiftTN j n (TInst is t) = TInst (shiftIs is) (shiftTN j n t) where
-  shiftIs (Unknown ig) = Unknown ig -- FIXME
-  shiftIs (Known is) = Known (map shiftI is)
-  shiftI (TyArg t) = TyArg (shiftTN j n t)
-  shiftT (PrArg v) = PrArg v
+shiftTN j n (TInst is t) = TInst (shiftIs j n is) (shiftTN j n t) where
 shiftTN _ _ t = error $ "shiftTN: unhandled: " ++ show t
+
+shiftIs :: Int -> Int -> Insts -> Insts
+shiftIs j n (Unknown ig) = Unknown ig -- FIXME
+shiftIs j n (Known is) = Known (map shiftI is) where
+  shiftI (TyArg t) = TyArg (shiftTN j n t)
+  shiftI (PrArg v) = PrArg v
 
 shiftPN :: Int -> Int -> Pred -> Pred
 shiftPN j n (PLeq y z) = PLeq (shiftTN j n y) (shiftTN j n z)
 shiftPN j n (PPlus x y z) = PPlus (shiftTN j n x) (shiftTN j n y) (shiftTN j n z)
 
 shiftEN :: Int -> Int -> Term -> Term
-shiftEN j n = everywhere (mkT (shiftTN j n))
+shiftEN _ _ e@(EVar {})   = e
+shiftEN j n (ELam x mt e) = ELam x (shiftTN j n <$> mt) (shiftEN j n e)
+shiftEN j n (EApp f e)    = EApp (shiftEN j n f) (shiftEN j n e)
+shiftEN j n (ETyLam x mk e) = ETyLam x mk (shiftEN (j + 1) n e)
+shiftEN j n (EPrLam p e) = EPrLam (shiftPN j n p) e
+shiftEN j n (EInst e is) = EInst (shiftEN j n e) (shiftIs j n is)
+shiftEN j n (ESing t) = ESing (shiftTN j n t)
+shiftEN j n (ELabel l e) = ELabel (shiftEN j n l) (shiftEN j n e)
+shiftEN j n (EUnlabel e l) = EUnlabel (shiftEN j n e) (shiftEN j n l)
+shiftEN _ _ e@(EConst {}) = e
+shiftEN j n (ESyn t e) = ESyn (shiftTN j n t) e
+shiftEN j n (EAna t e) = EAna (shiftTN j n t) e
+shiftEN j n (EFold e f g h) = EFold (shiftEN j n e) (shiftEN j n f) (shiftEN j n g) (shiftEN j n h)
+shiftEN j n (ETyEqu e q) = ETyEqu (shiftEN j n e) q
+shiftEN j n (ETyped e t) = ETyped e (shiftTN j n t)
 
 shiftT :: Int -> Ty -> Ty
 shiftT j = shiftTN j 1
@@ -257,8 +275,8 @@ data Const =
     -- TODO: can treat label and unlabel as constants with provided type argument?
 
 data Term =
-    EVar Int String | ELam String Ty Term | EApp Term Term
-  | ETyLam String Kind Term  | EPrLam Pred Term | EInst Term Insts
+    EVar Int String | ELam String (Maybe Ty) Term | EApp Term Term
+  | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
   | ESing Ty | ELabel Term Term | EUnlabel Term Term
   | EConst Const
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term

@@ -176,7 +176,7 @@ unifyInstantiating t u unify
 
         instantiate :: Int -> Ty -> UnifyM ([Inst], Ty)
         instantiate 0 t = return ([], t)
-        instantiate n (TForall x k t) =
+        instantiate n (TForall x (Just k) t) =
           do u <- typeGoal' x k
              t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
              (is', t'') <- instantiate (n - 1) t'
@@ -242,13 +242,13 @@ unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
      unify' ra (TRow gs)
      sequence_ [unify' (TApp fa ta) tx | (ta, tx) <- zip gs xs]
      return (Just QMapFun)
-unify0 a@(TForall xa ka ta) x@(TForall xx kx tx) =
+unify0 a@(TForall xa (Just ka) ta) x@(TForall xx (Just kx) tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
      then liftM QForall <$> bindTy ka (unify' ta tx)
      else do trace $ "1 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
-unify0 a@(TLam xa ka ta) x@(TLam xx kx tx) =  -- Note: this case is missing from higher.pdf
+unify0 a@(TLam xa (Just ka) ta) x@(TLam xx (Just kx) tx) =  -- Note: this case is missing from higher.pdf
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
      then liftM QLambda <$> bindTy ka (unify' ta tx)
@@ -388,7 +388,7 @@ normalize t@(TVar i _ _) =
        Nothing -> return (t, QRefl)
        Just def -> do (t', q) <- normalize (shiftTN 0 (i + 1) def)
                       return (t', QTrans QDefn q)
-normalize t0@(TApp (TLam x k t) u) =
+normalize t0@(TApp (TLam x (Just k) t) u) =
   do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
      (t2, q) <- normalize t1
      return (t2, QTrans (QBeta x k t u t1) q)
@@ -415,9 +415,9 @@ normalize (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
   do f' <- subst 0 g f
      (t, q) <- normalize (TApp (TMapFun (TLam v k f')) z)
      return (t, QTrans QDefn q)
-normalize (TApp (TMapFun (TLam v (KFun KType KType) f)) (TApp (TMapFun TFun) z)) =
+normalize (TApp (TMapFun (TLam v (Just (KFun KType KType)) f)) (TApp (TMapFun TFun) z)) =
   do f' <- subst 0 (TApp TFun (TVar 0 v (Just KType))) f
-     (t, q) <- normalize (TApp (TMapFun (TLam v KType f')) z)
+     (t, q) <- normalize (TApp (TMapFun (TLam v (Just KType) f')) z)
      return (t, QTrans QDefn q)
 normalize (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
   do (t, q) <- normalize (TApp (TMapFun (TLam v k (TApp TFun f))) z)
@@ -428,7 +428,7 @@ normalize (TApp (TMapArg (TRow es)) t)
        return (t, QTrans QMapArg q)
 normalize (TMapArg z)
   | KRow (KFun k1 k2) <- kindOf z =
-    return (TLam "X" k1 (TApp (TMapFun (TLam "Y" (KFun k1 k2) (TApp (TVar 0 "Y" (Just (KFun k1 k2))) (TVar 1 "X" (Just k1))))) (shiftTN 0 1 z)), QDefn)
+    return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y" (Just (KFun k1 k2))) (TVar 1 "X" (Just k1))))) (shiftTN 0 1 z)), QDefn)
 normalize (TApp t1 t2) =
   do (t1', q1) <- normalize t1
      case flattenQ q1 of
@@ -449,9 +449,9 @@ normalize (TSigma z) =
 normalize (TPi z) =
   do (z', q) <- normalize z
      return (TPi z', QCon Pi q)
-normalize (TForall x k t) =
+normalize (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize t)
-     return (TForall x k t', q) -- probably should be a congruence rule mentioned around here.... :)
+     return (TForall x (Just k) t', q) -- probably should be a congruence rule mentioned around here.... :)
 normalize (TMapFun t) =
   do (t', q) <- normalize t
      return (TMapFun t', q)
