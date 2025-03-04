@@ -266,50 +266,18 @@ unify0 (TPi ra) (TPi rx) =
   liftM (QCon Pi) <$> unify' ra rx
 unify0 (TPi r) u
   | TRow [t] <- r = liftM (QTrans (QTyConSing Pi (TRow [t]) u)) <$> unify' t u
-  | TUnif n (Goal (uvar, tr)) k <- r =
-    do mt <- readRef tr
-       case mt of
-         Just r' -> unify' (TPi r') u
-         Nothing ->
-           do expectK r k (KRow (kindOf u))
-              trace ("1 binding " ++ uvar ++ " to " ++ show (TRow [shiftTN 0 (negate n) u]))
-              writeRef tr (Just (TRow [shiftTN 0 (negate n) u]))
-              return (Just (QTyConSing Pi (TRow [u]) u))
+  | TLabeled tl tt <- u = liftM (`QTrans` QTyConSing Pi r u) <$> unify' r (TRow [u])
 unify0 t (TPi r)
   | TRow [u] <- r = liftM (`QTrans` QTyConSing Pi t (TRow [u])) <$> unify' t u
-  | TUnif n (Goal (uvar, tr)) k <- r =
-    do mt <- readRef tr
-       case mt of
-         Just r' -> unify' t (TPi r')
-         Nothing ->
-           do expectK r k (KRow (kindOf t))
-              trace ("2 binding " ++ uvar ++ " to " ++ show (TRow [shiftTN 0 (negate n) t]))
-              writeRef tr (Just (TRow [shiftTN 0 (negate n) t]))
-              return (Just (QTyConSing Pi (TRow [t]) t))
+  | TLabeled tl tt <- t = liftM (`QTrans` QTyConSing Pi t r) <$> unify' (TRow [t]) r
 unify0 (TSigma ra) (TSigma rx) =
   liftM (QCon Sigma) <$> unify' ra rx
 unify0 (TSigma r) u
   | TRow [t] <- r = liftM (QTrans (QTyConSing Sigma (TRow [t]) u)) <$> unify' t u
-  | TUnif n (Goal (uvar, tr)) k <- r =
-    do mt <- readRef tr
-       case mt of
-         Just r' -> unify' (TSigma r') u
-         Nothing ->
-           do expectK r k (KRow (kindOf u))
-              trace ("3 binding " ++ uvar ++ " to " ++ show (TRow [shiftTN 0 (negate n) u]))
-              writeRef tr (Just (TRow [shiftTN 0 (negate n) u]))
-              return (Just (QTyConSing Sigma (TRow [u]) u))
+  | TLabeled tl tt <- u = liftM (`QTrans` QTyConSing Sigma r u) <$> unify' r (TRow [u])
 unify0 t (TSigma r)
   | TRow [u] <- r = liftM (`QTrans` QTyConSing Sigma t (TRow [u])) <$> unify' t u
-  | TUnif n (Goal (uvar, tr)) k <- r =
-    do mt <- readRef tr
-       case mt of
-         Just r' -> unify' t (TSigma r')
-         Nothing ->
-           do expectK r k (KRow (kindOf t))
-              trace ("4 binding " ++ uvar ++ " to " ++ show (TRow [shiftTN 0 (negate n) t]))
-              writeRef tr (Just (TRow [shiftTN 0 (negate n) t]))
-              return (Just (QTyConSing Sigma (TRow [t]) t))
+  | TLabeled tl tt <- t = liftM (`QTrans` QTyConSing Sigma t r) <$> unify' (TRow [t]) r
 unify0 a@(TMapFun f) x@(TMapFun g) =
   do q <- unify' f g
      case q of
