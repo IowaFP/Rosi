@@ -96,7 +96,7 @@ types). How bad are the error messages?
 
 --}
 
-unify, check :: HasCallStack => Ty -> Ty -> CheckM (Maybe TyEqu)
+unify, check :: HasCallStack => Ty -> Ty -> CheckM (Maybe Evid)
 unify actual expected =
   do (result, undoes) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing
      when (isNothing result) $
@@ -109,24 +109,24 @@ check actual expected =
        mapM_ perform undoes
      return result
 
-unify' :: HasCallStack => Ty -> Ty -> UnifyM (Maybe TyEqu)
+unify' :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
 unify' actual expected =
   do trace ("(" ++ show actual ++ ") ~ (" ++ show expected ++ ")")
      (actual', q) <- normalize actual
      (expected', q') <- normalize expected -- TODO: do we need to renormalize each time around?
      let f = case q of
-               QRefl -> id
-               _     -> QTrans q
+               VRefl -> id
+               _     -> VTrans q
          f' = case q' of
-               QRefl -> id
-               _     -> QTrans (QSym q')
+               VRefl -> id
+               _     -> VTrans (VEqSym q')
      ((f' . f) <$>) <$> unify0 actual' expected'
 
 
 -- This function handles unification cases `t ~ u` where `u` starts with some
 -- instantiation variables. If `t` start with instantiation variables instead,
 -- pass it as `u` but pass `flip unify` as the third argument.
-unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM (Maybe TyEqu)) -> UnifyM (Maybe TyEqu)
+unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM (Maybe Evid)) -> UnifyM (Maybe Evid)
 unifyInstantiating t u unify
   | Just matches <- match (reverse uis) (reverse (take (length tqs - nuqs) tqs)) =
       do t' <- instantiates (reverse matches) t
@@ -187,11 +187,11 @@ unifyInstantiating t u unify
              (is, t') <- instantiate (n - 1) t
              return (PrArg (VGoal (Goal ("v", vr))) : is, t')
 
-unify0 :: HasCallStack => Ty -> Ty -> UnifyM (Maybe TyEqu)
+unify0 :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
 unify0 (TVar i _ _) (TVar j _ _)
-  | i == j = return (Just QRefl)
+  | i == j = return (Just VRefl)
 unify0 (TUnif n (Goal (_, r)) t) (TUnif n' (Goal (_, r')) t')
-  | n == n', r == r' = return (Just QRefl)
+  | n == n', r == r' = return (Just VRefl)
 unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
   do mt <- readRef r
      case mt of
@@ -204,7 +204,7 @@ unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
                     trace ("About to shiftTN 0 " ++ show (negate n) ++ " (" ++ show actual' ++ ")")
                     writeRef r (Just (shiftTN 0 (negate n) actual'))
                     trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) actual'))
-                    return (Just QRefl)
+                    return (Just VRefl)
             else return Nothing
 unify0 (TUnif n (Goal (uvar, r)) k) expected =
   do mt <- readRef r
@@ -218,81 +218,73 @@ unify0 (TUnif n (Goal (uvar, r)) k) expected =
                     trace ("About to shiftTN 0 " ++ show (negate n) ++ " (" ++ show expected' ++ ")")
                     writeRef r (Just (shiftTN 0 (negate n) expected'))
                     trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) expected'))
-                    return (Just QRefl)
+                    return (Just VRefl)
             else return Nothing
 unify0 t u@(TInst {}) =
   unifyInstantiating t u unify'
 unify0 t@(TInst {}) u =
   unifyInstantiating u t (flip unify')
-unify0 TFun TFun = return (Just QRefl)
+unify0 TFun TFun = return (Just VRefl)
 unify0 (TThen pa ta) (TThen px tx) =
-  liftM2 QThen <$> unifyP pa px <*> unify' ta tx
+  liftM2 VEqThen <$> unifyP pa px <*> unify' ta tx
 
 unify0 (TApp fa aa) (TApp fx ax) =
   -- TODO: wrong
-  liftM2 QApp <$> unify' fa fx <*> unify' aa ax
+  liftM2 VEqApp <$> unify' fa fx <*> unify' aa ax
 unify0 (TApp (TMapFun fa) (TRow ts)) tx =
   do unify' (TRow [TApp fa ta | ta <- ts]) tx
-     return (Just QMapFun)
+     return (Just VEqMap)
 unify0 (TApp (TMapFun fa) ra) (TRow []) =
   do unify' ra (TRow [])
-     return (Just QMapFun)
+     return (Just VEqMap)
 unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
   do gs <- replicateM (length xs) (typeGoal' "t" (kindOf tx))
      unify' ra (TRow gs)
      sequence_ [unify' (TApp fa ta) tx | (ta, tx) <- zip gs xs]
-     return (Just QMapFun)
+     return (Just VEqMap)  -- wrong
 unify0 a@(TForall xa (Just ka) ta) x@(TForall xx (Just kx) tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
-     then liftM QForall <$> bindTy ka (unify' ta tx)
+     then liftM VEqForall <$> bindTy ka (unify' ta tx)
      else do trace $ "1 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
 unify0 a@(TLam xa (Just ka) ta) x@(TLam xx (Just kx) tx) =  -- Note: this case is missing from higher.pdf
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
-     then liftM QLambda <$> bindTy ka (unify' ta tx)
+     then liftM VEqLambda <$> bindTy ka (unify' ta tx)
      else do trace $ "2 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
 unify0 (TLab sa) (TLab sx)
-  | sa == sx = return (Just QRefl)
+  | sa == sx = return (Just VRefl)
 unify0 (TSing ta) (TSing tx) =
-  liftM QSing <$> unify' ta tx
+  liftM VEqSing <$> unify' ta tx
 unify0 (TLabeled la ta) (TLabeled lx tx) =
-  liftM2 QLabeled <$> unify' la lx <*> unify' ta tx
+  liftM2 VEqLabeled <$> unify' la lx <*> unify' ta tx
 unify0 (TRow ra) (TRow rx) =
-  liftM QRow . sequence <$> zipWithM unify' ra rx
+  liftM VEqRow . sequence <$> zipWithM unify' ra rx
 unify0 (TPi ra) (TPi rx) =
-  liftM (QCon Pi) <$> unify' ra rx
+  liftM (VEqCon Pi) <$> unify' ra rx
 unify0 (TPi r) u
-  | TRow [t] <- r = liftM (QTrans (QTyConSing Pi (TRow [t]) u)) <$> unify' t u
-  | TLabeled tl tt <- u = liftM (`QTrans` QTyConSing Pi r u) <$> unify' r (TRow [u])
+  | TRow [t] <- r = liftM (VTrans (VEqTyConSing Pi)) <$> unify' t u
+  | TLabeled tl tt <- u = liftM (`VTrans` VEqTyConSing Pi) <$> unify' r (TRow [u])
 unify0 t (TPi r)
-  | TRow [u] <- r = liftM (`QTrans` QTyConSing Pi t (TRow [u])) <$> unify' t u
-  | TLabeled tl tt <- t = liftM (`QTrans` QTyConSing Pi t r) <$> unify' (TRow [t]) r
+  | TRow [u] <- r = liftM (`VTrans` VEqTyConSing Pi) <$> unify' t u
+  | TLabeled tl tt <- t = liftM (`VTrans` VEqTyConSing Pi) <$> unify' (TRow [t]) r
 unify0 (TSigma ra) (TSigma rx) =
-  liftM (QCon Sigma) <$> unify' ra rx
+  liftM (VEqCon Sigma) <$> unify' ra rx
 unify0 (TSigma r) u
-  | TRow [t] <- r = liftM (QTrans (QTyConSing Sigma (TRow [t]) u)) <$> unify' t u
-  | TLabeled tl tt <- u = liftM (`QTrans` QTyConSing Sigma r u) <$> unify' r (TRow [u])
+  | TRow [t] <- r = liftM (VTrans (VEqTyConSing Sigma)) <$> unify' t u
+  | TLabeled tl tt <- u = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' r (TRow [u])
 unify0 t (TSigma r)
-  | TRow [u] <- r = liftM (`QTrans` QTyConSing Sigma t (TRow [u])) <$> unify' t u
-  | TLabeled tl tt <- t = liftM (`QTrans` QTyConSing Sigma t r) <$> unify' (TRow [t]) r
+  | TRow [u] <- r = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' t u
+  | TLabeled tl tt <- t = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' (TRow [t]) r
 unify0 a@(TMapFun f) x@(TMapFun g) =
   do q <- unify' f g
      case q of
-       Just QRefl -> return (Just QRefl)
-       Just _     -> return (Just QMapFun)
+       Just VRefl -> return (Just VRefl)
+       Just q     -> return (Just (VEqMapCong q))
        Nothing    ->
         do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
-           return Nothing
-unify0 a@(TMapArg f) x@(TMapArg g) =
-  do q <- unify' f g
-     case q of
-       Just QRefl -> return (Just QRefl)
-       Just _     -> return (Just QMapFun)
-       Nothing    ->
-        do trace $ "4 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
 unify0 t u =
   do trace $ "5 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
@@ -340,41 +332,41 @@ instance HasTyVars Pred where
   subst v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
   subst v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
 
-normalize' :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, TyEqu)
+normalize' :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, Evid)
 normalize' t =
   do (u, q) <- normalize t
      theKCtxt <- asks kctxt
      case q of
-       QRefl -> return (u, q)
+       VRefl -> return (u, q)
        _     -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
                    return (u, q)
 
-normalize :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, TyEqu)
+normalize :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, Evid)
 normalize t@(TVar i _ _) =
   do (_, mdef) <- asks ((!! i) . kctxt)
      case mdef of
-       Nothing -> return (t, QRefl)
+       Nothing -> return (t, VRefl)
        Just def -> do (t', q) <- normalize (shiftTN 0 (i + 1) def)
-                      return (t', QTrans QDefn q)
+                      return (t', VTrans VEqDefn q)
 normalize t0@(TApp (TLam x (Just k) t) u) =
   do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
      (t2, q) <- normalize t1
-     return (t2, QTrans (QBeta x k t u t1) q)
+     return (t2, VTrans VEqBeta q)
 normalize (TApp (TPi r) t) =
   do (t1, q) <- normalize (TPi (TApp (TMapArg r) t))  -- To do: check kinding
-     return (t1, QTrans (QLiftTyCon Pi r t) q)
+     return (t1, VTrans (VEqLiftTyCon Pi) q)
 normalize (TApp (TSigma r) t) =
   do (t1, q) <- normalize (TSigma (TApp (TMapArg r) t))
-     return (t1, QTrans (QLiftTyCon Sigma r t) q)
+     return (t1, VTrans (VEqLiftTyCon Sigma) q)
 normalize (TApp (TMapFun f) (TRow es))
   | Just ls <- mapM label es, Just ts <- mapM labeled es =
     do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (TApp f) ts)))
-       return (t, QTrans QMapFun q)
+       return (t, VTrans VEqMap q)
 -- The next rule implements `map id == id`
 normalize (TApp (TMapFun f) z)
   | TLam _ k (TVar 0 _ _) <- f =
     do (z, q) <- normalize z
-       return (z, QTrans QMapFun q)
+       return (z, VTrans VEqMapId q)
 -- The following rules (attempt to) implement `map f . map g == map (f . g)`.
 -- The need for special cases arises from our various ways to represent type
 -- functions: they're not all `TLam`. There are probably some cases missing: in
@@ -382,41 +374,42 @@ normalize (TApp (TMapFun f) z)
 normalize (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
   do f' <- subst 0 g f
      (t, q) <- normalize (TApp (TMapFun (TLam v k f')) z)
-     return (t, QTrans QDefn q)
+     return (t, VTrans VEqMapCompose q)
 normalize (TApp (TMapFun (TLam v (Just (KFun KType KType)) f)) (TApp (TMapFun TFun) z)) =
   do f' <- subst 0 (TApp TFun (TVar 0 v (Just KType))) f
      (t, q) <- normalize (TApp (TMapFun (TLam v (Just KType) f')) z)
-     return (t, QTrans QDefn q)
+     return (t, VTrans VEqMapCompose q)
 normalize (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
   do (t, q) <- normalize (TApp (TMapFun (TLam v k (TApp TFun f))) z)
-     return (t, QTrans QDefn q)
+     return (t, VTrans VEqMapCompose q)
 normalize (TApp (TMapArg (TRow es)) t)
   | Just ls <- mapM label es, Just fs <- mapM labeled es =
     do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
-       return (t, QTrans QMapArg q)
+       return (t, VTrans VEqMapCompose q)
 normalize (TMapArg z)
   | KRow (KFun k1 k2) <- kindOf z =
-    return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y" (Just (KFun k1 k2))) (TVar 1 "X" (Just k1))))) (shiftTN 0 1 z)), QDefn)
+    return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y" (Just (KFun k1 k2))) (TVar 1 "X" (Just k1))))) (shiftTN 0 1 z)), VEqDefn)
 normalize (TApp t1 t2) =
   do (t1', q1) <- normalize t1
-     case flattenQ q1 of
-       QRefl -> do (t2', q2) <- normalize t2
-                   return (TApp t1 t2', QApp QRefl q2)
+     q1' <- flattenV q1
+     case q1' of
+       VRefl -> do (t2', q2) <- normalize t2
+                   return (TApp t1 t2', VEqApp VRefl q2)
        _ -> do (t', q) <- normalize (TApp t1' t2)
-               return (t', QTrans (QApp q1 QRefl) q)
+               return (t', VTrans (VEqApp q1 VRefl) q)
 normalize (TLabeled tl te) =
   do (tl', ql) <- normalize tl
      (te', qe) <- normalize te
-     return (TLabeled tl' te', QLabeled ql qe)
+     return (TLabeled tl' te', VEqLabeled ql qe)
 normalize (TRow ts) =
   do (ts', qs) <- unzip <$> mapM normalize ts
-     return (TRow ts', QRow qs)
+     return (TRow ts', VEqRow qs)
 normalize (TSigma z) =
   do (z', q) <- normalize z
-     return (TSigma z', QCon Sigma q)
+     return (TSigma z', VEqCon Sigma q)
 normalize (TPi z) =
   do (z', q) <- normalize z
-     return (TPi z', QCon Pi q)
+     return (TPi z', VEqCon Pi q)
 normalize (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize t)
      return (TForall x (Just k) t', q) -- probably should be a congruence rule mentioned around here.... :)
@@ -432,17 +425,17 @@ normalize (TInst (Known is) t) =
   do is' <- mapM normI is
      first (TInst (Known (map fst is'))) <$> normalize t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
   where normI (TyArg t) = first TyArg <$> normalize t
-        normI (PrArg v) = return (PrArg v, QRefl)
+        normI (PrArg v) = return (PrArg v, VRefl)
 -- TODO: remaining homomorphic cases
-normalize t = return (t, QRefl)
+normalize t = return (t, VRefl)
 
 normalizeP :: MonadCheck m => Pred -> m Pred -- no evidence structure for predicate equality yet soooo....
 normalizeP (PLeq x y) = PLeq <$> (fst <$> normalize x) <*> (fst <$> normalize y)
 normalizeP (PPlus x y z) = PPlus <$> (fst <$> normalize x) <*> (fst <$> normalize y) <*> (fst <$> normalize z)
 
-unifyP :: Pred -> Pred -> UnifyM (Maybe PrEqu)
-unifyP (PLeq y z) (PLeq y' z') = liftM2 QLeq <$> unify' y y' <*> unify' z z'
-unifyP (PPlus x y z) (PPlus x' y' z') = liftM3 QPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'
+unifyP :: Pred -> Pred -> UnifyM (Maybe Evid)
+unifyP (PLeq y z) (PLeq y' z') = liftM2 VEqLeq <$> unify' y y' <*> unify' z z'
+unifyP (PPlus x y z) (PPlus x' y' z') = liftM3 VEqPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'
 
 typeGoal :: MonadCheck m => String -> m Ty
 typeGoal s =

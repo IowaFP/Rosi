@@ -10,13 +10,13 @@ import Checker.Unify
 import Checker.Monad
 import Syntax
 
-expectT :: Term -> Ty -> Ty -> CheckM TyEqu
+expectT :: Term -> Ty -> Ty -> CheckM Evid
 expectT m actual expected =
   do trace ("expect (" ++ show actual ++ ") (" ++ show expected ++ ")")
      b <- unify actual expected
      case b of
        Nothing -> typeMismatch m actual expected
-       Just q  -> return q
+       Just q  -> flattenV q
 
 
 typeMismatch :: Term -> Ty -> Ty -> CheckM a
@@ -25,10 +25,9 @@ typeMismatch m actual expected =
      expected' <- flattenT expected
      throwError (ErrTypeMismatch m actual' expected')
 
-wrap :: TyEqu -> Term -> Term
-wrap q t = case flattenQ q of
-             QRefl -> t
-             q'    -> ETyEqu t q'
+wrap :: Evid -> Term -> Term
+wrap VRefl t = t
+wrap q t     = ECast t q
 
 checkTerm' :: Bool -> Term -> Ty -> CheckM Term
 checkTerm' implicitTyLams e t = checkTerm implicitTyLams e =<< flattenT t
@@ -194,12 +193,12 @@ checkTerm0 implicitTyLams e0@(ETyped e t) expected =
      e' <- checkTerm False e t'  -- any reason to preserve the type ascription?
      elimForm expected $ \expected ->
        do q <- expectT e0 t expected
-          return (ETyEqu e' q)
+          return (ECast e' q)
 
 checkTop :: Term -> Ty -> CheckM Term
 checkTop m t =
   do (t', q) <- normalize' t
      m' <- checkTerm True m t'
      return (case q of
-               QRefl -> m'
-               _ -> ETyEqu m' q)
+               VRefl -> m'
+               _ -> ECast m' q)

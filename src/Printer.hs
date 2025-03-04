@@ -179,13 +179,10 @@ instance Printable Term where
   ppr (EFold {}) = "<fold>"
   -- Not printing internals (yet)
   ppr (EPrLam _ m) = ppr m
-  ppr (ETyEqu m _) = ppr m
+  ppr (ECast m _) = ppr m
 
 instance Printable Evid where
   ppr _ = "<evid>"
-
-instance Printable TyEqu where
-  ppr _ = "<equ>"
 
 pprTyDecl :: String -> Ty -> RDoc ann
 pprTyDecl x ty = fillSep [ppre x <+> ":", ppr ty]

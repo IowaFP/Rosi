@@ -105,7 +105,7 @@ eval' h (EApp f e) = app h (eval h f) (eval h e) where
 eval' h (ETyLam s (Just k) e) = VTyLam h s k e
 eval' h (EInst e (Known is)) = foldl (inst h) (eval h e) is
 eval' h e0@(EInst e (Unknown g)) = error $ "unexpected unknown instantiation: " ++ show e0
-eval' h (ETyEqu e _) = eval h e
+eval' h (ECast e _) = eval h e
 eval' h (EPrLam _ e) = eval h e
 eval' h (ESing t) = VSing (substTy h t)
 eval' h (ELabel l e)

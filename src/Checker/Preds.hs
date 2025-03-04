@@ -192,7 +192,7 @@ solve (cin, p, r) =
     | TLam v (Just k) (TVar i w _) <- f  -- I think this case should actually have been normalized away....
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel y =
-      fmap (VPredEq (QLeq (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar i v (Just k)) t t) | t <- ts]) QRefl) .
+      fmap (VPredEq (VEqLeq (VEqMap `VTrans` VEqRow [ VEqSym VEqBeta | t <- ts]) VRefl) .
             VLeqLiftL f) <$> everything (PLeq (TRow y) z)
   mapFunApp p@(PLeq (TApp (TMapFun f) y) (TRow [])) =
     fmap (VLeqLiftL f) <$> everything (PLeq y (TRow []))
@@ -203,7 +203,7 @@ solve (cin, p, r) =
     | TLam v (Just k) (TVar i w _) <- f
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel z =
-      fmap (VPredEq (QLeq QRefl (QMapFun `QTrans` QRow [ QSym (QBeta v k (TVar i v (Just k)) t t) | t <- ts])) .
+      fmap (VPredEq (VEqLeq VRefl (VEqMap `VTrans` VEqRow [ VEqSym VEqBeta | t <- ts])) .
             VLeqLiftL f) <$> everything (PLeq y (TRow z))
   mapFunApp p@(PPlus (TApp (TMapFun f) x) (TApp (TMapFun g) y) (TApp (TMapFun h) z)) =
     do force p f g

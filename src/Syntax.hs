@@ -262,7 +262,7 @@ shiftEN _ _ e@(EConst {}) = e
 shiftEN j n (ESyn t e) = ESyn (shiftTN j n t) e
 shiftEN j n (EAna t e) = EAna (shiftTN j n t) e
 shiftEN j n (EFold e f g h) = EFold (shiftEN j n e) (shiftEN j n f) (shiftEN j n g) (shiftEN j n h)
-shiftEN j n (ETyEqu e q) = ETyEqu (shiftEN j n e) q
+shiftEN j n (ECast e q) = ECast (shiftEN j n e) q
 shiftEN j n (ETyped e t) = ETyped e (shiftTN j n t)
 
 shiftT :: Int -> Ty -> Ty
@@ -280,7 +280,7 @@ data Term =
   | ESing Ty | ELabel Term Term | EUnlabel Term Term
   | EConst Const
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
-  | ETyEqu Term TyEqu | ETyped Term Ty
+  | ECast Term Evid | ETyped Term Ty
   deriving (Data, Eq, Show, Typeable)
 
 flattenE :: MonadIO m => Term -> m Term
@@ -294,101 +294,104 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
   flattenInsts m = return m
 
 data Evid =
-    VVar Int   -- VVars are entirely internal, so I'll only give them de Bruijn indices
-  | VGoal (Goal Evid) | VRefl | VTrans Evid Evid | VPredEq PrEqu Evid -- can this happen?
-  | VLeqLiftL Ty Evid | VLeqLiftR Evid Ty | VPlusLiftL Ty Evid | VPlusLiftR Evid Ty
-  | VPlusL Evid | VPlusR Evid
-  | VLeqSimple [Int] | VPlusSimple [Either Int Int]
+    VVar Int | VGoal (Goal Evid)     -- VVars are entirely internal, so I'll only give them de Bruijn indices
+  | VPredEq Evid Evid             -- p1 ~ p2 /\ p1  ==>  p2   but can this happen???
+  -- Shared: Leq and Eq:
+  | VRefl | VTrans Evid Evid
+  -- Leq proofs
+  | VLeqSimple [Int]              -- Ground evidence for r1 <= r2: indices of r1 entries in r2
+  | VLeqLiftL Ty Evid             -- r1 <= r2      ==>  f r1 <= f r2
+  | VLeqLiftR Evid Ty             -- r1 <= r2      ==>  r1 t <= r2 t
+  | VPlusLeqL Evid                -- r1 + r2 ~ r3  ==>  r1 <= r3
+  | VPlusLeqR Evid                -- r1 + r2 ~ r3  ==>  r2 <= r3
+  -- Plus proofs
+  | VPlusSimple [Either Int Int]  -- Ground evidence for r1 + r2 ~ r3: indices of each r3 entry in (Left) r1 or (Right) r2
+  | VPlusLiftL Ty Evid            -- r1 + r2 ~ r3  ==>  f r1 + f r2 ~ f r3
+  | VPlusLiftR Evid Ty            -- r1 + r2 ~ r3  ==>  r1 t + r2 t ~ r3 t
+  -- Eq proofs
+  --
+  -- For now, I'm only keeping enough information here to identify the rule,
+  -- not to identify the rule instance. As equality proofs should be irrelevant
+  -- at runtime, this shouldn't be able to immediately hurt us. It does make
+  -- direct translation to Agda seem further and further away...
+  | VEqSym Evid
+  | VEqBeta                         -- (λ α : κ. τ) υ ~ τ [υ / α]
+  | VEqMap                          -- ^f {t1, ..., tn} ~ {f t1, ..., f tn}
+  | VEqDefn                         -- Inlining definitions
+  --
+  | VEqLiftTyCon TyCon                -- (K r) t ~ K (r^ t), where r^ t = ^(\x. x t) r
+  | VEqTyConSing TyCon                -- {l := t} ~ K {l := t}
+  -- Functor laws for map
+  | VEqMapId                        -- ^(\x.x) r ~ r
+  | VEqMapCompose                   -- ^f (^g r) ~ ^(f . g) r
+  -- Congruence rules
+  | VEqThen Evid Evid | VEqLambda Evid | VEqForall Evid | VEqApp Evid Evid
+  | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid | VEqCon TyCon Evid
+  | VEqMapCong Evid
+  | VEqLeq Evid Evid | VEqPlus Evid Evid Evid
   deriving (Data, Eq, Show, Typeable)
 
-flattenV :: MonadIO m => Evid -> m Evid
-flattenV (VVar i) = return (VVar i)
-flattenV v@(VGoal (Goal (_, r))) =
-  do w <- liftIO $ readIORef r
-     case w of
-       Nothing -> return v
-       Just w' -> return w'
-flattenV (VTrans v w) = VTrans <$> flattenV v <*> flattenV w
-flattenV (VPredEq q v) = VPredEq <$> pure (flattenQP q) <*> flattenV v
-flattenV (VLeqLiftL t v) = VLeqLiftL t <$> flattenV v
-flattenV (VLeqLiftR v t) = flip VLeqLiftR t <$> flattenV v
-flattenV (VPlusLiftL t v) = VPlusLiftL t <$> flattenV v
-flattenV (VPlusLiftR v t) = flip VPlusLiftR t <$> flattenV v
-flattenV (VPlusL v) = VPlusL <$> flattenV v
-flattenV (VPlusR v) = VPlusR <$> flattenV v
-flattenV (VLeqSimple is) = return (VLeqSimple is)
-flattenV (VPlusSimple is) = return (VPlusSimple is)
-flattenV v = error $ "flattenV: unhandled: " ++ show v
-
--- Clearly had this idea after writing the above...
 data TyCon = Pi | Sigma
   deriving (Data, Eq, Show, Typeable)
 
-data TyEqu =
-    QRefl | QSym TyEqu | QTrans TyEqu TyEqu | QBeta String Kind Ty Ty Ty -- (λ α : κ. τ) υ ≡ τ [υ / α]
-  | QThen PrEqu TyEqu | QLambda TyEqu | QForall TyEqu | QApp TyEqu TyEqu | QLabeled TyEqu TyEqu | QRow [TyEqu] | QSing TyEqu
-  | QMapFun | QMapArg | QCon TyCon TyEqu | QLiftTyCon TyCon Ty Ty | QTyConSing TyCon Ty Ty
-  | QDefn -- like QBeta, I guess?
-  deriving (Data, Eq, Show, Typeable)
+foldUnary :: (Evid -> Evid) -> Evid -> Evid
+foldUnary _ VRefl = VRefl
+foldUnary k q     = k q
 
-flattenQ :: TyEqu -> TyEqu
-flattenQ (QSym q) =
-  case flattenQ q of
-    QRefl -> QRefl
-    q'    -> QSym q'
-flattenQ (QTrans q0 q1) =
-  case (flattenQ q0, flattenQ q1) of
-    (QRefl, QRefl) -> QRefl
-    (QRefl, q1') -> q1'
-    (q0', QRefl) -> q0'
-    (q0', q1') -> QTrans q0' q1'
-flattenQ (QThen qp qt) =
-  case (flattenQP qp, flattenQ qt) of
-    (QLeq QRefl QRefl, QRefl) -> QRefl
-    (QPlus QRefl QRefl QRefl, QRefl) -> QRefl
-    (qp', qt') -> QThen qp' qt'
-flattenQ (QLambda q) =
-  case flattenQ q of
-    QRefl -> QRefl
-    q'    -> QLambda q'
-flattenQ (QForall q) =
-  case flattenQ q of
-    QRefl -> QRefl
-    q'    -> QForall q'
-flattenQ (QApp q0 q1) =
-  case (flattenQ q0, flattenQ q1) of
-    (QRefl, QRefl) -> QRefl
-    (q0', q1') -> QApp q0' q1'
-flattenQ (QLabeled q0 q1) =
-  case (flattenQ q0, flattenQ q1) of
-    (QRefl, QRefl) -> QRefl
-    (q0', q1') -> QLabeled q0' q1'
-flattenQ (QRow []) = QRefl
-flattenQ (QRow qs)
-  | all (QRefl ==) qs' = QRefl
-  | otherwise = QRow qs'
-  where qs' = map flattenQ qs
-flattenQ (QSing q) =
-  case flattenQ q of
-    QRefl -> QRefl
-    q'    -> QSing q'
-flattenQ (QCon k q) =
-  case flattenQ q of
-    QRefl -> QRefl
-    q'    -> QCon k q'
-flattenQ q = q
+foldBinary :: (Evid -> Evid -> Evid) -> Evid -> Evid -> Evid
+foldBinary _ VRefl VRefl = VRefl
+foldBinary k q1 q2       = k q1 q2
 
-data PrEqu = QLeq TyEqu TyEqu | QPlus TyEqu TyEqu TyEqu
-  deriving (Data, Eq, Show, Typeable)
-
-flattenQP :: PrEqu -> PrEqu
-flattenQP (QLeq qz qy) = QLeq (flattenQ qz) (flattenQ qy)
-flattenQP (QPlus qx qy qz) = QPlus (flattenQ qx) (flattenQ qy) (flattenQ qz)
+flattenV :: MonadIO m => Evid -> m Evid
+flattenV v@(VGoal (Goal (_, r))) =
+    do w <- liftIO $ readIORef r
+       case w of
+         Nothing -> return v
+         Just w' -> return w'
+flattenV (VPredEq v1 v2) =
+  do v1' <- flattenV v1
+     v2' <- flattenV v2
+     return $ case v1' of
+       VRefl -> v2'
+       _     -> VPredEq v1' v2'
+flattenV VRefl = return VRefl
+flattenV (VTrans v1 v2) =
+  do v1' <- flattenV v1
+     v2' <- flattenV v2
+     return $ case (v1', v2') of
+       (VRefl, _) -> v2'
+       (_, VRefl) -> v1'
+       _          -> VTrans v1' v2'
+flattenV (VLeqLiftL t v) = foldUnary (VLeqLiftL t) <$> flattenV v
+flattenV (VLeqLiftR v t) = foldUnary (`VLeqLiftR` t) <$> flattenV v
+flattenV (VPlusLeqL v) = VPlusLeqL <$> flattenV v
+flattenV (VPlusLeqR v) = VPlusLeqR <$> flattenV v
+flattenV (VPlusLiftL t v) = foldUnary (VPlusLiftL t) <$> flattenV v
+flattenV (VPlusLiftR v t) = foldUnary (`VPlusLiftR` t) <$> flattenV v
+flattenV (VEqSym v) = foldUnary VEqSym <$> flattenV v
+flattenV (VEqThen v1 v2) = foldBinary VEqThen <$> flattenV v1 <*> flattenV v2
+flattenV (VEqLambda v) = foldUnary VEqLambda <$> flattenV v
+flattenV (VEqForall v) = foldUnary VEqForall <$> flattenV v
+flattenV (VEqApp v1 v2) = foldBinary VEqApp <$> flattenV v1 <*> flattenV v2
+flattenV (VEqLabeled v1 v2) = foldBinary VEqLabeled <$> flattenV v1 <*> flattenV v2
+flattenV (VEqRow vs) =
+  do vs' <- mapM flattenV vs
+     return (if all (VRefl ==) vs' then VRefl else VEqRow vs')
+flattenV (VEqSing v) = foldUnary VEqSing <$> flattenV v
+flattenV (VEqCon t v) = foldUnary (VEqCon t) <$> flattenV v
+flattenV (VEqMapCong v) = foldUnary VEqMapCong <$> flattenV v
+flattenV (VEqLeq v1 v2) = foldBinary VEqLeq <$> flattenV v1 <*> flattenV v2
+flattenV (VEqPlus v1 v2 v3) =
+  do vs' <- mapM flattenV [v1, v2, v3]
+     return (if all (VRefl ==) vs' then VRefl else VEqPlus (vs' !! 0) (vs' !! 1) (vs' !! 2))
+flattenV v = return v
+  -- Covers: VVar, VRefl, VLeqSimple, VPlusSimple, VEqBeta, VEqMap, VEqDefn, VEqLiftTyCon,
+  -- VEqTyConSing, VEqMapId, VEqMapCompose
 
 --
 
 data Error = ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
-           | ErrTypeMismatch Term Ty Ty | ErrTypeMismatchFD Pred (Maybe TyEqu) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Ty Kind Kind
+           | ErrTypeMismatch Term Ty Ty | ErrTypeMismatchFD Pred (Maybe Evid) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Ty Kind Kind
            | ErrNotEntailed [(Pred, [Pred])]
            | ErrUnboundVar String | ErrUnboundTyVar String
            | ErrOther String

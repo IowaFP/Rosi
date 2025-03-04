@@ -82,7 +82,7 @@ instance HasVars Term where
   scope (EInst m (Unknown g)) = EInst <$> scope m <*> return (Unknown g) -- how is this case actually possible?
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
-  scope ETyEqu{} = error "scope: ETyEqu"
+  scope ECast{} = error "scope: ETyEqu"
 
 instance HasVars Decl where
   scope (TmDecl x t m) = TmDecl x <$> withError (ErrContextType t) (scope t) <*> withError (ErrContextTerm m) (scope m)
