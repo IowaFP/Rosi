@@ -135,6 +135,7 @@ instance Printable Ty where
 instance Printable Pred where
   ppr (PLeq t u) = fillSep [ppr t <+> "<", ppr u ]
   ppr (PPlus t u v) = fillSep [ppr t <+> "+", ppr u <+> "~", ppr v]
+  ppr (PEq t u) = fillSep [ppr t <+> "~", ppr u]
 
 -- Precedence table:
 --   lambda           0

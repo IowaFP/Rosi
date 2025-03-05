@@ -170,6 +170,8 @@ solve (cin, p, r) =
              return (Just (VPlusSimple is))
     where align (Left i, TLabeled _ t) = force p t u where TLabeled _ u = x !! i
           align (Right i, TLabeled _ t) = force p t u where TLabeled _ u = y !! i
+  prim (PEq t u) =
+    unifyProductive t u
   prim _ = return Nothing
 
   funCallsFrom :: [Ty] -> Maybe ([Ty], [Ty], [Ty])
@@ -221,10 +223,10 @@ loop ps =
      else throwError . ErrNotEntailed =<< mapM notEntailed ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
-          do b' <- solve p
+          do (b', TCOut ps') <- listen $ solve p
              once (b || b')
                   (if b' then qs else p : qs)
-                  ps
+                  (ps ++ ps')
         notEntailed (cin, p, _) =
           do p' <- flattenP p
              ps' <- mapM flattenP (pctxt cin)

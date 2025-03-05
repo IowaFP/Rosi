@@ -28,7 +28,7 @@ flattenK (KFun dom cod) = KFun <$> flattenK dom <*> flattenK cod
 flattenK k = return k
 
 data Pred =
-    PLeq Ty Ty | PPlus Ty Ty Ty
+    PLeq Ty Ty | PPlus Ty Ty Ty | PEq Ty Ty
   deriving (Data, Eq, Show, Typeable)
 
 newtype Goal t = Goal (String, IORef (Maybe t))
@@ -129,6 +129,11 @@ insts :: Ty -> ([Insts], Ty)
 insts (TInst is t) = first (is :) (insts t)
 insts t = ([], t)
 
+spine :: Ty -> (Ty, [Ty])
+spine (TApp f t) = (f', ts ++ [t])
+  where (f', ts) = spine f
+spine t = (t, [])
+
 -- I really need to learn SYB
 flattenT :: MonadIO m => Ty -> m Ty
 flattenT t@(TVar i v Nothing) = return t
@@ -181,6 +186,8 @@ flattenP (PLeq z y) =
   PLeq <$> flattenT z <*> flattenT y
 flattenP (PPlus x y z) =
   PPlus <$> flattenT x <*> flattenT y <*> flattenT z
+flattenP (PEq t u) =
+  PEq <$> flattenT t <*> flattenT u
 
 kindOf :: HasCallStack => Ty -> Kind
 kindOf (TVar _ _ (Just k)) = k
@@ -295,7 +302,7 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
 
 data Evid =
     VVar Int | VGoal (Goal Evid)     -- VVars are entirely internal, so I'll only give them de Bruijn indices
-  | VPredEq Evid Evid             -- p1 ~ p2 /\ p1  ==>  p2   but can this happen???
+  | VPredEq Evid Evid             -- p1 ~ p2 /\ p1  ==>  p2
   -- Shared: Leq and Eq:
   | VRefl | VTrans Evid Evid
   -- Leq proofs

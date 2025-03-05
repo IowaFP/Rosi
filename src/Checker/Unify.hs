@@ -25,8 +25,10 @@ data Update where
 perform :: MonadIO m => Update -> m ()
 perform (U ref val) = liftIO $ writeIORef ref val
 
-newtype UnifyM a = UM { runUnifyM :: StateT (Maybe [Dynamic]) (WriterT [Update] CheckM) a }
-  deriving (Functor, Applicative, Monad, MonadWriter [Update], MonadError Error, MonadIO)
+type US = Maybe [Dynamic]
+type UW = ([Update], [(Pred, IORef (Maybe Evid))])
+newtype UnifyM a = UM { runUnifyM :: StateT US (WriterT UW CheckM) a }
+  deriving (Functor, Applicative, Monad, MonadWriter UW, MonadError Error, MonadIO, MonadState US)
 
 liftC :: CheckM a -> UnifyM a
 liftC = UM . lift . lift
@@ -34,13 +36,13 @@ liftC = UM . lift . lift
 instance MonadRef UnifyM where
   newRef v = UM $ StateT $ \checking -> WriterT (body checking) where
     body Nothing = do r <- liftIO (newIORef v)
-                      return ((r, Nothing), [])
+                      return ((r, Nothing), ([], []))
     body (Just rs) = do r <- liftIO (newIORef v)
-                        return ((r, Just (toDyn r : rs)), [])
+                        return ((r, Just (toDyn r : rs)), ([], []))
   readRef = liftIO . readIORef
   writeRef r v =
     do v' <- readRef r
-       tell [U r v']
+       tell ([U r v'], [])
        liftIO (writeIORef r v)
 
 instance MonadReader TCIn UnifyM where
@@ -52,13 +54,13 @@ instance MonadCheck UnifyM where
   defineTy k t m = UM $ StateT $ \checking -> WriterT $ defineTy k t (runWriterT $ runStateT (runUnifyM m) checking)
   bind t m = UM $ StateT $ \checking -> WriterT $ bind t (runWriterT $ runStateT (runUnifyM m) checking)
   assume g m = UM $ StateT $ \checking -> WriterT $ assume g (runWriterT $ runStateT (runUnifyM m) checking)
-  require p r = UM $ lift $ lift $ require p r
+  require p r = tell ([], [(p, r)])
   fresh = UM . lift . lift . fresh
 
 canUpdate :: Typeable a => IORef a -> UnifyM Bool
 canUpdate r = UM (StateT $ \checking -> WriterT (body checking)) where
-  body Nothing = return ((True, Nothing), [])
-  body (Just rs) = return ((any ok rs, Just rs), [])
+  body Nothing = return ((True, Nothing), ([], []))
+  body (Just rs) = return ((any ok rs, Just rs), ([], []))
   ok dr = case fromDynamic dr of
             Just r' -> r == r'
             Nothing -> False
@@ -96,18 +98,51 @@ types). How bad are the error messages?
 
 --}
 
-unify, check :: HasCallStack => Ty -> Ty -> CheckM (Maybe Evid)
+unify, check, unifyProductive :: HasCallStack => Ty -> Ty -> CheckM (Maybe Evid)
 unify actual expected =
-  do (result, undoes) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing
-     when (isNothing result) $
-       mapM_ perform undoes
+  do (result, (undoes, preds)) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing
+     if isNothing result
+     then mapM_ perform undoes
+     else mapM_ (uncurry require) preds
      return result
 
 check actual expected =
-  do (result, undoes) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) (Just [])
-     when (isNothing result) $
-       mapM_ perform undoes
+  do (result, (undoes, preds)) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) (Just [])
+     if isNothing result
+     then mapM_ perform undoes
+     else mapM_ (uncurry require) preds
      return result
+
+unifyProductive actual expected =
+  do (result, (undoes, preds)) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing
+     if isNothing result || not (productive result)
+     then do mapM_ perform undoes
+             return Nothing
+     else do mapM_ (uncurry require) preds
+             return result
+  where productive (Just (VVar _)) = False
+        productive _               = True
+
+checking :: UnifyM t -> UnifyM t
+checking m =
+  do s <- get
+     put (Just [])
+     x <- m
+     put s
+     return x
+
+refine :: UnifyM (Maybe Evid) -> UnifyM (Maybe Evid)
+refine m =
+  do s <- get
+     case s of
+       Nothing -> m
+       Just _  -> return Nothing
+
+requireEq :: Ty -> Ty -> UnifyM (Maybe Evid)
+requireEq t u =
+  do v <- newRef Nothing
+     require (PEq t u) v
+     return (Just (VGoal (Goal ("q", v))))
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
 unify' actual expected =
@@ -228,15 +263,27 @@ unify0 TFun TFun = return (Just VRefl)
 unify0 (TThen pa ta) (TThen px tx) =
   liftM2 VEqThen <$> unifyP pa px <*> unify' ta tx
 
-unify0 (TApp fa aa) (TApp fx ax) =
-  -- TODO: wrong
-  liftM2 VEqApp <$> unify' fa fx <*> unify' aa ax
-unify0 (TApp (TMapFun fa) (TRow ts)) tx =
-  do unify' (TRow [TApp fa ta | ta <- ts]) tx
-     return (Just VEqMap)
-unify0 (TApp (TMapFun fa) ra) (TRow []) =
-  do unify' ra (TRow [])
-     return (Just VEqMap)
+unify0 t@(TApp {}) (u@(TApp {}))
+  | TUnif {} <- ft = unifySpines
+  | TUnif {} <- fu = unifySpines
+  | otherwise      =
+      do mq <- checking $ unify' ft fu
+         case mq of
+           Nothing -> refine $ requireEq t u
+           Just q  ->
+             do mqs <- zipWithM unify' ts us
+                case sequence mqs of
+                  Nothing -> return Nothing
+                  Just qs -> return (Just (foldl VEqApp q qs))
+  where (ft, ts) = spine t
+        (fu, us) = spine u
+
+        unifySpines =
+          do mq <- unify' ft fu
+             mqs <- zipWithM unify' ts us
+             case sequence (mq : mqs) of
+               Nothing -> return Nothing
+               Just (q : qs) -> return (Just (foldl VEqApp q qs))
 unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
   do gs <- replicateM (length xs) (typeGoal' "t" (kindOf tx))
      unify' ra (TRow gs)
@@ -248,7 +295,7 @@ unify0 a@(TForall xa (Just ka) ta) x@(TForall xx (Just kx) tx) =
      then liftM VEqForall <$> bindTy ka (unify' ta tx)
      else do trace $ "1 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
-unify0 a@(TLam xa (Just ka) ta) x@(TLam xx (Just kx) tx) =  -- Note: this case is missing from higher.pdf
+unify0 a@(TLam xa (Just ka) ta) x@(TLam xx (Just kx) tx) =  -- Note: this case is missing from higher.pdf, also doubtful
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
      then liftM VEqLambda <$> bindTy ka (unify' ta tx)
@@ -278,7 +325,7 @@ unify0 (TSigma r) u
 unify0 t (TSigma r)
   | TRow [u] <- r = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' t u
   | TLabeled tl tt <- t = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' (TRow [t]) r
-unify0 a@(TMapFun f) x@(TMapFun g) =
+unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
   do q <- unify' f g
      case q of
        Just VRefl -> return (Just VRefl)
@@ -286,9 +333,13 @@ unify0 a@(TMapFun f) x@(TMapFun g) =
        Nothing    ->
         do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
-unify0 t u =
-  do trace $ "5 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
-     return Nothing
+unify0 t u
+  | TApp {} <- t = refine $ requireEq t u
+  | TApp {} <- u = refine $ requireEq t u
+  | otherwise =
+      do trace $ "5 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
+         return Nothing
+
 
 class HasTyVars t where
   subst :: MonadRef m => Int -> Ty -> t -> m t
@@ -432,6 +483,7 @@ normalize t = return (t, VRefl)
 normalizeP :: MonadCheck m => Pred -> m Pred -- no evidence structure for predicate equality yet soooo....
 normalizeP (PLeq x y) = PLeq <$> (fst <$> normalize x) <*> (fst <$> normalize y)
 normalizeP (PPlus x y z) = PPlus <$> (fst <$> normalize x) <*> (fst <$> normalize y) <*> (fst <$> normalize z)
+normalizeP (PEq t u) = PEq <$> (fst <$> normalize t) <*> (fst <$> normalize u)
 
 unifyP :: Pred -> Pred -> UnifyM (Maybe Evid)
 unifyP (PLeq y z) (PLeq y' z') = liftM2 VEqLeq <$> unify' y y' <*> unify' z z'
