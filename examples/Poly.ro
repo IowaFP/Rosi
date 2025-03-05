@@ -1,0 +1,283 @@
+-------------------------------------------------------------------------------
+-- Examples from
+--    https://github.com/AndrasKovacs/elaboration-zoo/blob/master/06-first-class-poly/examples.txt
+-- which were themselves drawn from
+--   https://www.microsoft.com/en-us/research/uploads/prod/2017/07/impredicative-pldi18.pdf
+-- the same examples are also found in
+--   https://www.microsoft.com/en-us/research/publication/a-quick-look-at-impredicativity/
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+-- Original text is left in comments
+-------------------------------------------------------------------------------
+
+-- let List   : U → U                             = λ A. (L : U) → L → (A → L → L) → L;
+
+type List : * -> *
+type List = \ A. forall L. L -> (A -> L -> L) -> L
+
+-- let nil    : {A} → List A                      = λ L n c. n;
+
+nil : forall A. List A
+nil = \ n c. n
+
+-- let cons   : {A} → A → List A → List A         = λ a as L n c. c a (as L n c);
+
+cons : forall A. A -> List A -> List A
+cons = \ a as n c. c a (as n c)
+
+-- let Bool   : U                                 = (B : U) → B → B → B;
+
+type Bool : *
+type Bool = forall B. B -> B -> B
+
+-- let true   : Bool                              = λ b t f. t;
+
+true : Bool
+true = \ t f. t
+
+-- let Pair   : U → U → U                         = λ A B. (P : U) → (A → B → P) → P;
+
+type Pair : * -> * -> *
+type Pair = \ A B. forall P. (A -> B -> P) -> P
+
+-- let pair   : {A B} → A → B → Pair A B          = λ a b P p. p a b;
+
+pair : forall A B. A -> B -> Pair A B
+pair = \ a b p. p a b
+
+fst : forall A B. Pair A B -> A
+fst = \ p. p (\x y. x)
+
+-- let Nat    : U                                 = (N : U) → (N → N) → N → N;
+
+type Nat : *
+type Nat = forall N. (N -> N) -> N -> N
+
+-- let zero   : Nat                               = λ N s z. z;
+
+zero : Nat
+zero = \ s z. z
+
+-- let suc    : Nat → Nat                         = λ n N s z. s (n N s z);
+
+suc : Nat -> Nat
+suc = \ n s z. s (n s z)
+
+-- let append : {A} → List A → List A → List A    = λ xs ys L n c. xs L (ys L n c) c;
+
+append : forall A. List A -> List A -> List A
+append = \ xs ys n c. xs (ys n c) c
+
+-- let length : {A} → List A → Nat                = λ as N s z. as N z (λ x. s);
+
+length : forall A. List A -> Nat
+length = \ as s z. as z (\x. s)
+
+-- let map    : {A B} → (A → B) → List A → List B = λ f as L n c. as L n (λ a. c (f a));
+
+map : forall A B. (A -> B) -> List A -> List B
+map = \ f as n c. as n (\a. c (f a))
+
+-- let ST     : U → U → U                         = λ S A. S → A;
+
+type ST : * -> * -> *
+type ST = \S A. S -> A
+
+-- let runST  : {A} → ({S} → ST S A) → A          = λ f. f {Bool} true;
+
+runST : forall A. (forall S. ST S A) -> A
+runST = \ f. f true
+
+-- let argST  : {S} → ST S Nat                    = λ _. zero;
+
+argST : forall S. ST S Nat
+argST = \ x. zero
+
+-- let Id     : U → U                             = λ A. (I : U) → (A → I) → I;
+
+type Id : * -> *
+type Id = \A. forall I. (A -> I) -> I
+
+-- let mkId   : {A} → A → Id A                    = λ a I f. f a;
+
+mkId : forall A. A -> Id A
+mkId = \a f. f a
+
+-- let unId   : {A} → Id A → A                    = λ i. i _ (λ x. x);
+
+unId : forall A. Id A -> A
+unId = \i. i (\x. x)
+
+-- let the    : (A : U) → A → A                   = λ A a. a;
+
+the : forall A. A -> A
+the = \x. x
+
+-- let const  : {A B} → A → B → A                 = λ x y. x;
+
+const : forall A B. A -> B -> A
+const = \x y. x
+
+-- let IdTy   : U                                 = {A} → A → A;
+
+type IdTy : *
+type IdTy = forall A. A -> A
+
+-- let single : {A} → A → List A                  = λ a. cons a nil;
+
+-- Bug here
+single : forall B. B -> List B
+single = \a. cons a nil
+
+-- let id     : {A} → A → A                       = λ a. a;
+
+id : IdTy
+id = \x. x
+
+-- let ids    : List IdTy                         = nil;
+
+ids : List IdTy
+ids = nil
+
+-- let oneId  : Id IdTy                           = mkId id;
+
+-- Bug here
+oneId : Id IdTy
+oneId = mkId id
+
+-- let app    : {A B} → (A → B) → A → B           = id;
+
+app : forall a b. (a -> b) -> a -> b
+app = id
+
+-- let revapp : {A B} → A → (A → B) → B           = λ x f. f x;
+
+revapp : forall a b. a -> (a -> b) -> b
+revapp = \x f. f x
+
+-- let poly   : IdTy → Pair Nat Bool              = λ f. pair (f zero) (f true);
+
+poly : IdTy -> Pair Nat Bool
+poly = \f. pair (f zero) (f true)
+
+-- let choose : {A} → A → A → A                   = const;
+
+choose : forall a. a -> a -> a
+choose = const
+
+-- let auto   : IdTy → IdTy                       = id;
+
+auto : IdTy -> IdTy
+auto = id
+
+-- let auto2  : {B} → IdTy → B → B                = λ _ b. b;
+
+auto2 : forall b. IdTy -> b -> b
+auto2 = \a b. b
+
+-- -- A: polymorphic instantiation
+-- --------------------------------------------------------------------------------
+--
+-- let A1 = λ x y. y;
+--
+-- let A2 : IdTy → IdTy = choose id;
+
+a2 : IdTy -> IdTy
+a2 = choose id
+
+-- let A3 = choose nil ids;
+--
+-- let A4 : IdTy → IdTy = λ (x : IdTy). x x;
+
+a4 : IdTy -> IdTy
+a4 = \x. x x
+
+-- let A5 = id auto;
+--
+-- let A6 : {B} → IdTy → B → B = id auto2;
+
+a6 : forall b. IdTy -> b -> b
+a6 = id auto2
+
+-- let A7 = choose id auto;
+--
+-- -- let A8 = choose id auto2 in -- FAILS the reason is simply that the types are
+-- --   definitionally different, the orders of implicit args do not match. We
+-- --   do *not* reorder or float out implicit args, intentionally, since we
+-- --   support mixing implicit and explicit args in arbitrary order.
+--
+-- let A9 : ({A} → (A → A) → List A → A) → IdTy
+--     = λ f. f (choose id) ids;
+
+-- bug here?
+-- a9 : (forall a. (a -> a) -> List a -> a) -> IdTy
+-- a9 = \f. f (choose id) ids
+
+-- let A10 = poly id;
+--
+-- let A11 = poly (λ x. x);
+--
+-- let A12 = id poly (λ x. x);
+--
+-- -- B: inference of polymorphic arguments
+-- --------------------------------------------------------------------------------
+--
+-- -- FAILS
+-- -- let B1 = λ f. pair (f zero) (f true);
+--
+-- -- FAILS
+-- -- let B2 = λ x. poly (unId x);
+--
+-- -- C: functions on polymorphic lists
+-- --------------------------------------------------------------------------------
+--
+-- let C1 = length ids;
+--
+-- let C2 = id ids;
+--
+-- let C3 : IdTy = unId oneId;
+--
+-- let C4 : List IdTy = single id;
+--
+-- let C5 = cons id ids;
+--
+-- let C6 = cons (λ x. x) ids;
+--
+-- let C7 = append (single suc) (single id);
+--
+-- let C8 : _ → IdTy = λ (g : {A} → List A → List A → A). g (single id) ids;
+--
+-- let C9 = map poly (single id);
+--
+-- let C10 = map unId (single oneId);
+--
+-- -- D: application functions
+-- --------------------------------------------------------------------------------
+--
+-- let D1 = app poly id;
+--
+-- let D2 = revapp id poly;
+--
+-- let D3 = runST argST;
+--
+-- let D4 = app runST argST;
+--
+-- let D5 = revapp argST runST;
+--
+-- -- -- E: η-expansion
+-- -- --------------------------------------------------------------------------------
+--
+-- -- let E1 =   -- FAILS
+-- --   λ (h : Nat → {A} → A → A)(k : {A} → A → List A → A)(lst : List ({A} → Nat → A → A)).
+-- --   k h lst;
+-- --   -- fails again because of mismatched implicit/explicit arguments
+--
+-- let E2 =
+--   λ (h : Nat → {A} → A → A)(k : {A} → A → List A → A)(lst : List ({A} → Nat → A → A)).
+--   k (λ x. h x) lst;
+--
+-- let E3 =
+--   λ (r : ({A} → A → {B} → B → B) → Nat). r (λ x y. y);
+--
+-- U
