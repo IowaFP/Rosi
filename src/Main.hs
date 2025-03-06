@@ -14,8 +14,8 @@ import qualified Prettyprinter.Util as P
 import System.Console.GetOpt
 import System.Exit (exitFailure)
 import System.Directory
+import System.Environment
 import System.FilePath
-import System.Environment (getArgs)
 import System.IO (hPutStrLn, stderr)
 
 import Checker
@@ -25,36 +25,28 @@ import Printer
 import Scope
 import Syntax
 
-data Flag = Eval String | Input String | Import String | TraceTypeInference | PrintTypedTerms
+data Flag = Eval String | Input String | Import String | TraceTypeInference | PrintTypedTerms | Reset
   deriving Show
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String], doTrace :: Bool, doPrintTyped :: Bool }
 
+interpretFlag :: Flags -> Flag -> Flags
+interpretFlag f (Eval s)           = f { evals = evals f ++ splitOn "," s }
+interpretFlag f (Input s)          = f { inputs = inputs f ++ [s] }
+interpretFlag f (Import s)         = f { imports = imports f ++ [s] }
+interpretFlag f TraceTypeInference = f { doTrace = True }
+interpretFlag f PrintTypedTerms    = f { doPrintTyped = True }
+interpretFlag f Reset              = Flags [] [] [] False False
 
-splitFlags :: [Flag] -> Flags
-splitFlags [] = Flags [] [] [] False False
-splitFlags (Eval s : fs) = f { evals = ss ++ evals f}
-  where f = splitFlags fs
-        ss = split ',' s
-        split c s = go (dropWhile (c ==) s) where
-          go [] = []
-          go s  = s' : go (dropWhile (c ==) s'') where
-            (s', s'') = break (c ==) s
-splitFlags (Input s : fs) = f { inputs = s : inputs f }
-  where f = splitFlags fs
-splitFlags (Import s : fs) = f { imports = s : imports f }
-  where f = splitFlags fs
-splitFlags (TraceTypeInference : fs) = f { doTrace = True }
-  where f = splitFlags fs
-splitFlags (PrintTypedTerms : fs) = f { doPrintTyped = True }
-  where f = splitFlags fs
+interpretFlags = foldl interpretFlag (Flags [] [] [] False False)
 
 options :: [OptDescr Flag]
 options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
           , Option ['i'] ["import"] (ReqArg Import "DIR") "directory to search"
           , Option [] [] (ReqArg Input "FILE") "file to process"
           , Option ['t'] [] (NoArg PrintTypedTerms) "print typed terms"
-          , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference" ]
+          , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference"
+          , Option [] ["reset"] (NoArg Reset) "reset flags" ]
 
 unprog (Prog ds) = ds
 
@@ -85,10 +77,13 @@ parseChasing additionalImportDirs fs = evalStateT (chase fs) [] where
                exitFailure
 
 main :: IO ()
-main = do args <- getArgs
+main = do nowArgs <- getArgs
+          configFile <- ("." ++) . dropExtension <$> getProgName
+          globalArgs <- wordsIfExists =<< getXdgDirectory XdgConfig configFile
+          localArgs <- wordsIfExists configFile
           flags <-
-             case getOpt (ReturnInOrder Input) options args of
-               (flags, [], []) -> return (splitFlags flags)
+             case getOpt (ReturnInOrder Input) options (globalArgs ++ localArgs ++ nowArgs) of
+               (flags, [], []) -> return (interpretFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   exitFailure
           writeIORef traceTypeInference (doTrace flags)
@@ -120,6 +115,11 @@ main = do args <- getArgs
              ((x, v) :) <$> goEval (v : h) ds
 
         thirdM f (a, b, c) = (a, b,) <$> f c
+
+        wordsIfExists :: FilePath -> IO [String]
+        wordsIfExists fn =
+          do exists <- doesFileExist fn
+             if exists then words <$> readFile fn else return []
 
 reportErrors :: Either Error t -> IO t
 reportErrors (Left err) =
