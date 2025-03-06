@@ -7,7 +7,7 @@ type Nat : *
 type Nat = Mu NatF
 
 zero : Nat
-zero = in (inj (#'Zero := unit))
+zero = in (inj (#'Zero := tt))
 
 succ : Nat -> Nat
 succ = \n. in (inj (#'Succ := n))
