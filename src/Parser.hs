@@ -287,13 +287,16 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                     ("out", COut),
                     ("fix", CFix)]]
 
-data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term
+data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String]
   deriving (Data, Eq, Show, Typeable)
+
+data LHS = TypeLHS String | TermLHS String | ImportLHS
 
 topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
-  lhs = Left <$> lexeme typeIdentifier <|>
-        Right <$> identifier
+  lhs = symbol "import" *> return ImportLHS <|>
+        TypeLHS <$> lexeme typeIdentifier <|>
+        TermLHS <$> identifier
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
   -- which will check the identation level, but we are looking for entries at
@@ -302,10 +305,11 @@ topLevel = item lhs body where
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
   typeIdentifier = symbol "type" *> ((:) <$> letterChar <*> many alphaNumChar)
-  body (Left x)  = colon *> ((x,) . KindSig <$> kind) <|>
-                   symbol "=" *> ((x,) . TypeDef <$> ty)
-  body (Right x) = colon *> ((x,) . TypeSig <$> ty) <|>
-                   symbol "=" *> ((x,) . TermDef <$> term)
+  body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
+  body (TypeLHS x) = colon *> ((x,) . KindSig <$> kind) <|>
+                     symbol "=" *> ((x,) . TypeDef <$> ty)
+  body (TermLHS x) = colon *> ((x,) . TypeSig <$> ty) <|>
+                     symbol "=" *> ((x,) . TermDef <$> term)
 
 prog :: Parser Program
 prog = whitespace >> block topLevel >>= defns
@@ -316,15 +320,18 @@ defns tls
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
-  | otherwise = return (Prog (map mkDecl names))
+  | otherwise = return (Prog (concat imports, map mkDecl names))
   where -- TODO: Why would not we *not* traverse this list four times?
         termDefs = [(x, t) | (x, TermDef t) <- tls]
         typeSigs = [(x, t) | (x, TypeSig t) <- tls]
         typeDefs = [(x, t) | (x, TypeDef t) <- tls]
         kindSigs = [(x, t) | (x, KindSig t) <- tls]
+        imports  = [names | (_, ImportTL names) <- tls]
 
         names = go [] tls where
           go seen [] = []
+          go seen (("", _) : tls) =
+            go seen tls
           go seen ((x, _) : tls)
             | x `elem` seen = go seen tls
             | otherwise = x : go (x : seen) tls

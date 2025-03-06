@@ -5,12 +5,15 @@ module Main where
 import Control.Monad ((<=<), void, when)
 import Control.Monad.Except (withError)
 import Control.Monad.Reader (runReaderT)
+import Control.Monad.State
 import Data.IORef
 import Data.List (findIndex, break)
+import Data.List.Split
 import qualified Prettyprinter as P
 import qualified Prettyprinter.Util as P
 import System.Console.GetOpt
 import System.Exit (exitFailure)
+import System.Directory
 import System.FilePath
 import System.Environment (getArgs)
 import System.IO (hPutStrLn, stderr)
@@ -22,48 +25,80 @@ import Printer
 import Scope
 import Syntax
 
-data Flag = Eval String | Input String | TraceTypeInference | PrintTypedTerms
+data Flag = Eval String | Input String | Import String | TraceTypeInference | PrintTypedTerms
   deriving Show
 
-splitFlags :: [Flag] -> ([String], [String], Bool, Bool)
-splitFlags [] = ([], [], False, False)
-splitFlags (Eval s : fs) = (ss ++ evals, files, shouldTrace, shouldPrintTyped)
-  where (evals, files, shouldTrace, shouldPrintTyped) = splitFlags fs
+data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String], doTrace :: Bool, doPrintTyped :: Bool }
+
+
+splitFlags :: [Flag] -> Flags
+splitFlags [] = Flags [] [] [] False False
+splitFlags (Eval s : fs) = f { evals = ss ++ evals f}
+  where f = splitFlags fs
         ss = split ',' s
         split c s = go (dropWhile (c ==) s) where
           go [] = []
           go s  = s' : go (dropWhile (c ==) s'') where
             (s', s'') = break (c ==) s
-splitFlags (Input s : fs) = (evals, s : files, shouldTrace, shouldPrintTyped)
-  where (evals, files, shouldTrace, shouldPrintTyped) = splitFlags fs
-splitFlags (TraceTypeInference : fs) = (evals, files, True, shouldPrintTyped)
-  where (evals, files, _, shouldPrintTyped) = splitFlags fs
-splitFlags (PrintTypedTerms : fs) = (evals, files, shouldTrace, True)
-  where (evals, files, shouldTrace, _) = splitFlags fs
+splitFlags (Input s : fs) = f { inputs = s : inputs f }
+  where f = splitFlags fs
+splitFlags (Import s : fs) = f { imports = s : imports f }
+  where f = splitFlags fs
+splitFlags (TraceTypeInference : fs) = f { doTrace = True }
+  where f = splitFlags fs
+splitFlags (PrintTypedTerms : fs) = f { doPrintTyped = True }
+  where f = splitFlags fs
 
 options :: [OptDescr Flag]
 options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
-          , Option ['i'] ["input"] (ReqArg Input "FILE") "input file"
+          , Option ['i'] ["import"] (ReqArg Import "DIR") "directory to search"
+          , Option [] [] (ReqArg Input "FILE") "file to process"
           , Option ['t'] [] (NoArg PrintTypedTerms) "print typed terms"
           , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference" ]
 
 unprog (Prog ds) = ds
 
+parseChasing :: [FilePath] -> [FilePath] -> IO [Decl]
+parseChasing additionalImportDirs fs = evalStateT (chase fs) [] where
+
+  chase :: [FilePath] -> StateT [FilePath] IO [Decl]
+  chase [] = return []
+  chase (fn : fns) =
+    do already <- get
+       if fn `elem` already
+       then chase fns
+       else do (imports, decls) <- unprog <$> liftIO (parse fn =<< readFile fn)
+               importFns <- mapM (liftIO . findImport) imports
+               imported <- chase importFns
+               modify (\already -> fn : already)
+               ((imported ++ decls) ++) <$> chase fns
+
+  findImport :: String -> IO FilePath
+  findImport s = check importDirs
+    where fn = foldr1 (</>) (splitOn "." s) <.> "ro"
+          importDirs = "." : additionalImportDirs
+          check (d : ds) =
+            do exists <- doesPathExist (d </> fn)
+               if exists then return (d </> fn) else check ds
+          check [] =
+            do hPutStrLn stderr $ "import not found: " ++ s
+               exitFailure
+
 main :: IO ()
 main = do args <- getArgs
-          (evals, files, traceTI, printTypedTerms) <-
+          flags <-
              case getOpt (ReturnInOrder Input) options args of
                (flags, [], []) -> return (splitFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   exitFailure
-          writeIORef traceTypeInference traceTI
-          decls <- concatMap unprog <$> mapM (\fn -> parse fn =<< readFile fn) files
+          writeIORef traceTypeInference (doTrace flags)
+          decls <- parseChasing (imports flags) (inputs flags)
           scoped <- reportErrors $ runScopeM $ scopeProg decls
           checked <- goCheck [] [] scoped
-          when printTypedTerms $
+          when (doPrintTyped flags) $
             mapM_ ((putDocWLn 120 . pprTyping) <=< thirdM flattenE) checked
           evaled <- goEval [] checked
-          let output = filter ((`elem` evals) . fst) evaled
+          let output = filter ((`elem` evals flags) . fst) evaled
           mapM_ (putDocWLn 120 . uncurry pprBinding) output
           putStrLn "ok"
   where goCheck d g [] = return []

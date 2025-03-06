@@ -1,14 +1,9 @@
-sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
-sel = \ r l. prj r / l
+import Ro
 
 reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t
 reflect = \ d w. ana (\ l u. sel d l u) w
 
 -- Need for mapS:
-
-con : forall l : L, t : *, z : R[*]. {l := t} < z => #l -> t -> Sigma z
-con = \l x. inj (l := x)
-
 type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
 type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
 

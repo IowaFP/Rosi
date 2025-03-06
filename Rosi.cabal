@@ -61,7 +61,7 @@ executable Rosi
     -- other-extensions:
 
     -- Other library packages from which modules are imported.
-    build-depends:    base ^>=4.20, filepath >= 1.5, megaparsec >= 9.6, mtl >= 2.3, syb >= 0.7, containers, prettyprinter
+    build-depends:    base ^>=4.20, filepath >= 1.5, megaparsec >= 9.6, mtl >= 2.3, syb >= 0.7, containers, prettyprinter, split, directory
 
     ghc-options: -Wno-x-partial
 

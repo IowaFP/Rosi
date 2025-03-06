@@ -7,7 +7,7 @@ import Data.Generics hiding (TyCon(..))
 import Data.IORef
 import GHC.Stack
 
-newtype Program = Prog [Decl]
+data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
 
 data Decl = TyDecl String Kind Ty | TmDecl String Ty Term

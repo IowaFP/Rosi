@@ -1,5 +1,4 @@
-con : forall l t z. {l := t} < z => #l -> t -> Sigma z
-con = \l x. inj (l := x)
+import Ro
 
 -- The version actually formalized in the ICFP'23 development
 reify0 : forall z t. (Sigma z -> t) -> Pi ((\X. X -> t) z)
@@ -10,9 +9,6 @@ reify = /\ z t. \f. syn [\X. X -> t] (\l x. f (con l x))
 
 type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
 type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
-
-sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
-sel = \ r l. prj r / l
 
 mapP : forall z : R[* -> *], f g : (* -> *) -> *.
        Iter f g z ->

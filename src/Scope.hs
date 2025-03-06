@@ -92,6 +92,3 @@ scopeProg :: [Decl] -> ScopeM [Decl]
 scopeProg [] = return []
 scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindVar x (scopeProg ds)
 scopeProg (d@(TyDecl x _ _) : ds) = (:) <$> scope d <*> bindTyVar x (scopeProg ds)
-
-instance HasVars Program where
-  scope (Prog ds) = Prog <$> scopeProg ds

@@ -1,12 +1,4 @@
--- should get around to import tracing...
-type Unit : *
-type Unit = Pi {}
-
-unit : Unit
-unit = prj (#'l := (/\a. \x : a. x))
-
-case : forall l t u. #l -> (t -> u) -> (l := t) -> u
-case = \ l f x. f (x / l)
+import Ro
 
 type NatF : * -> *
 type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}

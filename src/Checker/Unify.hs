@@ -115,13 +115,15 @@ check actual expected =
 
 unifyProductive actual expected =
   do (result, (undoes, preds)) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing
-     if isNothing result || not (productive result)
+     result' <- traverse flattenV result
+     if isNothing result' || not (productive result')
      then do mapM_ perform undoes
              return Nothing
-     else do mapM_ (uncurry require) preds
-             return result
-  where productive (Just (VVar _)) = False
-        productive _               = True
+     else do trace $ show result ++ " is productive!"
+             mapM_ (uncurry require) preds
+             return result'
+  where productive (Just (VGoal _)) = False
+        productive _                = True
 
 checking :: UnifyM t -> UnifyM t
 checking m =
@@ -336,11 +338,15 @@ unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
         do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
 unify0 t u
-  | TApp {} <- t = refine $ requireEq t u
-  | TApp {} <- u = refine $ requireEq t u
+  | (not (null ts) && refinable ft) ||
+    (not (null us) && refinable fu) = refine $ requireEq t u
   | otherwise =
       do trace $ "5 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
          return Nothing
+  where (ft, ts) = spine t
+        (fu, us) = spine u
+        refinable (TUnif {}) = True
+        refinable _          = False
 
 
 class HasTyVars t where

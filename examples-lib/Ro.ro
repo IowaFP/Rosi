@@ -1,0 +1,16 @@
+sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
+sel = \ r l. prj r / l
+
+con : forall l : L, t : *, z : R[*]. {l := t} < z => #l -> t -> Sigma z
+con = \l x. inj (l := x)
+
+case : forall l t u. #l -> (t -> u) -> (l := t) -> u
+case = \ l f x. f (x / l)
+
+type Unit : *
+type Unit = Pi {}
+
+tt : Unit
+tt = prj (#'x := (/\ a. \x. x))
+
+

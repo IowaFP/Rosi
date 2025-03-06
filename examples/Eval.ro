@@ -1,5 +1,4 @@
--- unit : forall a. a -> a
--- unit = \x. x
+import Ro
 
 m : Pi { 'x := (forall a. a -> a), 'y := (forall b. b -> b) }
 m = (#'x := (/\ a. \x. x)) ++ (#'y := (/\ b. \x. x))
@@ -10,15 +9,13 @@ n1 = prj m
 n2 : Pi { 'y := (forall b. b -> b) }
 n2 = prj m
 
-tt : Pi {}
-tt = prj (#'x := (/\ a. \x. x))
 
 m2 : Pi { 'x := Pi {}, 'y := Pi {} }
 m2 = syn [\t. Pi {}] (\l. tt)
 
 -- n3 : Pi {'x := Pi {}}
 n3 : Pi {}
-n3 = prj m2 / #'x 
+n3 = prj m2 / #'x
 
 v1 : Sigma { 'x := Pi {}, 'y := Pi {}}
 v1 = inj (#'x := tt)
@@ -26,18 +23,15 @@ v1 = inj (#'x := tt)
 v2 : Sigma { 'x := Pi {}, 'y := Pi {}}
 v2 = inj (#'y := tt)
 
-case : forall l t u. #l -> (t -> u) -> (l := t) -> u
-case = \ l f x. f (x / l)
-
 p : Pi {'x := Pi {}}
 p = (case #'x (\u. u)) (#'x := tt)
 
-q : Sigma { 'x := Pi {}, 'y := Pi {} } -> Sigma { 'x := Pi {}, 'y := Pi {} } 
+q : Sigma { 'x := Pi {}, 'y := Pi {} } -> Sigma { 'x := Pi {}, 'y := Pi {} }
 q = case #'x (\u. inj (#'y := u)) ?
     case #'y (\u. inj (#'x := u))
 
-w1 : Sigma { 'x := Pi {}, 'y := Pi {}} 
-w2 : Sigma { 'x := Pi {}, 'y := Pi {}} 
+w1 : Sigma { 'x := Pi {}, 'y := Pi {}}
+w2 : Sigma { 'x := Pi {}, 'y := Pi {}}
 
 w1 = q v1
 w2 = q v2
