@@ -41,7 +41,8 @@ solve (cin, p, r) =
   everything p =
     do pctxt' <- mapM flattenP (pctxt cin)
        trace ("Solving " ++ show p ++ " from " ++ show pctxt')
-       prim p <|> mapFunApp p <|> {- compl p <|> -} byAssump (pctxt cin) p
+       prim p <|> mapFunApp p <|> byAssump (pctxt cin) p
+       prim p <|> mapFunApp p <|> byAssump (pctxt cin) p
 
   sameSet :: Eq a => [a] -> [a] -> Bool
   sameSet xs ys = all (`elem` ys) xs && all (`elem` xs) ys
@@ -76,62 +77,57 @@ solve (cin, p, r) =
                Nothing -> fundeps p q
                Just _  -> return ()) xs
 
-  matchLeqDirect, matchLeqMap, matchPlusDirect, match :: HasCallStack => Pred -> (Int, Pred) -> CheckM (Maybe Evid)
+  matchLeqDirect, matchLeqMap, matchPlusDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
   match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q
 
-  matchLeqDirect (PLeq y z) (v, PLeq y' z') =
+  matchLeqDirect (PLeq y z) (PLeq y' z', v) =
     suppose (typesEqual y y') $
     suppose (typesEqual z z') $
-    return (Just (VVar v))
+    return (Just v)
   matchLeqDirect _ _ = return Nothing
 
-  matchLeqMap (PLeq (TRow es) (TApp (TMapFun f) z)) (v, PLeq (TRow es') z') =
+  matchLeqMap (PLeq (TRow es) (TApp (TMapFun f) z)) (PLeq (TRow es') z', v) =
     suppose (typesEqual z z') $
     case (mapM splitLabel es, mapM splitLabel es') of
       (Just ps, Just ps') | sameSet (map fst ps) (map fst ps') ->
         do trace "1 match"
            unifyAssocs ps (map (second (TApp f)) ps')
-           return (Just (VVar v))
+           return (Just v)  -- TODO: really?
       _ -> return Nothing
   matchLeqMap _ _ = return Nothing
 
-  matchPlusDirect p@(PPlus x y z) (v, q@(PPlus x' y' z')) =
+  matchPlusDirect p@(PPlus x y z) (q@(PPlus x' y' z'), v) =
     suppose (typesEqual x x') $
       (suppose (typesEqual y y') (forceFD z z') <|>
        suppose (typesEqual z z') (forceFD y y')) <|>
     suppose (typesEqual y y') (suppose (typesEqual z z') (forceFD x x'))
     where forceFD t t' =
             do q <- unify t t'
-               return (Just (VVar v))
-               -- case flattenQ <$> q of
-               --   Just QRefl -> return (Just (VVar v))
-               --   _          ->
-               --    do trace $ "matchPlusDirect: unifying (" ++ show t ++ ") and (" ++ show t' ++ ") gave (" ++ show q ++ ")"
-               --       fundeps p q
+               return (Just v) -- TODO: really?
   matchPlusDirect _ _ = return Nothing
 
   -- question to self: why do I have both the `fundeps` error and the `force` error?
 
   fundeps p q = throwError (ErrTypeMismatchFD p q)
 
-  expand1 :: Pred -> [Pred]
-  expand1 (PPlus x y z)
-    | not (isComplement x) && not (isComplement y) = [PLeq x z, PLeq y z]
+  expand1 :: (Pred, Evid) -> [(Pred, Evid)]
+  expand1 (PPlus x y z, v)
+    | not (isComplement x) && not (isComplement y) = [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v)]
     | otherwise                                    = []
-  expand1 (PLeq x y)
-    | not (isComplement x) = [PLeq (TCompl y x (Just VRefl)) y, PPlus x (TCompl y x (Just VRefl)) y, PPlus (TCompl y x (Just VRefl)) x y]
+  expand1 (PLeq x y, v)
+    | not (isComplement x) = [(PLeq (TCompl y x (Just VRefl)) y, VComplLeq v), (PPlus x (TCompl y x (Just VRefl)) y, VPlusComplR v), (PPlus (TCompl y x (Just VRefl)) x y, VPlusComplL v)]
     | otherwise            = []
 
   isComplement (TCompl {}) = True
   isComplement _           = False
 
-  expand2 :: Pred -> Pred -> [Pred]
-  expand2 (PLeq x y) (PLeq z w)
-    | y == z = [PLeq x w]
-    | x == w = [PLeq z y]
+  expand2 :: (Pred, Evid) -> (Pred, Evid) -> [(Pred, Evid)]
+  expand2 (PLeq x y, v1) (PLeq z w, v2)
+    | y == z = [(PLeq x w, VTrans v1 v2)]
+    | x == w = [(PLeq z y, VTrans v2 v1)]
   expand2 _ _ = []
 
-  expandAll :: [Pred] -> [Pred]
+  expandAll :: [(Pred, Evid)] -> [(Pred, Evid)]
   expandAll = go [] where
     go qs [] = qs
     go qs (p : ps) = go (p : qs) (ps' ++ ps) where
@@ -140,21 +136,15 @@ solve (cin, p, r) =
   byAssump as p =
     do as' <- mapM (normalizeP <=< flattenP) as
        trace ("Expanding " ++ show as')
-       let as'' = expandAll as'
+       let as'' = expandAll (zip as' [VVar i | i <- [0..]])
        trace ("Expanded " ++ show as' ++ " to " ++ show as'' ++ "; solving " ++ show p)
-       go (zip [0..] as'') p where
+       go as'' p where
     go [] p = return Nothing
     go (a : as) p = match p a <|> go as p
 
   force p t u =
     do q <- unify t u
        return ()
-       -- case flattenQ <$> q of
-       --   Just QRefl -> return ()
-       --   _ -> throwError (ErrTypeMismatchPred p t u)
-
-  -- May want to consider moving away from pattern matching for failure and
-  -- towards using the `Maybe`ness...
 
   prim p@(PLeq (TRow y) (TRow z))
     | Just yd <- mapM label y, Just zd <- mapM label z =
@@ -214,25 +204,6 @@ solve (cin, p, r) =
        force p g h
        fmap (VPlusLiftL f) <$> everything (PPlus x y z)
   mapFunApp _ = return Nothing
-
-  compl p@(PLeq (TCompl y x _) y') =
-    suppose (typesEqual y y') $
-    do v <- newRef Nothing
-       require (PLeq x y) v
-       return (Just (VComplLeq (VGoal (Goal ("q", v)))))
-  compl p@(PPlus (TCompl y x _) x' y') =
-    suppose (typesEqual x x') $
-    suppose (typesEqual y y') $
-    do v <- newRef Nothing
-       require (PLeq x y) v
-       return (Just (VPlusComplL (VGoal (Goal ("q", v)))))
-  compl p@(PPlus x' (TCompl y x _) y') =
-    suppose (typesEqual x x') $
-    suppose (typesEqual y y') $
-    do v <- newRef Nothing
-       require (PLeq x y) v
-       return (Just (VPlusComplR (VGoal (Goal ("q", v)))))
-  compl _ = return Nothing
 
 loop :: [Problem] -> CheckM ()
 loop [] = return ()
