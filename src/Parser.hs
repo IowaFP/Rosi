@@ -182,13 +182,22 @@ tyOrP = Left <$> try (commaSep1 pr) <|> Right <$> arrTy
 arrTy :: Parser Ty
 arrTy = chainr1 appTy (symbol "->" >> return (\t u -> TApp (TApp TFun t) u))
 
-appTy = do t <- atype
-           choice
-             [ do symbol ":="
-                  (u : us) <- some atype
-                  return (TLabeled t (foldl TApp u us))
-             , do us <- many atype
-                  return (foldl TApp t us) ]
+appTy :: Parser Ty
+appTy = chainr1 minusTy (symbol ":=" *> return TLabeled)
+
+minusTy :: Parser Ty
+minusTy = chainl1 (apps <$> some atype) (lexeme (try (string "-" <* notFollowedBy (char '>'))) *> return (\t u -> TCompl t u Nothing))
+
+apps :: [Ty] -> Ty
+apps = foldl1 TApp
+
+-- appTy = do t <- atype
+--            choice
+--              [ do symbol ":="
+--                   (u : us) <- some atype
+--                   return (TLabeled t (foldl TApp u us))
+--              , do us <- many atype
+--                   return (foldl TApp t us) ]
 labeledTy =
   do t <- appTy
      case t of

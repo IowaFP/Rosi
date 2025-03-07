@@ -59,6 +59,7 @@ data Ty =
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
   | TMu Ty | TMapFun Ty
+  | TCompl Ty Ty (Maybe Evid)  -- r0 - r1, with evidence that r1 < r0
   -- Internals
   | TInst Insts Ty | TMapArg Ty
   deriving (Data, Eq, Show, Typeable)
@@ -68,29 +69,6 @@ data Inst = TyArg Ty | PrArg Evid
 
 data Insts = Known [Inst] | Unknown (Goal [Inst])
   deriving (Data, Eq, Show, Typeable)
-
--- Because I keep confusing myself:
--- MapFun : (k -> l) -> (R[k] -> R[l])
--- MapArg : R[k -> l] -> (k -> R[l])
--- Reducing MapArg to MapFun....
--- Can I do: MapArg (Z : R[k1 -> k2] == \X : k1. MapFun (\Y : k1 -> k2. Y X) Z
---
--- Need to validate rule:
---     normalize (TApp (TMapArg (TRow es)) t)
---       | Just ls <- mapM label es, Just fs <- mapM labeled es =
---         do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
---            return (t, QTrans QMapArg q)
---
--- So: TApp (TMapArg (TRow es)) t)
---    --->
---     TApp (\X. TMapFun (\Y. Y X) es)) t
---    --->
---     TMapFun (\Y. Y t) es
---    --->
---     TRow ...
--- seems to work...
-
--- ???
 
 infixr 4 `TThen`
 
@@ -168,6 +146,8 @@ flattenT (TMu t) =
   TMu <$> flattenT t
 flattenT (TMapFun t) =
   TMapFun <$> flattenT t
+flattenT (TCompl r0 r1 v) =
+  TCompl <$> flattenT r0 <*> flattenT r1 <*> traverse flattenV v
 -- not entirely sure what *should* happen here
 flattenT (TInst g@(Unknown (Goal (_, r))) t) =
   do minsts <- liftIO $ readIORef r
@@ -216,6 +196,7 @@ kindOf (TMapFun f)
   | KFun kd kc <- kindOf f = KFun (KRow kd) (KRow kc)
 kindOf (TMapArg f)
   | KRow (KFun kd kc) <- kindOf f = KFun kd (KRow kc)
+kindOf (TCompl r _ _) = kindOf r
 kindOf t = error $ "internal: kindOf " ++ show t
 
 -- shiftTN j n t shifts variables at or above `j` up by `n`
@@ -243,6 +224,7 @@ shiftTN j n (TMu t) = TMu (shiftTN j n t)
 shiftTN j n (TMapFun t) = TMapFun (shiftTN j n t)
 shiftTN j n (TMapArg t) = TMapArg (shiftTN j n t)
 shiftTN j n (TInst is t) = TInst (shiftIs j n is) (shiftTN j n t) where
+shiftTN j n (TCompl r0 r1 v) = TCompl (shiftTN j n r0) (shiftTN j n r1) v
 shiftTN _ _ t = error $ "shiftTN: unhandled: " ++ show t
 
 shiftIs :: Int -> Int -> Insts -> Insts
@@ -307,14 +289,17 @@ data Evid =
   | VRefl | VTrans Evid Evid
   -- Leq proofs
   | VLeqSimple [Int]              -- Ground evidence for r1 <= r2: indices of r1 entries in r2
-  | VLeqLiftL Ty Evid             -- r1 <= r2      ==>  f r1 <= f r2
-  | VLeqLiftR Evid Ty             -- r1 <= r2      ==>  r1 t <= r2 t
-  | VPlusLeqL Evid                -- r1 + r2 ~ r3  ==>  r1 <= r3
-  | VPlusLeqR Evid                -- r1 + r2 ~ r3  ==>  r2 <= r3
+  | VLeqLiftL Ty Evid             -- x <= y     ==>  f x <= f y
+  | VLeqLiftR Evid Ty             -- x <= y     ==>  x t <= y t
+  | VPlusLeqL Evid                -- x + y ~ z  ==>  x <= z
+  | VPlusLeqR Evid                -- x + y ~ z  ==>  y <= z
+  | VComplLeq Evid                -- x < y      ==>  y - x < y
   -- Plus proofs
   | VPlusSimple [Either Int Int]  -- Ground evidence for r1 + r2 ~ r3: indices of each r3 entry in (Left) r1 or (Right) r2
-  | VPlusLiftL Ty Evid            -- r1 + r2 ~ r3  ==>  f r1 + f r2 ~ f r3
-  | VPlusLiftR Evid Ty            -- r1 + r2 ~ r3  ==>  r1 t + r2 t ~ r3 t
+  | VPlusLiftL Ty Evid            -- x + y ~ z  ==>  f x + f y ~ f z
+  | VPlusLiftR Evid Ty            -- x + y ~ z  ==>  x t + y t ~ z t
+  | VPlusComplL Evid              -- x < y      ==>  (y - x) + x ~ y
+  | VPlusComplR Evid              -- x < y      ==>  x + (y - x) ~ y
   -- Eq proofs
   --
   -- For now, I'm only keeping enough information here to identify the rule,
@@ -324,6 +309,7 @@ data Evid =
   | VEqSym Evid
   | VEqBeta                         -- (λ α : κ. τ) υ ~ τ [υ / α]
   | VEqMap                          -- ^f {t1, ..., tn} ~ {f t1, ..., f tn}
+  | VEqCompl                        -- complement of known rows
   | VEqDefn                         -- Inlining definitions
   --
   | VEqLiftTyCon TyCon                -- (K r) t ~ K (r^ t), where r^ t = ^(\x. x t) r
@@ -334,7 +320,7 @@ data Evid =
   -- Congruence rules
   | VEqThen Evid Evid | VEqLambda Evid | VEqForall Evid | VEqApp Evid Evid
   | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid | VEqCon TyCon Evid
-  | VEqMapCong Evid
+  | VEqMapCong Evid | VEqComplCong Evid Evid
   | VEqLeq Evid Evid | VEqPlus Evid Evid Evid
   deriving (Data, Eq, Show, Typeable)
 
@@ -381,19 +367,21 @@ flattenV (VEqLambda v) = foldUnary VEqLambda <$> flattenV v
 flattenV (VEqForall v) = foldUnary VEqForall <$> flattenV v
 flattenV (VEqApp v1 v2) = foldBinary VEqApp <$> flattenV v1 <*> flattenV v2
 flattenV (VEqLabeled v1 v2) = foldBinary VEqLabeled <$> flattenV v1 <*> flattenV v2
+flattenV (VEqRow []) = return VRefl
 flattenV (VEqRow vs) =
   do vs' <- mapM flattenV vs
      return (if all (VRefl ==) vs' then VRefl else VEqRow vs')
 flattenV (VEqSing v) = foldUnary VEqSing <$> flattenV v
 flattenV (VEqCon t v) = foldUnary (VEqCon t) <$> flattenV v
 flattenV (VEqMapCong v) = foldUnary VEqMapCong <$> flattenV v
+flattenV (VEqComplCong v1 v2) = foldBinary VEqComplCong <$> flattenV v1 <*> flattenV v2
 flattenV (VEqLeq v1 v2) = foldBinary VEqLeq <$> flattenV v1 <*> flattenV v2
 flattenV (VEqPlus v1 v2 v3) =
   do vs' <- mapM flattenV [v1, v2, v3]
      return (if all (VRefl ==) vs' then VRefl else VEqPlus (vs' !! 0) (vs' !! 1) (vs' !! 2))
 flattenV v = return v
-  -- Covers: VVar, VRefl, VLeqSimple, VPlusSimple, VEqBeta, VEqMap, VEqDefn, VEqLiftTyCon,
-  -- VEqTyConSing, VEqMapId, VEqMapCompose
+  -- Covers: VVar, VRefl, VLeqSimple, VPlusSimple, VEqBeta, VEqMap, VEqCompl, VEqDefn,
+  -- VEqLiftTyCon, VEqTyConSing, VEqMapId, VEqMapCompose,
 
 --
 

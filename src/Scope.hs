@@ -55,6 +55,7 @@ instance HasVars Ty where
   scope (TMu t) = TMu <$> scope t
   scope (TMapFun t) = TMapFun <$> scope t
   scope (TMapArg t) = TMapArg <$> scope t
+  scope (TCompl r0 r1 v) = TCompl <$> scope r0 <*> scope r1 <*> pure v
 
 instance HasVars Pred where
   scope (PLeq y z) = PLeq <$> scope y <*> scope z

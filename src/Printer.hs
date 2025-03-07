@@ -89,6 +89,9 @@ instance Printable Kind where
 --   =>, ->           2
 --   application      3
 
+-- TODO: fix precedence in printing
+-- TODO: I think the precedence above is not what the parser implements
+
 instance Printable Ty where
   ppr (TVar _ s mk) =
     do pk <- asks printKinds
@@ -130,7 +133,7 @@ instance Printable Ty where
     with 3 $ fillSep (map pprI is ++ [ppr t]) where
       pprI (TyArg t) = brackets (ppr t)
       pprI (PrArg _) = mempty -- dunno what to put here, honestly...
-  -- ppr (TShift t) = "^" <> at 4 (ppr t)
+  ppr (TCompl r0 r1 _) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr t = "<missing: " <> ppre (show t) <> ">"
 
 instance Printable Pred where

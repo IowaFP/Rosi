@@ -13,4 +13,11 @@ type Unit = Pi {}
 tt : Unit
 tt = prj (#'x := (/\ a. \x. x))
 
+type Bool : *
+type Bool = Sigma { 'True := Unit, 'False := Unit }
 
+True : Bool
+True = con #'True tt
+
+False : Bool
+False = con #'False tt

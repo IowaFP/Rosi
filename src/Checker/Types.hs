@@ -74,7 +74,7 @@ checkTy TFun expected = expectK TFun (KFun KType (KFun KType KType)) expected
 checkTy (TThen pi t) expected =
   TThen <$>
     checkPred pi <*>
-    checkTy t expected
+    (assume pi $ checkTy t expected)
 checkTy (TForall x Nothing t) expected =
   do k <- kindGoal "d"
      checkTy (TForall x (Just k) t) expected
@@ -141,6 +141,14 @@ checkTy t@(TMapArg f) expected =
      kcod <- kindGoal "e"
      expectK t (KFun (KRow kcod) (KRow kcod)) expected
      TMapFun <$> checkTy f (KFun kdom kcod)
+checkTy t@(TCompl r0 r1 _) expected =
+  do k <- kindGoal "t"
+     expectK t (KRow k) expected
+     r0' <- checkTy r0 (KRow k)
+     r1' <- checkTy r1 (KRow k)
+     v <- newRef Nothing
+     require (PLeq r1' r0') v
+     return (TCompl r0' r1' (Just (VGoal (Goal ("q", v)))))
 
 checkPred :: Pred -> CheckM Pred
 checkPred p@(PLeq y z) =

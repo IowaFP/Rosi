@@ -41,7 +41,7 @@ solve (cin, p, r) =
   everything p =
     do pctxt' <- mapM flattenP (pctxt cin)
        trace ("Solving " ++ show p ++ " from " ++ show pctxt')
-       prim p <|> mapFunApp p <|> byAssump (pctxt cin) p
+       prim p <|> mapFunApp p <|> {- compl p <|> -} byAssump (pctxt cin) p
 
   sameSet :: Eq a => [a] -> [a] -> Bool
   sameSet xs ys = all (`elem` ys) xs && all (`elem` xs) ys
@@ -92,11 +92,6 @@ solve (cin, p, r) =
         do trace "1 match"
            unifyAssocs ps (map (second (TApp f)) ps')
            return (Just (VVar v))
-           -- cond (sameAssocs ps (map (second (TApp f)) ps'))
-           --      (do trace "2 match"
-           --          return (Just (VVar v)))
-           --      (do trace "3 no match"
-           --          return Nothing)
       _ -> return Nothing
   matchLeqMap _ _ = return Nothing
 
@@ -120,8 +115,15 @@ solve (cin, p, r) =
   fundeps p q = throwError (ErrTypeMismatchFD p q)
 
   expand1 :: Pred -> [Pred]
-  expand1 (PPlus x y z) = [PLeq x z, PLeq y z]
-  expand1 (PLeq _ _) = []
+  expand1 (PPlus x y z)
+    | not (isComplement x) && not (isComplement y) = [PLeq x z, PLeq y z]
+    | otherwise                                    = []
+  expand1 (PLeq x y)
+    | not (isComplement x) = [PLeq (TCompl y x (Just VRefl)) y, PPlus x (TCompl y x (Just VRefl)) y, PPlus (TCompl y x (Just VRefl)) x y]
+    | otherwise            = []
+
+  isComplement (TCompl {}) = True
+  isComplement _           = False
 
   expand2 :: Pred -> Pred -> [Pred]
   expand2 (PLeq x y) (PLeq z w)
@@ -213,6 +215,24 @@ solve (cin, p, r) =
        fmap (VPlusLiftL f) <$> everything (PPlus x y z)
   mapFunApp _ = return Nothing
 
+  compl p@(PLeq (TCompl y x _) y') =
+    suppose (typesEqual y y') $
+    do v <- newRef Nothing
+       require (PLeq x y) v
+       return (Just (VComplLeq (VGoal (Goal ("q", v)))))
+  compl p@(PPlus (TCompl y x _) x' y') =
+    suppose (typesEqual x x') $
+    suppose (typesEqual y y') $
+    do v <- newRef Nothing
+       require (PLeq x y) v
+       return (Just (VPlusComplL (VGoal (Goal ("q", v)))))
+  compl p@(PPlus x' (TCompl y x _) y') =
+    suppose (typesEqual x x') $
+    suppose (typesEqual y y') $
+    do v <- newRef Nothing
+       require (PLeq x y) v
+       return (Just (VPlusComplR (VGoal (Goal ("q", v)))))
+  compl _ = return Nothing
 
 loop :: [Problem] -> CheckM ()
 loop [] = return ()

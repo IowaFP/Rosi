@@ -337,6 +337,14 @@ unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
        Nothing    ->
         do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
+unify0 t@(TCompl x y _) u@(TCompl x' y' _) =
+  checking $ do mqx <- unify' x x'
+                mqy <- unify' y y'
+                case (mqx, mqy) of
+                  (Just qx, Just qy) -> return (Just (VEqComplCong qx qy))
+                  _                  -> refine $ requireEq t u
+unify0 t@(TCompl {}) u = refine $ requireEq t u
+unify0 t u@(TCompl {}) = refine $ requireEq t u
 unify0 t u
   | (not (null ts) && refinable ft) ||
     (not (null us) && refinable fu) = refine $ requireEq t u
@@ -376,6 +384,7 @@ instance HasTyVars Ty where
   subst v t (TPi u) = TPi <$> subst v t u
   subst v t (TSigma u) = TSigma <$> subst v t u
   subst v t (TMu u) = TMu <$> subst v t u
+  subst v t (TCompl y x q) = TCompl <$> subst v t y <*> subst v t x <*> pure q
   subst v t (TInst (Known is) u) = TInst <$> (Known <$> mapM substI is) <*> subst v t u where
     substI (TyArg u) = TyArg <$> subst v t u
     substI (PrArg v) = return (PrArg v)
@@ -476,6 +485,15 @@ normalize (TForall x (Just k) t) =
 normalize (TMapFun t) =
   do (t', q) <- normalize t
      return (TMapFun t', q)
+normalize (TCompl x y v) =
+  do (x', q) <- normalize x
+     (y', q') <- normalize y
+     case (x', y') of
+       (TRow xs, TRow ys)
+         | Just xls <- mapM label xs
+         , Just yls <- mapM label ys
+         , all (`elem` xls) yls -> return (TRow [TLabeled l t | TLabeled l t <- xs, l `notElem` yls], VTrans (VEqComplCong q q') VEqCompl)
+       _ -> return (TCompl x' y' v, VEqComplCong q q')
 normalize (TInst ig@(Unknown (Goal (_, r))) t) =
   do minsts <- readRef r
      case minsts of
@@ -485,7 +503,8 @@ normalize (TInst (Known is) t) =
   do is' <- mapM normI is
      first (TInst (Known (map fst is'))) <$> normalize t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
   where normI (TyArg t) = first TyArg <$> normalize t
-        normI (PrArg v) = return (PrArg v, VRefl)
+        normI (PrArg v) =
+          return (PrArg v, VRefl)
 -- TODO: remaining homomorphic cases
 normalize t = return (t, VRefl)
 
