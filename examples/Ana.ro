@@ -51,3 +51,6 @@ fmapS3 = \d. /\ a b. \f. mapS0 #(\X. X a) #(\X. X b) (\l. sel d l f)
 
 type Eq : * -> *
 type Eq = \t. t -> t -> Bool
+
+eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
+eqS = \ d v. ana (\ l y. (case l (\x. sel d l x y) ? (\x. False)) v)
