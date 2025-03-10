@@ -86,11 +86,11 @@ solve (cin, p, r) =
     return (Just v)
   matchLeqDirect _ _ = return Nothing
 
-  matchLeqMap (PLeq (TRow es) (TApp (TMapFun f) z)) (PLeq (TRow es') z', v) =
+  matchLeqMap p@(PLeq (TRow es) (TApp (TMapFun f) z)) q@(PLeq (TRow es') z', v) =
     suppose (typesEqual z z') $
     case (mapM splitLabel es, mapM splitLabel es') of
       (Just ps, Just ps') | sameSet (map fst ps) (map fst ps') ->
-        do trace "1 match"
+        do trace $ "1 match: (" ++ show p ++ ") (" ++ show q ++ ")"
            unifyAssocs ps (map (second (TApp f)) ps')
            return (Just v)  -- TODO: really?
       _ -> return Nothing

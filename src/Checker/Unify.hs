@@ -166,7 +166,8 @@ unify' actual expected =
 unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM (Maybe Evid)) -> UnifyM (Maybe Evid)
 unifyInstantiating t u unify
   | Just matches <- match (reverse uis) (reverse (take (length tqs - nuqs) tqs)) =
-      do t' <- instantiates (reverse matches) t
+      do trace $ unlines ["unifyInstantiating:", "    " ++ show (quants t), "    " ++ show (insts u), "    " ++ show matches]
+         t' <- instantiates (reverse matches) t
          unify t' u'
   | otherwise =
       do trace $ "7 incoming unification failure: (" ++ show t ++ ") (" ++ show u ++ ")"
@@ -187,7 +188,7 @@ unifyInstantiating t u unify
           (Right (g, []) :) <$> match is qs
         match (Known is : is') qs =
           do (ms, qs') <- matchKnown is qs
-             (ms ++) <$> match is' qs'
+             (reverse ms ++) <$> match is' qs'
           where matchKnown [] qs = return ([], qs)
                 matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (t, k) :)) <$> matchKnown is qs
                 matchKnown (PrArg _ : _) _ = Nothing
@@ -206,8 +207,9 @@ unifyInstantiating t u unify
         instantiates (Left (u, _) : is) (TForall x k t) =
             do t' <- subst 0 (shiftTN 0 1 u) t
                instantiates is (shiftTN 0 (-1) t')
-        instantiates (Right (Goal (_, r), qs) : is) t =
+        instantiates (Right (Goal (ivar, r), qs) : is) t =
           do (is', t') <- instantiate (length qs) t
+             trace $ "instantiating " ++ ivar ++ " to " ++ show is'
              writeRef r (Just is')
              instantiates is t'
 
