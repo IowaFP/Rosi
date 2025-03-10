@@ -2,12 +2,22 @@
 module Naive (module Naive) where
 
 import Control.Monad.Reader (runReaderT)
+import Data.IORef
 import qualified Prettyprinter as P
+import System.IO.Unsafe (unsafePerformIO)
 import Printer
 import Syntax
 
--- import Debug.Trace
-trace _ x = x
+import qualified Debug.Trace as T
+{-# NOINLINE traceEvaluation #-}
+
+traceEvaluation :: IORef Bool
+traceEvaluation = unsafePerformIO (newIORef False)
+
+trace s x =
+  if unsafePerformIO (readIORef traceEvaluation)
+  then T.trace s x
+  else x
 
 newtype Env = E ([Ty], [Value])
   deriving Show

@@ -25,20 +25,21 @@ import Printer
 import Scope
 import Syntax
 
-data Flag = Eval String | Input String | Import String | TraceTypeInference | PrintTypedTerms | Reset
+data Flag = Eval String | Input String | Import String | TraceTypeInference | TraceEvaluation | PrintTypedTerms | Reset
   deriving Show
 
-data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String], doTrace :: Bool, doPrintTyped :: Bool }
+data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String], doTraceInference, doTraceEvaluation, doPrintTyped :: Bool }
 
 interpretFlag :: Flags -> Flag -> Flags
 interpretFlag f (Eval s)           = f { evals = evals f ++ splitOn "," s }
 interpretFlag f (Input s)          = f { inputs = inputs f ++ [s] }
 interpretFlag f (Import s)         = f { imports = imports f ++ [s] }
-interpretFlag f TraceTypeInference = f { doTrace = True }
+interpretFlag f TraceTypeInference = f { doTraceInference = True }
+interpretFlag f TraceEvaluation    = f { doTraceEvaluation = True }
 interpretFlag f PrintTypedTerms    = f { doPrintTyped = True }
-interpretFlag f Reset              = Flags [] [] [] False False
+interpretFlag f Reset              = Flags [] [] [] False False False
 
-interpretFlags = foldl interpretFlag (Flags [] [] [] False False)
+interpretFlags = foldl interpretFlag (Flags [] [] [] False False False)
 
 options :: [OptDescr Flag]
 options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
@@ -46,8 +47,8 @@ options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
           , Option [] [] (ReqArg Input "FILE") "file to process"
           , Option ['t'] [] (NoArg PrintTypedTerms) "print typed terms"
           , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference"
+          , Option ['E'] ["trace-evaluation"] (NoArg TraceEvaluation) "generate trace output from evaluation"
           , Option [] ["reset"] (NoArg Reset) "reset flags" ]
-
 unprog (Prog ds) = ds
 
 parseChasing :: [FilePath] -> [FilePath] -> IO [Decl]
@@ -86,7 +87,8 @@ main = do nowArgs <- getArgs
                (flags, [], []) -> return (interpretFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   exitFailure
-          writeIORef traceTypeInference (doTrace flags)
+          writeIORef traceTypeInference (doTraceInference flags)
+          writeIORef traceEvaluation (doTraceEvaluation flags)
           decls <- parseChasing (imports flags) (inputs flags)
           scoped <- reportErrors $ runScopeM $ scopeProg decls
           checked <- goCheck [] [] scoped
