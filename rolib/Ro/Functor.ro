@@ -1,0 +1,28 @@
+import Ro.Base
+
+type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
+type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
+
+type Mapper : (R[*] -> *) -> *
+type Mapper = \k. forall z : R[* -> *], f g : (* -> *) -> *. Iter f g z -> k (f z) -> k (g z)
+
+-- TURNS OUT that Pi and Sigma are syntax, not normal constructors. Fix me, eventually.
+
+mapS : Mapper (\r. Sigma r)
+mapS = /\ z f g. \ i v. ana [f] (\ l x. con l (i l x)) v
+
+mapP : Mapper (\r. Pi r)
+mapP = /\ z f g. \ i r. syn [g] (\l. i l (sel r l))
+
+type Functor : (* -> *) -> *
+type Functor = \f. forall a b. (a -> b) -> f a -> f b
+
+fmapS : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
+fmapS = \ d. /\ a b. \ f.
+          mapS [\ X. X a] [\ X. X b] (\l. sel d l f)
+
+fmapP : forall z : R[* -> *] . Pi (Functor z) -> Functor (Pi z)
+fmapP = \ d. /\ a b. \ f.
+          mapP [\ X. X a] [\ X. X b] (\l. sel d l f)
+
+-- TODO: generalize, but this seems to require kind polymorphism???

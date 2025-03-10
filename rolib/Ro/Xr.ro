@@ -1,0 +1,23 @@
+import Ro.Base
+import Ro.Functor
+
+-- For the moment, just (attempting to) transcribe the algebras from the draft
+-- paper.
+
+type FAlg : (* -> *) -> * -> *
+type FAlg = \f a. f a -> a
+
+cata : forall f a. Functor f -> FAlg f a -> Mu f -> a
+cata = \ map a. fix (\ cata x. a (map cata (out x)))
+
+type BAlg : R[* -> *] -> (R[* -> *] -> *) -> *
+type BAlg = \ z f. forall w r. z < w => Sigma z r -> (r -> Sigma w r) -> (r -> f w) -> f w
+
+histo : forall z f. BAlg z f -> Mu (Sigma z) -> f z
+histo = \ a. fix (\ rec x. a (out x) out rec)
+
+brna : forall x y z f. x + y ~ z => BAlg x f -> BAlg y f -> BAlg z f
+brna = \ f g. f ? g
+
+brnal : forall x z f. x < z => BAlg x f -> BAlg z f -> BAlg z f
+brnal = \ f g. brnl f g
