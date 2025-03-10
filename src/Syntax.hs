@@ -314,6 +314,8 @@ data Evid =
   --
   | VEqLiftTyCon TyCon                -- (K r) t ~ K (r^ t), where r^ t = ^(\x. x t) r
   | VEqTyConSing TyCon                -- {l := t} ~ K {l := t}
+  | VEqPlusComplL Evid                -- x + y ~ z  ==>  x ~ (z - y)
+  | VEqPlusComplR Evid                -- x + y ~ z  ==>  y ~ (z - x)
   -- Functor laws for map
   | VEqMapId                        -- ^(\x.x) r ~ r
   | VEqMapCompose                   -- ^f (^g r) ~ ^(f . g) r

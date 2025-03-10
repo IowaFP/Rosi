@@ -41,8 +41,7 @@ solve (cin, p, r) =
   everything p =
     do pctxt' <- mapM flattenP (pctxt cin)
        trace ("Solving " ++ show p ++ " from " ++ show pctxt')
-       prim p <|> mapFunApp p <|> byAssump (pctxt cin) p
-       prim p <|> mapFunApp p <|> byAssump (pctxt cin) p
+       prim p <|> refl p <|> mapFunApp p <|> byAssump (pctxt cin) p
 
   sameSet :: Eq a => [a] -> [a] -> Bool
   sameSet xs ys = all (`elem` ys) xs && all (`elem` xs) ys
@@ -77,14 +76,22 @@ solve (cin, p, r) =
                Nothing -> fundeps p q
                Just _  -> return ()) xs
 
-  matchLeqDirect, matchLeqMap, matchPlusDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
-  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q
+  matchLeqDirect, matchLeqMap, matchPlusDirect, matchEqDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
+  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q <|> matchEqDirect p q
 
   matchLeqDirect (PLeq y z) (PLeq y' z', v) =
     suppose (typesEqual y y') $
     suppose (typesEqual z z') $
     return (Just v)
   matchLeqDirect _ _ = return Nothing
+
+  refl (PLeq x y) =
+    suppose (typesEqual x y) $
+    return (Just VRefl)
+  refl (PEq x y) =
+    suppose (typesEqual x y) $
+    return (Just VRefl)
+  refl _ = return Nothing
 
   matchLeqMap p@(PLeq (TRow es) (TApp (TMapFun f) z)) q@(PLeq (TRow es') z', v) =
     suppose (typesEqual z z') $
@@ -106,17 +113,29 @@ solve (cin, p, r) =
                return (Just v) -- TODO: really?
   matchPlusDirect _ _ = return Nothing
 
+  matchEqDirect p@(PEq x y) q@(PEq x' y', v) =
+    suppose (typesEqual x x') $
+    suppose (typesEqual y y') $
+      return (Just v)
+  matchEqDirect _ _ =
+    return Nothing
+
   -- question to self: why do I have both the `fundeps` error and the `force` error?
 
   fundeps p q = throwError (ErrTypeMismatchFD p q)
 
   expand1 :: (Pred, Evid) -> [(Pred, Evid)]
   expand1 (PPlus x y z, v)
-    | not (isComplement x) && not (isComplement y) = [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v)]
-    | otherwise                                    = []
+    | not (isComplement x) && not (isComplement y) =
+        [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v), (PEq x (TCompl z y (Just (VPlusLeqR v))), VEqPlusComplL v),
+         (PEq y (TCompl z x (Just (VPlusLeqL v))), VEqPlusComplR v)]
+    | otherwise =
+        []
   expand1 (PLeq x y, v)
     | not (isComplement x) = [(PLeq (TCompl y x (Just VRefl)) y, VComplLeq v), (PPlus x (TCompl y x (Just VRefl)) y, VPlusComplR v), (PPlus (TCompl y x (Just VRefl)) x y, VPlusComplL v)]
     | otherwise            = []
+  expand1 (PEq x y, VEqSym {}) = []
+  expand1 (PEq x y, v) = [(PEq y x, VEqSym v)]
 
   isComplement (TCompl {}) = True
   isComplement _           = False
