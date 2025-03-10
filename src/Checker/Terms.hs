@@ -46,7 +46,8 @@ elimForm expected@(TInst {}) k =
   k expected
 elimForm expected k =
   do iv <- newRef Nothing
-     flip EInst (Unknown (Goal ("i", iv))) <$> k (TInst (Unknown (Goal ("i", iv))) expected)
+     name <- fresh "i"
+     flip EInst (Unknown (Goal (name, iv))) <$> k (TInst (Unknown (Goal (name, iv))) expected)
 
 checkTerm0 :: Bool -> Term -> Ty -> CheckM Term
 checkTerm0 implicitTyLams (ETyLam v Nothing e) expected =
@@ -175,19 +176,25 @@ checkTerm0 implicitTyLams e0@(EAna phi e) expected =
      t <- typeGoal "t"
      elimForm expected $ \expected ->
        do q <- expectT e0 (TSigma (TApp (TMapFun phi') r) `funTy` t) expected
-          EAna phi' <$> checkTerm implicitTyLams e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $ TForall "y1" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "y2" (Just (KRow k)) $
-                                     PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
-                                     PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
-                                     TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 5 phi') (TVar 3 "u" (Just k)) `funTy` shiftTN 0 5 t)
+          EAna phi' <$> checkTerm implicitTyLams e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
+                                                      PLeq (TRow [TLabeled (TVar 1 "l" (Just KLabel)) (TVar 0 "u" (Just k))]) (shiftTN 0 2 r) `TThen`
+                                                      TSing (TVar 1 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 2 phi') (TVar 0 "u" (Just k)) `funTy` shiftTN 0 2 t)
+--           EAna phi' <$> checkTerm implicitTyLams e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $ TForall "y1" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "y2" (Just (KRow k)) $
+--                                      PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
+--                                      PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
+--                                      TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 5 phi') (TVar 3 "u" (Just k)) `funTy` shiftTN 0 5 t)
 checkTerm0 implicitTyLams e0@(ESyn phi e) expected =
   do k <- kindGoal "k"
      phi' <- checkTy' e0 phi (KFun k KType)
      r <- typeGoal' "r" (KRow k)
      q <- expectT e0 (TPi (TApp (TMapFun phi') r)) expected
-     ESyn phi' <$> checkTerm implicitTyLams e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $ TForall "y1" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "y2" (Just (KRow k)) $
-                                PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
-                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
-                                TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 5 phi') (TVar 3 "u" (Just k)))
+     ESyn phi' <$> checkTerm implicitTyLams e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
+                                                 PLeq (TRow [TLabeled (TVar 1 "l" (Just KLabel)) (TVar 0 "u" (Just k))]) (shiftTN 0 2 r) `TThen`
+                                                 TSing (TVar 1 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 2 phi') (TVar 0 "u" (Just k)))
+--     ESyn phi' <$> checkTerm implicitTyLams e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $ TForall "y1" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "y2" (Just (KRow k)) $
+--                                PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
+--                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
+--                                TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 5 phi') (TVar 3 "u" (Just k)))
 checkTerm0 implicitTyLams e0@(ETyped e t) expected =
   do (t', _) <- normalize =<< checkTy' e0 t KType
      e' <- checkTerm False e t'  -- any reason to preserve the type ascription?
