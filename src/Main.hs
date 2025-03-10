@@ -52,7 +52,9 @@ options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
 unprog (Prog ds) = ds
 
 parseChasing :: [FilePath] -> [FilePath] -> IO [Decl]
-parseChasing additionalImportDirs fs = evalStateT (chase fs) [] where
+parseChasing additionalImportDirs fs =
+  do fs' <- mapM findStartingPoint fs
+     evalStateT (chase fs') [] where
 
   chase :: [FilePath] -> StateT [FilePath] IO [Decl]
   chase [] = return []
@@ -76,6 +78,11 @@ parseChasing additionalImportDirs fs = evalStateT (chase fs) [] where
           check [] =
             do hPutStrLn stderr $ "import not found: " ++ s
                exitFailure
+
+  findStartingPoint :: String -> IO FilePath
+  findStartingPoint s
+    | takeExtension s == ".ro" = return s
+    | otherwise                = findImport s
 
 main :: IO ()
 main = do nowArgs <- getArgs
