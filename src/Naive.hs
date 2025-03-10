@@ -90,7 +90,7 @@ eval' h (ELam s (Just t) e) = VLam h s t e
 eval' h (EApp (EInst (EConst CPrj) (Known [TyArg y, TyArg z, _])) e)   -- remember: y <= z
   | null ls = VRecord []
   | otherwise = prj (eval h e) where
-    ls = dom y
+    ls = dom (substTy h y)
     prj (VRecord fs) = VRecord [(l, th) | (l, th) <- fs, l `elem` ls]
     prj v@VLabeled{} = v  -- can do dumb projections
     prj v@VSyn{} = v   -- synthesizing fewer fields is the same as synthesizing more fields
@@ -98,14 +98,14 @@ eval' h (EApp (EInst (EConst CPrj) (Known [TyArg y, TyArg z, _])) e)   -- rememb
     -- prj (VSyn _ m) = VRecord [(l, app (eval h m) (VSing (TLab l))) | l <- ls]
 eval' h e@(EApp (EInst (EApp (EInst (EConst CConcat) (Known [TyArg x, TyArg y, _, _])) m) (Known [])) n) =
   VRecord (fields xls (eval h m) ++ fields yls (eval h n)) where
-  xls = dom x
-  yls = dom y
+  xls = dom (substTy h x)
+  yls = dom (substTy h y)
   fields _ (VRecord fs) = fs
   fields _ (VLabeled s th) = [(s, th)]
   fields ls (VSyn _ m) = [(l, app h m (VSing (TLab l))) | l <- ls]
   fields _ _ = error $ "evaluation failed: " ++ show e
 eval' h (EApp (EInst (EConst CInj) (Known [TyArg y, TyArg z, _])) e) = eval h e
-eval' h (EApp (EInst (EApp (EInst (EConst CBranch) (Known [TyArg x, TyArg y, _, _, _])) f) (Known [])) g) = VBranch (dom x) (eval h f) (eval h g)
+eval' h (EApp (EInst (EApp (EInst (EConst CBranch) (Known [TyArg x, TyArg y, _, _, _])) f) (Known [])) g) = VBranch (dom (substTy h x)) (eval h f) (eval h g)
 eval' h (EApp (EInst (EConst CIn) _) e) = VIn (eval h e) -- also treating in like a constructor... probably will need that functor evidence eventually, but meh
 eval' h (EApp (EInst (EConst COut) _) e)
   | VIn v <- eval h e = v
