@@ -1,4 +1,4 @@
-import Ro
+import Ro.Base
 
 -- The version actually formalized in the ICFP'23 development
 reify0 : forall z t. (Sigma z -> t) -> Pi ((\X. X -> t) z)

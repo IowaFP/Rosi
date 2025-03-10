@@ -1,4 +1,4 @@
-import Ro
+import Ro.Base
 
 reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t
 reflect = \ d w. ana (\ l u. sel d l u) w

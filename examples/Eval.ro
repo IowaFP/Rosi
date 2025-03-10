@@ -1,4 +1,4 @@
-import Ro
+import Ro.Base
 
 m : Pi { 'x := (forall a. a -> a), 'y := (forall b. b -> b) }
 m = (#'x := (/\ a. \x. x)) ++ (#'y := (/\ b. \x. x))

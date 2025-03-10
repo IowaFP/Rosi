@@ -1,4 +1,4 @@
-import Ro
+import Ro.Base
 
 type NatF : * -> *
 type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}
