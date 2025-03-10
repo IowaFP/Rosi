@@ -1,0 +1,21 @@
+import Ro.Base
+
+getDefault : forall l t z. {l := t} < z => #l -> t -> Sigma z -> t
+getDefault = \ l z. case l (\x. x) ? (\y. z)
+
+-- For reference, although we're not using it...
+type T : *
+type T = Sigma { 'x := Bool, 'y := Unit }
+
+
+v2 : Bool
+w2 : Bool
+
+-- These fail to typecheck. In the first case, we get an unrefined unification
+-- variable a, under the constraints `{'x := Bool} < a` (from `getDefault`) and
+-- `{'x := Bool} < a` (from `con`). In the second, we have the constraints `{'x
+-- := Bool} < a` (from `getDefault`) and `{y := Unit} < a` (from `con`). In both
+-- cases, while there is an "obvious" lub, we don't search for it.
+
+v2 = getDefault #'x False (con #'x True)
+w2 = getDefault #'x False (con #'y tt)
