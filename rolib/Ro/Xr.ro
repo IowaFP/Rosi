@@ -1,5 +1,4 @@
-import Ro.Base
-import Ro.Functor
+import Ro.Base, Data.Functor
 
 -- For the moment, just (attempting to) transcribe the algebras from the draft
 -- paper.

@@ -1,8 +1,16 @@
--- Composition
+-------------------------------------------------------------------------------
+-- Functions
 
 o : forall t u v. (u -> v) -> (t -> u) -> t -> v
 o = \ f g x. f (g x)
 
+id : forall t. t -> t
+id = \x. x
+
+const : forall t u. t -> u -> t
+const = \ x y. x
+
+-------------------------------------------------------------------------------
 -- Convenience functions for records and variants
 
 sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
@@ -17,6 +25,16 @@ case = \ l f x. f (x / l)
 brnl : forall x z t. x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
 brnl = \ f g. f ? (o g inj)
 
+relabelS : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
+           #l0 -> #l1 -> Sigma y0 -> Sigma y1
+relabelS = \ l0 l1. case l0 (con l1) ? inj
+
+relabelInj : forall y1 y0 l0 l1 t x z.
+             {l0 := t} + x ~ y0, {l1 := t} + x ~ y1, y1 < z =>
+             #l0 -> #l1 -> Sigma y0 -> Sigma z
+relabelInj = /\y1. \l0 l1 x. inj (relabelS l0 l1 x : Sigma y1)
+
+-------------------------------------------------------------------------------
 -- Base types
 
 type Unit : *
@@ -34,6 +52,7 @@ True = con #'True tt
 False : Bool
 False = con #'False tt
 
+-------------------------------------------------------------------------------
 -- Basic analysis / synthesis
 
 reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t

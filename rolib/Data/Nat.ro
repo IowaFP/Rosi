@@ -1,0 +1,55 @@
+import Ro.Base
+
+type NatF : * -> *
+type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}
+
+type Nat : *
+type Nat = Mu NatF
+
+zero : Nat
+zero = in (inj (#'Zero := tt))
+
+succ : Nat -> Nat
+succ = \n. in (inj (#'Succ := n))
+
+--
+
+decr : Nat -> Nat
+decr = \n. (case #'Zero (\ u. in (con #'Zero u)) ? case #'Succ id) (out n)
+
+add : Nat -> Nat -> Nat
+add = \m. fix (\add n. (case #'Zero (\u. m) ? case #'Succ (\nn. succ (add nn))) (out n))
+
+monus : Nat -> Nat -> Nat
+monus = fix (\ monus m n. (case #'Zero (\u. m) ? case #'Succ (\nn. monus (decr m) nn)) (out n))
+
+max : Nat -> Nat -> Nat
+max = \ m n. fix (\max mm nn.
+                    ( case #'Zero (\u. n)
+                    ? case #'Succ (\mm1.
+                        (
+                          case #'Zero (\u. m)
+                        ? case #'Succ (\nn1. max mm1 nn1)
+                        ) (out nn))
+                    ) (out mm)
+                 ) m n
+
+--
+
+one : Nat
+one = succ zero
+
+two : Nat
+two = succ one
+
+three : Nat
+three = add one two
+
+one0 : Nat
+one0 = monus three two
+
+three0 : Nat
+three0 = max one0 three
+
+three1 : Nat
+three1 = max three one0
