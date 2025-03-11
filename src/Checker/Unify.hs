@@ -481,9 +481,15 @@ normalize (TSigma z) =
 normalize (TPi z) =
   do (z', q) <- normalize z
      return (TPi z', VEqCon Pi q)
+normalize (TMu z) =
+  do (z', q) <- normalize z
+     return (TMu z', VEqCon Mu q)
 normalize (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize t)
-     return (TForall x (Just k) t', q) -- probably should be a congruence rule mentioned around here.... :)
+     return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)
+normalize (TLam x (Just k) t) =
+  do (t', q) <- bindTy k (normalize t)
+     return (TLam x (Just k) t', VEqLambda q)
 normalize (TMapFun t) =
   do (t', q) <- normalize t
      return (TMapFun t', q)
