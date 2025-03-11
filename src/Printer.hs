@@ -133,7 +133,7 @@ instance Printable Ty where
     with 3 $ fillSep (map pprI is ++ [ppr t]) where
       pprI (TyArg t) = brackets (ppr t)
       pprI (PrArg _) = mempty -- dunno what to put here, honestly...
-  ppr (TCompl r0 r1 _) = fillSep [ppr r0 <+> "-", ppr r1]
+  ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr t = "<missing: " <> ppre (show t) <> ">"
 
 instance Printable Pred where

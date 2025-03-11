@@ -186,7 +186,7 @@ appTy :: Parser Ty
 appTy = chainr1 minusTy (symbol ":=" *> return TLabeled)
 
 minusTy :: Parser Ty
-minusTy = chainl1 (apps <$> some atype) (lexeme (try (string "-" <* notFollowedBy (char '>'))) *> return (\t u -> TCompl t u Nothing))
+minusTy = chainl1 (apps <$> some atype) (lexeme (try (string "-" <* notFollowedBy (char '>'))) *> return (\t u -> TCompl t u))
 
 apps :: [Ty] -> Ty
 apps = foldl1 TApp

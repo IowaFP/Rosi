@@ -68,6 +68,6 @@ puzzle2 =
          u1 = TSigma (TUnif 0 rf (KRow KType))
          t2 = TUnif 0 gf (KFun KType KType)
          u2 = TLam "x" (Just KType) (TSigma (TVar 0 "x" (Just (KRow KType))))
-     v1 <- unify t1 u1
-     v2 <- unify t2 u2
+     v1 <- unify [] t1 u1
+     v2 <- unify [] t2 u2
      return (f, r, v1, v2)

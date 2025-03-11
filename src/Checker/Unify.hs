@@ -4,7 +4,7 @@ module Checker.Unify (module Checker.Unify) where
 import Control.Monad
 import Control.Monad.Error.Class
 import Control.Monad.IO.Class
-import Control.Monad.Reader.Class
+import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Bifunctor (first, second)
@@ -25,13 +25,13 @@ data Update where
 perform :: MonadIO m => Update -> m ()
 perform (U ref val) = liftIO $ writeIORef ref val
 
+type Eqn = (Ty, (Ty, Evid))
+
+type UR = [Eqn]
 type US = Maybe [Dynamic]
 type UW = ([Update], [(Pred, IORef (Maybe Evid))])
-newtype UnifyM a = UM { runUnifyM :: StateT US (WriterT UW CheckM) a }
+newtype UnifyM a = UM { runUnifyM :: StateT US (WriterT UW (ReaderT UR CheckM)) a }
   deriving (Functor, Applicative, Monad, MonadWriter UW, MonadError Error, MonadIO, MonadState US)
-
-liftC :: CheckM a -> UnifyM a
-liftC = UM . lift . lift
 
 instance MonadRef UnifyM where
   newRef v = UM $ StateT $ \checking -> WriterT (body checking) where
@@ -46,16 +46,16 @@ instance MonadRef UnifyM where
        liftIO (writeIORef r v)
 
 instance MonadReader TCIn UnifyM where
-  ask = UM (lift (lift ask))
-  local f r = UM $ StateT $ \checking -> WriterT $ local f (runWriterT (runStateT (runUnifyM r) checking))
+  ask = UM (lift (lift (lift ask)))
+  local f r = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> local f (runReaderT (runWriterT (runStateT (runUnifyM r) checking)) eqns))
 
 instance MonadCheck UnifyM where
-  bindTy k m = UM $ StateT $ \checking -> WriterT $ bindTy k (runWriterT $ runStateT (runUnifyM m) checking)
-  defineTy k t m = UM $ StateT $ \checking -> WriterT $ defineTy k t (runWriterT $ runStateT (runUnifyM m) checking)
-  bind t m = UM $ StateT $ \checking -> WriterT $ bind t (runWriterT $ runStateT (runUnifyM m) checking)
-  assume g m = UM $ StateT $ \checking -> WriterT $ assume g (runWriterT $ runStateT (runUnifyM m) checking)
+  bindTy k m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> bindTy k (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  defineTy k t m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> defineTy k t (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  bind t m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> bind t (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  assume g m = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> assume g (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns))
   require p r = tell ([], [(p, r)])
-  fresh = UM . lift . lift . fresh
+  fresh = UM . lift . lift . lift . fresh
 
 canUpdate :: Typeable a => IORef a -> UnifyM Bool
 canUpdate r = UM (StateT $ \checking -> WriterT (body checking)) where
@@ -64,6 +64,9 @@ canUpdate r = UM (StateT $ \checking -> WriterT (body checking)) where
   ok dr = case fromDynamic dr of
             Just r' -> r == r'
             Nothing -> False
+
+theEqns :: UnifyM [Eqn]
+theEqns = UM ask
 
 {--
 
@@ -98,23 +101,23 @@ types). How bad are the error messages?
 
 --}
 
-unify, check, unifyProductive :: HasCallStack => Ty -> Ty -> CheckM (Maybe Evid)
-unify actual expected =
-  do (result, (undoes, preds)) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing
+unify, check, unifyProductive :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Maybe Evid)
+unify eqns actual expected =
+  do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing) eqns
      if isNothing result
      then mapM_ perform undoes
      else mapM_ (uncurry require) preds
      return result
 
-check actual expected =
-  do (result, (undoes, preds)) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) (Just [])
+check eqns actual expected =
+  do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runUnifyM $ unify' actual expected) (Just [])) eqns
      if isNothing result
      then mapM_ perform undoes
      else mapM_ (uncurry require) preds
      return result
 
-unifyProductive actual expected =
-  do (result, (undoes, preds)) <- runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing
+unifyProductive eqns actual expected =
+  do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing) eqns
      result' <- traverse flattenV result
      if isNothing result' || not (productive result')
      then do mapM_ perform undoes
@@ -149,8 +152,9 @@ requireEq t u =
 unify' :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
 unify' actual expected =
   do trace ("(" ++ show actual ++ ") ~ (" ++ show expected ++ ")")
-     (actual', q) <- normalize actual
-     (expected', q') <- normalize expected -- TODO: do we need to renormalize each time around?
+     eqns <- theEqns
+     (actual', q) <- normalize eqns actual
+     (expected', q') <- normalize eqns expected -- TODO: do we need to renormalize each time around?
      let f = case q of
                VRefl -> id
                _     -> VTrans q
@@ -339,7 +343,7 @@ unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
        Nothing    ->
         do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
-unify0 t@(TCompl x y _) u@(TCompl x' y' _) =
+unify0 t@(TCompl x y) u@(TCompl x' y') =
   checking $ do mqx <- unify' x x'
                 mqy <- unify' y y'
                 case (mqx, mqy) of
@@ -386,7 +390,7 @@ instance HasTyVars Ty where
   subst v t (TPi u) = TPi <$> subst v t u
   subst v t (TSigma u) = TSigma <$> subst v t u
   subst v t (TMu u) = TMu <$> subst v t u
-  subst v t (TCompl y x q) = TCompl <$> subst v t y <*> subst v t x <*> pure q
+  subst v t (TCompl y x) = TCompl <$> subst v t y <*> subst v t x
   subst v t (TInst (Known is) u) = TInst <$> (Known <$> mapM substI is) <*> subst v t u where
     substI (TyArg u) = TyArg <$> subst v t u
     substI (PrArg v) = return (PrArg v)
@@ -403,123 +407,128 @@ instance HasTyVars Pred where
   subst v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
   subst v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
 
-normalize' :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, Evid)
-normalize' t =
-  do (u, q) <- normalize t
+normalize' :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
+normalize' eqns t =
+  do (u, q) <- normalize eqns t
      theKCtxt <- asks kctxt
      case q of
        VRefl -> return (u, q)
        _     -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
                    return (u, q)
 
-normalize :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, Evid)
-normalize t@(TVar i _ _) =
+
+normalize :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
+normalize eqns t
+  | Just (u, v) <- lookup t eqns =
+    do (u', q) <- normalize eqns u
+       return (u', VTrans v q)
+normalize eqns t@(TVar i _ _) =
   do (_, mdef) <- asks ((!! i) . kctxt)
      case mdef of
        Nothing -> return (t, VRefl)
-       Just def -> do (t', q) <- normalize (shiftTN 0 (i + 1) def)
+       Just def -> do (t', q) <- normalize eqns (shiftTN 0 (i + 1) def)
                       return (t', VTrans VEqDefn q)
-normalize t0@(TApp (TLam x (Just k) t) u) =
+normalize eqns t0@(TApp (TLam x (Just k) t) u) =
   do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
-     (t2, q) <- normalize t1
+     (t2, q) <- normalize eqns t1
      return (t2, VTrans VEqBeta q)
-normalize (TApp (TPi r) t) =
-  do (t1, q) <- normalize (TPi (TApp (TMapArg r) t))  -- To do: check kinding
+normalize eqns (TApp (TPi r) t) =
+  do (t1, q) <- normalize eqns (TPi (TApp (TMapArg r) t))  -- To do: check kinding
      return (t1, VTrans (VEqLiftTyCon Pi) q)
-normalize (TApp (TSigma r) t) =
-  do (t1, q) <- normalize (TSigma (TApp (TMapArg r) t))
+normalize eqns (TApp (TSigma r) t) =
+  do (t1, q) <- normalize eqns (TSigma (TApp (TMapArg r) t))
      return (t1, VTrans (VEqLiftTyCon Sigma) q)
-normalize (TApp (TMapFun f) (TRow es))
+normalize eqns (TApp (TMapFun f) (TRow es))
   | Just ls <- mapM label es, Just ts <- mapM labeled es =
-    do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (TApp f) ts)))
+    do (t, q) <- normalize eqns (TRow (zipWith TLabeled ls (map (TApp f) ts)))
        return (t, VTrans VEqMap q)
 -- The next rule implements `map id == id`
-normalize (TApp (TMapFun f) z)
+normalize eqns (TApp (TMapFun f) z)
   | TLam _ k (TVar 0 _ _) <- f =
-    do (z, q) <- normalize z
+    do (z, q) <- normalize eqns z
        return (z, VTrans VEqMapId q)
 -- The following rules (attempt to) implement `map f . map g == map (f . g)`.
 -- The need for special cases arises from our various ways to represent type
 -- functions: they're not all `TLam`. There are probably some cases missing: in
 -- particular, I see nothing about nested maps.
-normalize (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
+normalize eqns (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
   do f' <- subst 0 g f
-     (t, q) <- normalize (TApp (TMapFun (TLam v k f')) z)
+     (t, q) <- normalize eqns (TApp (TMapFun (TLam v k f')) z)
      return (t, VTrans VEqMapCompose q)
-normalize (TApp (TMapFun (TLam v (Just (KFun KType KType)) f)) (TApp (TMapFun TFun) z)) =
+normalize eqns (TApp (TMapFun (TLam v (Just (KFun KType KType)) f)) (TApp (TMapFun TFun) z)) =
   do f' <- subst 0 (TApp TFun (TVar 0 v (Just KType))) f
-     (t, q) <- normalize (TApp (TMapFun (TLam v (Just KType) f')) z)
+     (t, q) <- normalize eqns (TApp (TMapFun (TLam v (Just KType) f')) z)
      return (t, VTrans VEqMapCompose q)
-normalize (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
-  do (t, q) <- normalize (TApp (TMapFun (TLam v k (TApp TFun f))) z)
+normalize eqns (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
+  do (t, q) <- normalize eqns (TApp (TMapFun (TLam v k (TApp TFun f))) z)
      return (t, VTrans VEqMapCompose q)
-normalize (TApp (TMapArg (TRow es)) t)
+normalize eqns (TApp (TMapArg (TRow es)) t)
   | Just ls <- mapM label es, Just fs <- mapM labeled es =
-    do (t, q) <- normalize (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
+    do (t, q) <- normalize eqns (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
        return (t, VTrans VEqMapCompose q)
-normalize (TMapArg z)
+normalize eqns (TMapArg z)
   | KRow (KFun k1 k2) <- kindOf z =
     return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y" (Just (KFun k1 k2))) (TVar 1 "X" (Just k1))))) (shiftTN 0 1 z)), VEqDefn)
-normalize (TApp t1 t2) =
-  do (t1', q1) <- normalize t1
+normalize eqns (TApp t1 t2) =
+  do (t1', q1) <- normalize eqns t1
      q1' <- flattenV q1
      case q1' of
-       VRefl -> do (t2', q2) <- normalize t2
+       VRefl -> do (t2', q2) <- normalize eqns t2
                    return (TApp t1 t2', VEqApp VRefl q2)
-       _ -> do (t', q) <- normalize (TApp t1' t2)
+       _ -> do (t', q) <- normalize eqns (TApp t1' t2)
                return (t', VTrans (VEqApp q1 VRefl) q)
-normalize (TLabeled tl te) =
-  do (tl', ql) <- normalize tl
-     (te', qe) <- normalize te
+normalize eqns (TLabeled tl te) =
+  do (tl', ql) <- normalize eqns tl
+     (te', qe) <- normalize eqns te
      return (TLabeled tl' te', VEqLabeled ql qe)
-normalize (TRow ts) =
-  do (ts', qs) <- unzip <$> mapM normalize ts
+normalize eqns (TRow ts) =
+  do (ts', qs) <- unzip <$> mapM (normalize eqns) ts
      return (TRow ts', VEqRow qs)
-normalize (TSigma z) =
-  do (z', q) <- normalize z
+normalize eqns (TSigma z) =
+  do (z', q) <- normalize eqns z
      return (TSigma z', VEqCon Sigma q)
-normalize (TPi z) =
-  do (z', q) <- normalize z
+normalize eqns (TPi z) =
+  do (z', q) <- normalize eqns z
      return (TPi z', VEqCon Pi q)
-normalize (TMu z) =
-  do (z', q) <- normalize z
+normalize eqns (TMu z) =
+  do (z', q) <- normalize eqns z
      return (TMu z', VEqCon Mu q)
-normalize (TForall x (Just k) t) =
-  do (t', q) <- bindTy k (normalize t)
+normalize eqns (TForall x (Just k) t) =
+  do (t', q) <- bindTy k (normalize eqns t)
      return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)
-normalize (TLam x (Just k) t) =
-  do (t', q) <- bindTy k (normalize t)
+normalize eqns (TLam x (Just k) t) =
+  do (t', q) <- bindTy k (normalize eqns t)
      return (TLam x (Just k) t', VEqLambda q)
-normalize (TMapFun t) =
-  do (t', q) <- normalize t
+normalize eqns (TMapFun t) =
+  do (t', q) <- normalize eqns t
      return (TMapFun t', q)
-normalize (TCompl x y v) =
-  do (x', q) <- normalize x
-     (y', q') <- normalize y
+normalize eqns (TCompl x y) =
+  do (x', q) <- normalize eqns x
+     (y', q') <- normalize eqns y
      case (x', y') of
        (TRow xs, TRow ys)
          | Just xls <- mapM label xs
          , Just yls <- mapM label ys
          , all (`elem` xls) yls -> return (TRow [TLabeled l t | TLabeled l t <- xs, l `notElem` yls], VTrans (VEqComplCong q q') VEqCompl)
-       _ -> return (TCompl x' y' v, VEqComplCong q q')
-normalize (TInst ig@(Unknown (Goal (_, r))) t) =
+       _ -> return (TCompl x' y', VEqComplCong q q')
+normalize eqns (TInst ig@(Unknown (Goal (_, r))) t) =
   do minsts <- readRef r
      case minsts of
-       Nothing -> first (TInst ig) <$> normalize t
-       Just is -> normalize (TInst (Known is) t)
-normalize (TInst (Known is) t) =
+       Nothing -> first (TInst ig) <$> normalize eqns t
+       Just is -> normalize eqns (TInst (Known is) t)
+normalize eqns (TInst (Known is) t) =
   do is' <- mapM normI is
-     first (TInst (Known (map fst is'))) <$> normalize t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
-  where normI (TyArg t) = first TyArg <$> normalize t
+     first (TInst (Known (map fst is'))) <$> normalize eqns t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
+  where normI (TyArg t) = first TyArg <$> normalize eqns t
         normI (PrArg v) =
           return (PrArg v, VRefl)
 -- TODO: remaining homomorphic cases
-normalize t = return (t, VRefl)
+normalize eqns t = return (t, VRefl)
 
-normalizeP :: MonadCheck m => Pred -> m Pred -- no evidence structure for predicate equality yet soooo....
-normalizeP (PLeq x y) = PLeq <$> (fst <$> normalize x) <*> (fst <$> normalize y)
-normalizeP (PPlus x y z) = PPlus <$> (fst <$> normalize x) <*> (fst <$> normalize y) <*> (fst <$> normalize z)
-normalizeP (PEq t u) = PEq <$> (fst <$> normalize t) <*> (fst <$> normalize u)
+normalizeP :: MonadCheck m => [Eqn] -> Pred -> m Pred -- no evidence structure for predicate equality yet soooo....
+normalizeP eqns (PLeq x y) = PLeq <$> (fst <$> normalize eqns x) <*> (fst <$> normalize eqns y)
+normalizeP eqns (PPlus x y z) = PPlus <$> (fst <$> normalize eqns x) <*> (fst <$> normalize eqns y) <*> (fst <$> normalize eqns z)
+normalizeP eqns (PEq t u) = PEq <$> (fst <$> normalize eqns t) <*> (fst <$> normalize eqns u)
 
 unifyP :: Pred -> Pred -> UnifyM (Maybe Evid)
 unifyP (PLeq y z) (PLeq y' z') = liftM2 VEqLeq <$> unify' y y' <*> unify' z z'

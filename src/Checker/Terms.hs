@@ -13,7 +13,7 @@ import Syntax
 expectT :: Term -> Ty -> Ty -> CheckM Evid
 expectT m actual expected =
   do trace ("expect (" ++ show actual ++ ") (" ++ show expected ++ ")")
-     b <- unify actual expected
+     b <- unify [] actual expected
      case b of
        Nothing -> typeMismatch m actual expected
        Just q  -> flattenV q
@@ -79,7 +79,7 @@ checkTerm0 implicitTyLams (ELam v Nothing e) expected =
      checkTerm0 implicitTyLams (ELam v (Just tdom) e) expected
 checkTerm0 implicitTyLams e0@(ELam v (Just t) e) expected =
   do tcod <- typeGoal "cod"
-     t' <- fst <$> (normalize' =<< checkTy' e0 t KType)
+     t' <- fst <$> (normalize' [] =<< checkTy' e0 t KType)
      q <- expectT e0 (funTy t' tcod) expected
      wrap q . ELam v (Just t') <$> bind t' (checkTerm' implicitTyLams  e tcod)
 checkTerm0 implicitTyLams e0@(EApp f e) expected =
@@ -196,15 +196,15 @@ checkTerm0 implicitTyLams e0@(ESyn phi e) expected =
 --                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
 --                                TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 5 phi') (TVar 3 "u" (Just k)))
 checkTerm0 implicitTyLams e0@(ETyped e t) expected =
-  do (t', _) <- normalize =<< checkTy' e0 t KType
+  do (t', _) <- normalize [] =<< checkTy' e0 t KType
      e' <- checkTerm False e t'  -- any reason to preserve the type ascription?
      elimForm expected $ \expected ->
-       do q <- expectT e0 t expected
+       do q <- expectT e0 t' expected
           return (ECast e' q)
 
 checkTop :: Term -> Ty -> CheckM Term
 checkTop m t =
-  do (t', q) <- normalize' t
+  do (t', q) <- normalize' [] t
      m' <- checkTerm True m t'
      return (case q of
                VRefl -> m'

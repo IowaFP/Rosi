@@ -31,10 +31,15 @@ expectKR t actual expected =
 unifyK :: MonadCheck m => Kind -> Kind -> m (Maybe Int)
 unifyK KType KType = return (Just 0)
 unifyK KLabel KLabel = return (Just 0)
-unifyK (KUnif (Goal (_, r))) expected =
+unifyK (KUnif (Goal (_, r))) (KUnif (Goal (_, s)))
+  | r == s = return (Just 0)
+unifyK (KUnif (Goal (uvar, r))) expected =
   do mActual <- readRef r
      case mActual of
-       Nothing -> writeRef r (Just expected) >> return (Just 0)
+       Nothing ->
+         do trace $ "binding " ++ show uvar ++ " +-> " ++ show expected
+            writeRef r (Just expected)
+            return (Just 0)
        Just actual' -> unifyK actual' expected
 unifyK actual (KUnif (Goal (_, r))) =
   do mExpected <- readRef r
@@ -141,14 +146,14 @@ checkTy t@(TMapArg f) expected =
      kcod <- kindGoal "e"
      expectK t (KFun (KRow kcod) (KRow kcod)) expected
      TMapFun <$> checkTy f (KFun kdom kcod)
-checkTy t@(TCompl r0 r1 _) expected =
+checkTy t@(TCompl r0 r1) expected =
   do k <- kindGoal "t"
      expectK t (KRow k) expected
      r0' <- checkTy r0 (KRow k)
      r1' <- checkTy r1 (KRow k)
      v <- newRef Nothing
      require (PLeq r1' r0') v
-     return (TCompl r0' r1' (Just (VGoal (Goal ("q", v)))))
+     return (TCompl r0' r1')
 
 checkPred :: Pred -> CheckM Pred
 checkPred p@(PLeq y z) =

@@ -112,7 +112,7 @@ main = do nowArgs <- getArgs
           do t' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType t) $ checkTy t k)
              goCheck ((k, Just t') : d) g ds
         goCheck d g (TmDecl v ty te : ds) =
-          do ty' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType ty) $ fst <$> (normalize =<< checkTy ty KType))
+          do ty' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
              te' <- flattenE =<< reportErrors =<< runCheckM' d g (withError (ErrContextTerm te) $ checkTop te ty')
              ds' <- goCheck d (ty' : g) ds
              return ((v, ty', te') : ds')

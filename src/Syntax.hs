@@ -59,7 +59,7 @@ data Ty =
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
   | TMu Ty | TMapFun Ty
-  | TCompl Ty Ty (Maybe Evid)  -- r0 - r1, with evidence that r1 < r0
+  | TCompl Ty Ty
   -- Internals
   | TInst Insts Ty | TMapArg Ty
   deriving (Data, Eq, Show, Typeable)
@@ -146,8 +146,8 @@ flattenT (TMu t) =
   TMu <$> flattenT t
 flattenT (TMapFun t) =
   TMapFun <$> flattenT t
-flattenT (TCompl r0 r1 v) =
-  TCompl <$> flattenT r0 <*> flattenT r1 <*> traverse flattenV v
+flattenT (TCompl r0 r1) =
+  TCompl <$> flattenT r0 <*> flattenT r1
 -- not entirely sure what *should* happen here
 flattenT (TInst g@(Unknown (Goal (_, r))) t) =
   do minsts <- liftIO $ readIORef r
@@ -196,7 +196,7 @@ kindOf (TMapFun f)
   | KFun kd kc <- kindOf f = KFun (KRow kd) (KRow kc)
 kindOf (TMapArg f)
   | KRow (KFun kd kc) <- kindOf f = KFun kd (KRow kc)
-kindOf (TCompl r _ _) = kindOf r
+kindOf (TCompl r _) = kindOf r
 kindOf t = error $ "internal: kindOf " ++ show t
 
 -- shiftTN j n t shifts variables at or above `j` up by `n`
@@ -224,7 +224,7 @@ shiftTN j n (TMu t) = TMu (shiftTN j n t)
 shiftTN j n (TMapFun t) = TMapFun (shiftTN j n t)
 shiftTN j n (TMapArg t) = TMapArg (shiftTN j n t)
 shiftTN j n (TInst is t) = TInst (shiftIs j n is) (shiftTN j n t) where
-shiftTN j n (TCompl r0 r1 v) = TCompl (shiftTN j n r0) (shiftTN j n r1) v
+shiftTN j n (TCompl r0 r1) = TCompl (shiftTN j n r0) (shiftTN j n r1)
 shiftTN _ _ t = error $ "shiftTN: unhandled: " ++ show t
 
 shiftIs :: Int -> Int -> Insts -> Insts
