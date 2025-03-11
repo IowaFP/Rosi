@@ -16,7 +16,7 @@ import System.Exit (exitFailure)
 import System.Directory
 import System.Environment
 import System.FilePath
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, stderr, stdout, hSetBuffering, BufferMode(..))
 
 import Checker
 import Naive
@@ -96,6 +96,8 @@ main = do nowArgs <- getArgs
                                   exitFailure
           writeIORef traceTypeInference (doTraceInference flags)
           writeIORef traceEvaluation (doTraceEvaluation flags)
+          when (doTraceInference flags || doTraceEvaluation flags) $
+            hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
           scoped <- reportErrors $ runScopeM $ scopeProg decls
           checked <- goCheck [] [] scoped
