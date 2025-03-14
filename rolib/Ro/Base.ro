@@ -4,8 +4,14 @@
 o : forall t u v. (u -> v) -> (t -> u) -> t -> v
 o = \ f g x. f (g x)
 
+type Id : * -> *
+type Id = \x. x
+
 id : forall t. t -> t
 id = \x. x
+
+type Const : * -> * -> *
+type Const = \x y. x
 
 const : forall t u. t -> u -> t
 const = \ x y. x
@@ -23,16 +29,20 @@ case : forall l t u. #l -> (t -> u) -> (l := t) -> u
 case = \ l f x. f (x / l)
 
 brnl : forall x z t. x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
-brnl = \ f g. f ? (o g inj)
+brnl = \ f g. f ? (o g (\x. inj x))
 
 relabelS : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
            #l0 -> #l1 -> Sigma y0 -> Sigma y1
-relabelS = \ l0 l1. case l0 (con l1) ? inj
+relabelS = \ l0 l1. case l0 (con l1) ? (\x. inj x)
 
 relabelInj : forall y1 y0 l0 l1 t x z.
              {l0 := t} + x ~ y0, {l1 := t} + x ~ y1, y1 < z =>
              #l0 -> #l1 -> Sigma y0 -> Sigma z
 relabelInj = /\y1. \l0 l1 x. inj (relabelS l0 l1 x : Sigma y1)
+
+relabelP : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
+           #l0 -> #l1 -> Pi y0 -> Pi y1
+relabelP = \ l0 l1 r. (l1 := sel r l0) ++ prj r
 
 -------------------------------------------------------------------------------
 -- Base types

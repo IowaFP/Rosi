@@ -3,11 +3,26 @@ import Ro.Base, Data.Functor
 -- For the moment, just (attempting to) transcribe the algebras from the draft
 -- paper.
 
+-------------------------------------------------------------------------------
+-- Shorthand
+
+rcon : forall l f z. {l := f} < z => #l -> f (Mu (Sigma z)) -> Mu (Sigma z)
+rcon = \l x. in (con l x)
+
+-------------------------------------------------------------------------------
+-- Catamorphisms
+
 type FAlg : (* -> *) -> * -> *
 type FAlg = \f a. f a -> a
 
 cata : forall f a. Functor f -> FAlg f a -> Mu f -> a
 cata = \ map a. fix (\ cata x. a (map cata (out x)))
+
+rinj : forall f g : R[* -> *]. f < g => Pi (Functor f) -> Mu (Sigma f) -> Mu (Sigma g)
+rinj = \d. cata (fmapS d) (o in inj)
+
+-------------------------------------------------------------------------------
+-- Bounded algebras
 
 type BAlg : R[* -> *] -> (R[* -> *] -> *) -> *
 type BAlg = \ z f. forall w r. z < w => Sigma z r -> (r -> Sigma w r) -> (r -> f w) -> f w
