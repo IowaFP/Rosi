@@ -8,6 +8,8 @@ import System.IO.Unsafe (unsafePerformIO)
 import Printer
 import Syntax
 
+import GHC.Stack
+
 import qualified Debug.Trace as T
 {-# NOINLINE traceEvaluation #-}
 
@@ -31,13 +33,12 @@ instance Show Value where
   show (VPrLam {}) = "VPrLam"
   show (VLam {}) = "VLam"
   show (VIn {}) = "VIn"
-  show (VSing {}) = "VSing"
-  show (VLabeled {}) = "VLabeled"
+  show (VSing t) = "VSing"
+  show (VLabeled s v) = "VLabeled"
   show (VRecord {}) = "VRecord"
   show (VBranch {}) = "VBranch"
   show (VAna _ e) = "VAna (" ++ show e ++ ")"
   show (VSyn _ e) = "VSyn (" ++ show e ++ ")"
-
 
 -- prededence:
 -- lambda   0
@@ -64,33 +65,35 @@ inst h v (TyArg t) = tyapp h v t
 tyapp :: Env -> Value -> Ty -> Value
 tyapp h (VTyLam (E (ht, he)) x _ f') t = eval (E (substTy h t : map (shiftT 0) ht, he)) f'
 
-app :: Env -> Value -> Value -> Value
+app :: HasCallStack => Env -> Value -> Value -> Value
 app _ (VLam (E (ht, he)) x _ f') v = eval (E (ht, v : he)) f'
 app h (VBranch xs f' g') (VLabeled k v') = if k `elem` xs then appV h f' k v' else appV h g' k v'
 app _ (VBranch xs f' g') v = error $ "evaluation failed: (" ++ show (VBranch xs f' g') ++ ") (" ++ show v ++ ")"
-app h (VAna _ m) (VLabeled k v') = app h (app h (tyapp h m (TLab k)) (VSing (TLab k))) v'
-app _ (VTyLam h _ _ f) v = app h (eval h f) v
+app h (VAna _ m) (VLabeled k v') = app h (app h (tyapp h (tyapp h m (TLab k)) (TPi (TRow []))) (VSing (TLab k))) v'
+-- app _ (VTyLam h _ _ f) v = app h (eval h f) v
 app _ (VPrLam h _ f) v = app h (eval h f) v
 app _ f e = error $ "app failed (" ++ show f ++ ") (" ++ show e ++")"
 
 appV :: Env -> Value -> String -> Value -> Value
 appV _ (VLam (E (ht, he)) x _ f) k e' = eval (E (ht, VLabeled k e' : he)) f
 appV h (VBranch xs f' g') k v' = if k `elem` xs then appV h f' k v' else appV h g' k v'
-appV h (VAna _ m) k v' = app h (app h (tyapp h m (TLab k)) (VSing (TLab k))) v'
+appV h (VAna _ m) k v' = app h (app h (tyapp h (tyapp h m (TLab k)) (TPi (TRow []))) (VSing (TLab k))) v'
 
-eval :: Env -> Term -> Value
-eval h e = trace ("Eval: " ++ show e) (eval' h e)
+eval :: HasCallStack => Env -> Term -> Value
+eval h@(E (ht, _)) e = trace ("Eval: " ++ show e ++ " in " ++ show ht) $
+           eval' h e
 
+eval' :: HasCallStack => Env -> Term -> Value
 eval' (E (_, he)) (EVar i x) =
   trace ("Environment: " ++ show he) $
   let result = he !! i in
   trace ("Variable " ++ show x ++ " is " ++ show result) $
   he !! i
 eval' h (ELam s (Just t) e) = VLam h s t e
-eval' h (EApp (EInst (EConst CPrj) (Known [TyArg y, TyArg z, _])) e)   -- remember: y <= z
+eval' h e0@(EApp (EInst (EConst CPrj) (Known [TyArg y, TyArg z, _])) e)   -- remember: y <= z
   | null ls = VRecord []
   | otherwise = prj (eval h e) where
-    ls = dom (substTy h y)
+    ls = dom e0 (substTy h y)
     prj (VRecord fs) = VRecord [(l, th) | (l, th) <- fs, l `elem` ls]
     prj v@VLabeled{} = v  -- can do dumb projections
     prj v@VSyn{} = v   -- synthesizing fewer fields is the same as synthesizing more fields
@@ -98,14 +101,14 @@ eval' h (EApp (EInst (EConst CPrj) (Known [TyArg y, TyArg z, _])) e)   -- rememb
     -- prj (VSyn _ m) = VRecord [(l, app (eval h m) (VSing (TLab l))) | l <- ls]
 eval' h e@(EApp (EInst (EApp (EInst (EConst CConcat) (Known [TyArg x, TyArg y, _, _])) m) (Known [])) n) =
   VRecord (fields xls (eval h m) ++ fields yls (eval h n)) where
-  xls = dom (substTy h x)
-  yls = dom (substTy h y)
+  xls = dom e (substTy h x)
+  yls = dom e (substTy h y)
   fields _ (VRecord fs) = fs
   fields _ (VLabeled s th) = [(s, th)]
   fields ls (VSyn _ m) = [(l, app h m (VSing (TLab l))) | l <- ls]
   fields _ _ = error $ "evaluation failed: " ++ show e
 eval' h (EApp (EInst (EConst CInj) (Known [TyArg y, TyArg z, _])) e) = eval h e
-eval' h (EApp (EInst (EApp (EInst (EConst CBranch) (Known [TyArg x, TyArg y, _, _, _])) f) (Known [])) g) = VBranch (dom (substTy h x)) (eval h f) (eval h g)
+eval' h (EApp (EInst (EApp (EInst (EConst CBranch) (Known [TyArg x, TyArg y, _, _, _])) f) (Known [])) g) = VBranch (dom undefined (substTy h x)) (eval h f) (eval h g)
 eval' h (EApp (EInst (EConst CIn) _) e) = VIn (eval h e) -- also treating in like a constructor... probably will need that functor evidence eventually, but meh
 eval' h (EApp (EInst (EConst COut) _) e)
   | VIn v <- eval h e = v
@@ -125,7 +128,7 @@ eval' h@(E (_, he)) (EUnlabel e l) = unlabel (eval h e) where
   unlabel (VRecord [(_, v)]) = v
   unlabel e@(VSyn _ m)
     | VSing (TLab s) <- eval h l =
-      let result = app h (tyapp h m (TLab s)) (eval h l)  -- the label we're trying to remove is exactly the case we need to synthesize
+      let result = app h (tyapp h (tyapp h m (TLab s)) (TPi (TRow []))) (eval h l)  -- the label we're trying to remove is exactly the case we need to synthesize
       in
       trace ("Unlabeling " ++ show e) $
       trace ("Environment: " ++ show he) $
@@ -138,24 +141,38 @@ eval' h (ESyn f m) = VSyn f (eval h m)
 eval' _ e = error $ "evaluation failed: " ++ show e
 
 substTy :: Env -> Ty -> Ty
-substTy (E (ht, _)) t@(TVar i _ _) = ht !! i
-substTy h TUnif{} = error "substTy: TUnif"
-substTy h (TThen p t) = TThen p (substTy h t)
-substTy (E (ht, he)) (TForall x (Just k) t) = TForall x (Just k) (substTy (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
-substTy (E (ht, he)) (TLam x (Just k) t) = TLam x (Just k) (substTy (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
-substTy h (TApp t u) = TApp (substTy h t) (substTy h u)
-substTy h t@TLab {} = t
-substTy h (TSing t) = TSing (substTy h t)
-substTy h (TLabeled l t) = TLabeled (substTy h l) (substTy h t)
-substTy h (TRow fs) = TRow (map (substTy h ) fs)
-substTy h (TPi t) = TPi (substTy h t)
-substTy h (TSigma t) = TSigma (substTy h t)
-substTy h (TMu t) = TMu (substTy h t)
-substTy h (TMapFun t) = TMapFun (substTy h t)
-substTy h (TMapArg t) = TMapArg (substTy h t)
+substTy h@(E (ht, _)) t = trace (unwords ["substTy:", show t, "->", show t', "in", show (length ht)]) t' where
+  t' = substTy' h t
 
-dom :: Ty -> [String]
-dom (TRow ts) = map labelFrom ts where
+
+-- Other than being pure, why am I not using normalization here??...
+substTy' :: Env -> Ty -> Ty
+substTy' (E (ht, _)) t@(TVar i _ _)
+  | i >= length ht = error $ "variable " ++ show t ++ " not in environment " ++ show ht
+  | otherwise = ht !! i
+substTy' h TUnif{} = error "substTy: TUnif"
+substTy' h (TThen p t) = TThen p (substTy' h t)
+substTy' (E (ht, he)) (TForall x (Just k) t) = TForall x (Just k) (substTy' (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
+substTy' (E (ht, he)) (TLam x (Just k) t) = TLam x (Just k) (substTy' (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
+substTy' h (TApp t u) = TApp (substTy' h t) (substTy' h u)
+substTy' h t@TLab {} = t
+substTy' h (TSing t) = TSing (substTy' h t)
+substTy' h (TLabeled l t) = TLabeled (substTy' h l) (substTy' h t)
+substTy' h (TRow fs) = TRow (map (substTy' h ) fs)
+substTy' h (TPi t) = TPi (substTy' h t)
+substTy' h (TSigma t) = TSigma (substTy' h t)
+substTy' h (TMu t) = TMu (substTy' h t)
+substTy' h TFun = TFun
+substTy' h (TMapFun t) = TMapFun (substTy' h t)
+substTy' h (TMapArg t) = TMapArg (substTy' h t)
+substTy' h (TInst _ t) = substTy' h t
+substTy' h (TCompl z y)
+  | TRow zs <- substTy' h z, TRow ys <- substTy' h y, Just zps <- mapM splitLabel zs, Just yps <- mapM splitLabel ys =
+      TRow [uncurry TLabeled zp | zp <- zps, fst zp `notElem` map fst yps]
+substTy' h t = error $ "substTy missing cases: " ++ show t
+
+dom :: HasCallStack => Term -> Ty -> [String]
+dom e0 (TRow ts) = map labelFrom ts where
   labelFrom (TLabeled (TLab s) _) = s
-  labelFrom t = error $ "no label: " ++ show t
-dom t = error $ "no domain: " ++ show t
+  labelFrom t = error $ "no label: " ++ show (TRow ts) ++ " in " ++ show e0
+dom e0 t = error $ "no domain: " ++ show t ++ " in " ++ show e0
