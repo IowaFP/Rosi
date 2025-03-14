@@ -62,8 +62,11 @@ inst :: Env -> Value -> Inst -> Value
 inst h v (PrArg _) = v
 inst h v (TyArg t) = tyapp h v t
 
+shiftE :: [Ty] -> [Ty]
+shiftE = map (shiftT 0)
+
 tyapp :: Env -> Value -> Ty -> Value
-tyapp h (VTyLam (E (ht, he)) x _ f') t = eval (E (substTy h t : map (shiftT 0) ht, he)) f'
+tyapp h (VTyLam (E (ht, he)) x _ f') t = eval (E (substTy h t : shiftE ht, he)) f'
 
 app :: HasCallStack => Env -> Value -> Value -> Value
 app _ (VLam (E (ht, he)) x _ f') v = eval (E (ht, v : he)) f'
@@ -108,7 +111,7 @@ eval' h e@(EApp (EInst (EApp (EInst (EConst CConcat) (Known [TyArg x, TyArg y, _
   fields ls (VSyn _ m) = [(l, app h m (VSing (TLab l))) | l <- ls]
   fields _ _ = error $ "evaluation failed: " ++ show e
 eval' h (EApp (EInst (EConst CInj) (Known [TyArg y, TyArg z, _])) e) = eval h e
-eval' h (EApp (EInst (EApp (EInst (EConst CBranch) (Known [TyArg x, TyArg y, _, _, _])) f) (Known [])) g) = VBranch (dom undefined (substTy h x)) (eval h f) (eval h g)
+eval' h e@(EApp (EInst (EApp (EInst (EConst CBranch) (Known [TyArg x, TyArg y, _, _, _])) f) (Known [])) g) = VBranch (dom e (substTy h x)) (eval h f) (eval h g)
 eval' h (EApp (EInst (EConst CIn) _) e) = VIn (eval h e) -- also treating in like a constructor... probably will need that functor evidence eventually, but meh
 eval' h (EApp (EInst (EConst COut) _) e)
   | VIn v <- eval h e = v
@@ -154,7 +157,12 @@ substTy' h TUnif{} = error "substTy: TUnif"
 substTy' h (TThen p t) = TThen p (substTy' h t)
 substTy' (E (ht, he)) (TForall x (Just k) t) = TForall x (Just k) (substTy' (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
 substTy' (E (ht, he)) (TLam x (Just k) t) = TLam x (Just k) (substTy' (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
-substTy' h (TApp t u) = TApp (substTy' h t) (substTy' h u)
+substTy' e@(E (ht, he)) (TApp t u)
+  | TLam _ _ body <- t' = substTy' (E (u' : shiftE ht, he)) body
+  | TMapFun f <- t', TRow lts <- u', Just ps <- mapM splitLabel lts = TRow [TLabeled l (substTy' e (TApp f t)) | (l, t) <- ps]
+  | otherwise = TApp t' u'
+  where t' = substTy' e t
+        u' = substTy' e u
 substTy' h t@TLab {} = t
 substTy' h (TSing t) = TSing (substTy' h t)
 substTy' h (TLabeled l t) = TLabeled (substTy' h l) (substTy' h t)
