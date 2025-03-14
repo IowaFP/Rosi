@@ -101,7 +101,7 @@ checkTerm0 implicitTyLams e0@(EInst e is) expected =
         checkInst :: Inst -> CheckM Inst
         checkInst (TyArg t) =
           do k <- kindGoal "k"
-             t' <- checkTy' e0 t k
+             (t', q) <- normalize [] =<< checkTy' e0 t k
              return (TyArg t')
         checkInst (PrArg _) =
           error "internal: why am I type checking a predicate instantiation?"
