@@ -13,7 +13,6 @@ n2 = prj m
 m2 : Pi { 'x := Pi {}, 'y := Pi {} }
 m2 = syn [\t. Pi {}] (\l. tt)
 
--- n3 : Pi {'x := Pi {}}
 n3 : Pi {}
 n3 = prj m2 / #'x
 
@@ -23,7 +22,7 @@ v1 = inj (#'x := tt)
 v2 : Sigma { 'x := Pi {}, 'y := Pi {}}
 v2 = inj (#'y := tt)
 
-p : Pi {'x := Pi {}}
+p : Pi {}
 p = (case #'x (\u. u)) (#'x := tt)
 
 q : Sigma { 'x := Pi {}, 'y := Pi {} } -> Sigma { 'x := Pi {}, 'y := Pi {} }
