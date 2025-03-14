@@ -538,6 +538,10 @@ normalize eqns (TInst (Known is) t) =
   where normI (TyArg t) = first TyArg <$> normalize eqns t
         normI (PrArg v) =
           return (PrArg v, VRefl)
+normalize eqns (TThen p t) =
+  do p' <- normalizeP eqns p
+     (t', q) <- normalize eqns t
+     return (TThen p' t', VEqThen VRefl q)
 -- TODO: remaining homomorphic cases
 normalize eqns t = return (t, VRefl)
 
