@@ -1,0 +1,186 @@
+import Ro.Base, Data.Functor, Data.Nat, Ro.Xr
+
+-------------------------------------------------------------------------------
+-- Types
+
+type Pair : * -> * -> *
+type Pair = \ t u. Pi {'1 := t, '2 := u}
+
+pair : forall t u. t -> u -> Pair t u
+pair = \x y. (#'1 := x) ++ (#'2 := y)
+
+type Triple : * -> * -> * -> *
+type Triple = \ t u v. Pi {'1 := t, '2 := u, '3 := v}
+
+triple : forall t u v. t -> u -> v -> Triple t u v
+triple = \x y z. pair x y ++ (#'3 := z)
+
+type BoolF : R[* -> *]
+type BoolF = { 'Const := (\t. Bool), 'If := (\t. Triple t t t) }
+
+type ArithF : R[* -> *]
+type ArithF = { 'Const := (\t. Nat), 'Plus := (\t. Pair t t) }
+
+type LamF : R[* -> *]
+type LamF = { 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t) }
+
+type RecF : R[* -> *]
+type RecF = { 'Mu := (\t. t) }
+
+-------------------------------------------------------------------------------
+-- Functors
+
+functorId : Functor Id
+functorId = id
+
+functorConst : forall t. Functor (Const t)
+functorConst = \f. id
+
+functorTwo : Functor (\t. Pair t t)
+functorTwo = \f x. pair (f (sel x #'1)) (f (sel x #'2))
+
+functorThree : Functor (\t. Triple t t t)
+functorThree = \f x. triple (f (sel x #'1)) (f (sel x #'2)) (f (sel x #'2))
+
+functorBool : Pi (Functor BoolF)
+functorBool = (#'Const := (/\ a b. functorConst [a] [b])) ++ (#'If := (/\ a b. functorThree [a] [b]))
+
+functorArith : Pi (Functor ArithF)
+functorArith = (#'Const := (/\ a b. functorConst [a] [b])) ++ (#'Plus := (/\ a b. functorTwo [a] [b]))
+
+functorLam : Pi (Functor LamF)
+functorLam = (#'Var := (/\a b. functorConst [a] [b])) ++ (#'Lam := (/\ a b. functorId [a] [b]))
+           ++ (#'App := (/\ a b. functorTwo [a] [b]))
+
+functorRec : Pi (Functor RecF)
+functorRec = #'Mu := (/\a b. functorId [a] [b])
+
+-------------------------------------------------------------------------------
+-- Shorthand
+
+type LBF : R [* -> *]
+type LBF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
+             'Const := (\t. Bool), 'If := (\t. Triple t t t) }
+
+type AllF : R [* -> *]
+type AllF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
+              'BConst := (\t. Bool), 'If := (\t. Triple t t t),
+              'IConst := (\t. Nat), 'Plus := (\t. Pair t t),
+              'Mu := (\t. t) }
+
+functorLBF : Pi (Functor LBF)
+functorLBF = functorBool ++ functorLam
+
+functorAll : Pi (Functor AllF)
+functorAll = relabelP #'Const #'IConst functorArith
+          ++ relabelP #'Const #'BConst functorLBF
+          ++ functorRec
+
+-------------------------------------------------------------------------------
+-- Some expressions
+
+xpId : Mu (Sigma AllF)
+xpId = rcon #'Lam (rcon #'Var zero)
+
+xpConst : Mu (Sigma AllF)
+xpConst = rcon #'Lam (rcon #'Lam (rcon #'Var one))
+
+xpNot : Mu (Sigma AllF)
+xpNot = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (rcon #'BConst True)))
+
+-------------------------------------------------------------------------------
+-- Depth
+
+depthB : FAlg (Sigma BoolF) Nat
+depthB = case #'Const (\u. one)
+       ? case #'If (\t. succ (max (sel t #'1) (max (sel t #'2) (sel t #'3))))
+
+depthA : FAlg (Sigma ArithF) Nat
+depthA = case #'Const (\u. one)
+       ? case #'Plus (\t. succ (max (sel t #'1) (sel t #'2)))
+
+depthL : FAlg (Sigma LamF) Nat
+depthL = case #'Lam succ
+       ? case #'App (\t. succ (max (sel t #'1) (sel t #'2)))
+       ? case #'Var (\t. one)
+
+depthR : FAlg (Sigma RecF) Nat
+depthR = case #'Mu succ
+
+depthLB : FAlg (Sigma LBF) Nat
+depthLB = depthL ? depthB
+
+depthAll : FAlg (Sigma AllF) Nat
+depthAll = o depthLB (relabelS #'BConst #'Const)
+         ? o depthA (relabelS #'IConst #'Const)
+         ? depthR
+
+-- Examples
+
+dpId : Nat
+dpId = cata (fmapS [AllF] functorAll) depthAll xpId
+
+dpConst : Nat
+dpConst = cata (fmapS [AllF] functorAll) depthAll xpConst
+
+dpNot : Nat
+dpNot = cata (fmapS [AllF] functorAll) depthAll xpNot
+
+-- Depth as a bounded algebra
+
+type RConst : * -> R[* -> *] -> *  -- kind polymorphism still not a thing...
+type RConst = \x y. x
+
+-- Fun fact: not actually sure how to relabel a bounded algebra right now, sooooo
+
+type BoolF0 : R[* -> *]
+type BoolF0 = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t) }
+
+type ArithF0 : R[* -> *]
+type ArithF0 = { 'IConst := (\t. Nat), 'Plus := (\t. Pair t t) }
+
+depthBb : BAlg BoolF0 (RConst Nat)
+depthBb = case #'BConst (\u out rec. one)
+        ? case #'If (\t out rec. succ (max (rec (sel t #'1)) (max (rec (sel t #'2)) (rec (sel t #'3)))))
+
+depthAb : BAlg ArithF0 (RConst Nat)
+depthAb = case #'IConst (\u out rec. one)
+        ? case #'Plus (\t out rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
+
+depthLb : BAlg LamF (RConst Nat)
+depthLb = case #'Lam (\e out rec. succ (rec e))
+        ? case #'App (\t out rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
+        ? case #'Var (\t out rec. one)
+
+depthRb : BAlg RecF (RConst Nat)
+depthRb = case #'Mu (\e out rec. succ (rec e))
+
+-- Okay, the type annotations here are getting out of hand again... time to
+-- figure out what's going wrong in type inference.
+
+type ABF0 : R[* -> *]
+type ABF0 = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t)
+            , 'IConst := (\t. Nat), 'Plus := (\t. Pair t t) }
+
+type LRF0 : R[* -> *]
+type LRF0 = { 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t)
+            , 'Mu := (\t. t) }
+
+depthAllb : BAlg AllF (RConst Nat)
+depthAllb = brna [RConst Nat] [ABF0] [LRF0] [AllF]
+              (brna [RConst Nat] [BoolF0] [ArithF0] [ABF0] depthBb depthAb)
+              (brna [RConst Nat] [LamF] [RecF] [LRF0] depthLb depthRb)
+
+-- Examples (again)
+
+depthb : Mu (Sigma AllF) -> Nat
+depthb = histo [RConst Nat] [AllF] depthAllb
+
+dpId0 : Nat
+dpId0 = depthb xpId
+
+dpConst0 : Nat
+dpConst0 = depthb xpConst
+
+dpNot0 : Nat
+dpNot0 = depthb xpNot
