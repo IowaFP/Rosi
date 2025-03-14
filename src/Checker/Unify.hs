@@ -11,7 +11,7 @@ import Data.Bifunctor (first, second)
 import Data.Dynamic
 import Data.IORef
 import Data.List (partition)
-import Data.Maybe (isNothing)
+import Data.Maybe (fromJust, isNothing)
 
 import Checker.Monad
 import Checker.Types
@@ -293,10 +293,22 @@ unify0 t@(TApp {}) (u@(TApp {}))
                Nothing -> return Nothing
                Just (q : qs) -> return (Just (foldl VEqApp q qs))
 unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
-  do gs <- replicateM (length xs) (typeGoal' "t" (kindOf tx))
-     unify' ra (TRow gs)
-     sequence_ [unify' (TApp fa ta) tx | (ta, tx) <- zip gs xs]
-     return (Just VEqMap)  -- wrong
+  do gs <- replicateM (length xs) (typeGoal' "t" kdom)
+     mq <- unify' ra (TRow gs)
+     mqs <- sequence [unify' (TApp fa ta) tx | (ta, tx) <- zip gs xs]
+     case (mq, sequence mqs) of
+       (Just q, Just qs) -> return (Just VEqMap)  -- wrong
+       _            -> return Nothing
+  where KFun kdom kcod = kindOf fa
+unify0 (TRow xs@(tx:_)) (TApp (TMapFun fa) ra) =
+  do gs <- replicateM (length xs) (typeGoal' "t" kdom)
+     mq <- unify' ra (TRow gs)
+     mqs <- sequence [unify' (TApp fa ta) tx | (ta, tx) <- zip gs xs]
+     case (mq, sequence mqs) of
+       (Just q, Just qs) -> return (Just VEqMap)  -- wrong
+       _                 -> return Nothing
+  where KFun kdom kcod = kindOf fa
+
 unify0 a@(TForall xa (Just ka) ta) x@(TForall xx (Just kx) tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
@@ -315,8 +327,12 @@ unify0 (TSing ta) (TSing tx) =
   liftM VEqSing <$> unify' ta tx
 unify0 (TLabeled la ta) (TLabeled lx tx) =
   liftM2 VEqLabeled <$> unify' la lx <*> unify' ta tx
-unify0 (TRow ra) (TRow rx) =
-  liftM VEqRow . sequence <$> zipWithM unify' ra rx
+unify0 (TRow ra) (TRow rx)
+  | Just as <- mapM splitLabel ra, Just xs <- mapM splitLabel rx, sameSet (map fst as) (map fst xs) =
+      do qs <- sequence [unify' a (fromJust x) | (l, a) <- as, let x = lookup l xs]
+         return (VEqRow <$> sequence qs)
+  where sameSet xs ys = all (`elem` xs) ys && all (`elem` ys) xs
+  -- liftM VEqRow . sequence <$> zipWithM unify' ra rx
 unify0 (TPi ra) (TPi rx) =
   liftM (VEqCon Pi) <$> unify' ra rx
 unify0 (TPi r) u

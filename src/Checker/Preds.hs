@@ -1,4 +1,4 @@
-module Checker.Preds where
+module Checker.Preds (module Checker.Preds) where
 
 import Control.Monad
 import Control.Monad.Error.Class
@@ -80,8 +80,8 @@ solve (cin, p, r) =
              trace $ "4 sameAssocs (" ++ show xt' ++ ") (" ++ show yt' ++ ")"
              typesEqual xt' yt') xs
 
-  unifyAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM ()
-  unifyAssocs xs ys =
+  forceAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM ()
+  forceAssocs xs ys =
     mapM_ (\(xl, xt) ->
       case lookup xl ys of
         Nothing -> error $ "internal: unifyAssocs called with unmatched assoc lists"
@@ -101,7 +101,7 @@ solve (cin, p, r) =
       (case (mapM splitLabel es, mapM splitLabel es') of
         (Just ps, Just ps') | all (`elem` map fst ps') (map fst ps) ->
           do trace "9 subset"
-             unifyAssocs ps (filter ((`elem` map fst ps) . fst) ps')
+             forceAssocs ps (filter ((`elem` map fst ps) . fst) ps')
              return (Just v)
         _ -> return Nothing)
   matchLeqDirect (PLeq y z) (PLeq y' z', v) =
@@ -123,7 +123,7 @@ solve (cin, p, r) =
     case (mapM splitLabel es, mapM splitLabel es') of
       (Just ps, Just ps') | sameSet (map fst ps) (map fst ps') ->
         do trace $ "1 match: (" ++ show p ++ ") (" ++ show q ++ ")"
-           unifyAssocs ps (map (second (TApp f)) ps')
+           forceAssocs ps (map (second (TApp f)) ps')
            return (Just v)  -- TODO: really?
       _ -> return Nothing
   matchLeqMap _ _ = return Nothing
@@ -136,15 +136,15 @@ solve (cin, p, r) =
        (case (x, x') of
           (TRow xr, TRow xr')
             | Just xs <- mapM splitLabel xr, Just xs' <- mapM splitLabel xr', sameSet (map fst xs) (map fst xs') ->
-                do unifyAssocs xs xs'
-                   unify [] y y'
+                do forceAssocs xs xs'
+                   forceFD y y'
                    return (Just v)
           _ -> return Nothing) <|>
        (case (y, y') of
           (TRow yr, TRow yr')
             | Just ys <- mapM splitLabel yr, Just ys' <- mapM splitLabel yr', sameSet (map fst ys) (map fst ys') ->
-                do unifyAssocs ys ys'
-                   unify [] x x'
+                do forceAssocs ys ys'
+                   forceFD x x'
                    return (Just v)
           _ -> return Nothing)
       ) <|>
@@ -153,7 +153,9 @@ solve (cin, p, r) =
        suppose (typesEqual z z') (forceFD y y'))
     where forceFD t t' =
             do q <- unify [] t t'
-               return (Just v) -- TODO: really?
+               case q of
+                 Nothing -> fundeps p q
+                 _       -> return (Just v) -- TODO: really?
   matchPlusDirect _ _ = return Nothing
 
   matchEqDirect p@(PEq x y) q@(PEq x' y', v) =
@@ -200,7 +202,9 @@ solve (cin, p, r) =
 
   force p t u =
     do q <- unify [] t u
-       return ()
+       case q of
+         Nothing -> fundeps p Nothing
+         Just q  -> return ()
 
   prim p@(PLeq (TRow y) (TRow z))
     | Just yd <- mapM label y, Just zd <- mapM label z =
@@ -210,33 +214,34 @@ solve (cin, p, r) =
           do mapM_ (\(i, TLabeled _ t) -> let TLabeled _ u = z !! i in force p t u) (zip is y)
              return (Just (VLeqSimple is))
   prim (PPlus (TRow x) (TRow y) (TRow z))
-    | Just xd <- mapM label x, Just yd <- mapM label y, Just zd <- mapM label z =
-      case sequence [(Left <$> elemIndex e xd) `mplus` (Right <$> elemIndex e yd) | e <- zd] of
-        Nothing -> return Nothing
-        Just is ->
-          do mapM_ align (zip is z)
-             return (Just (VPlusSimple is))
+    | Just xd <- mapM label x, Just yd <- mapM label y, Just zd <- mapM label z
+    , length xd + length yd == length zd, sameSet (xd ++ yd) zd =
+        case sequence [(Left <$> elemIndex e xd) `mplus` (Right <$> elemIndex e yd) | e <- zd] of
+          Nothing -> return Nothing
+          Just is ->
+            do mapM_ align (zip is z)
+               return (Just (VPlusSimple is))
     where align (Left i, TLabeled _ t) = force p t u where TLabeled _ u = x !! i
           align (Right i, TLabeled _ t) = force p t u where TLabeled _ u = y !! i
   prim p@(PPlus (TRow x) y (TRow z))
     | Just xs <- mapM splitLabel x, Just zs <- mapM splitLabel z, Just is <- mapM (flip elemIndex (map fst zs)) (map fst xs) =
-        do unifyAssocs xs (map (zs !!) is)
+        do forceAssocs xs (map (zs !!) is)
            let js = [j | j <- [0..length zs - 1], j `notElem` is]
                ys = (map (uncurry TLabeled . (zs !!)) js)
            trace $ "to solve " ++ show p ++ ": " ++ show y ++ " ~ " ++ show (TRow ys)
-           unify [] y (TRow ys)
+           force p y (TRow ys)
            return (Just (VPlusSimple (map Left is ++ map Right js)))
   prim p@(PPlus x (TRow y) (TRow z))
     | Just ys <- mapM splitLabel y, Just zs <- mapM splitLabel z, Just js <- mapM (flip elemIndex (map fst zs)) (map fst ys) =
-        do unifyAssocs ys (map (zs !!) js)
+        do forceAssocs ys (map (zs !!) js)
            let is = [i | i <- [0..length zs - 1], i `notElem` js]
                xs = (map (uncurry TLabeled . (zs !!)) is)
            trace $ "to solve " ++ show p ++ ": " ++ show x ++ " ~ " ++ show (TRow xs)
-           unify [] x (TRow xs)
+           force p x (TRow xs)
            return (Just (VPlusSimple (map Left is ++ map Right js)))
   prim p@(PPlus (TRow x) (TRow y) z)
     | Just xs <- mapM splitLabel x, Just ys <- mapM splitLabel y, all (`notElem` map fst xs) (map fst ys), all (`notElem` map fst ys) (map fst xs) =
-        do unify [] z (TRow (x ++ y))
+        do force p z (TRow (x ++ y))
            return (Just (VPlusSimple ([Left i | i <- [0..length xs - 1]] ++ [Right (length xs + j) | j <- [0..length ys - 1]])))
   prim (PEq t u) =
     unifyProductive [] t u
