@@ -29,30 +29,37 @@ expectKR t actual expected =
        Just i  -> return i
 
 unifyK :: MonadCheck m => Kind -> Kind -> m (Maybe Int)
-unifyK KType KType = return (Just 0)
-unifyK KLabel KLabel = return (Just 0)
-unifyK (KUnif (Goal (_, r))) (KUnif (Goal (_, s)))
+unifyK k l =
+  do trace $ show k ++ " ~ " ++ show l
+     k' <- open k
+     l' <- open l
+     unifyK' k' l'
+  where open k@(KUnif (Goal (_, r))) =
+          do mk <- readRef r
+             case mk of
+               Just k' -> open k'
+               Nothing -> return k
+        open k = return k
+
+unifyK' KType KType = return (Just 0)
+unifyK' KLabel KLabel = return (Just 0)
+unifyK' (KUnif (Goal (_, r))) (KUnif (Goal (_, s)))
   | r == s = return (Just 0)
-unifyK (KUnif (Goal (uvar, r))) expected =
-  do mActual <- readRef r
-     case mActual of
-       Nothing ->
-         do trace $ "binding " ++ show uvar ++ " +-> " ++ show expected
-            writeRef r (Just expected)
-            return (Just 0)
-       Just actual' -> unifyK actual' expected
-unifyK actual (KUnif (Goal (_, r))) =
-  do mExpected <- readRef r
-     case mExpected of
-       Nothing -> writeRef r (Just actual) >> return (Just 0)
-       Just expected' -> unifyK actual expected'
-unifyK (KRow rActual) (KRow rExpected) = unifyK rActual rExpected
-unifyK (KRow rActual) kExpected = ((1+) <$>) <$> unifyK rActual kExpected
-unifyK (KFun dActual cActual) (KFun dExpected cExpected) =
+unifyK' (KUnif (Goal (uvar, r))) expected =
+  do trace $ "binding " ++ show uvar ++ " +-> " ++ show expected
+     writeRef r (Just expected)
+     return (Just 0)
+unifyK' actual (KUnif (Goal (uvar, r))) =
+  do trace $ "binding " ++ show uvar ++ " +-> " ++ show actual
+     writeRef r (Just actual)
+     return (Just 0)
+unifyK' (KRow rActual) (KRow rExpected) = unifyK rActual rExpected
+unifyK' (KRow rActual) kExpected = ((1+) <$>) <$> unifyK rActual kExpected
+unifyK' (KFun dActual cActual) (KFun dExpected cExpected) =
   (*&*) <$> unifyK dActual dExpected <*> unifyK cActual cExpected where
   Just 0 *&* Just 0 = Just 0
   _ *&* _ = Nothing
-unifyK _ _ =
+unifyK' _ _ =
   return Nothing
 
 kindMismatch :: MonadCheck m => Ty -> Kind -> Kind -> m a
