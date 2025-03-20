@@ -26,8 +26,8 @@ fmapS = /\ z : R[* -> *].
 
 -- Can go directly via `ana` as well.
 fmapS1 : forall z : R[* -> *] . Pi (Functor z) -> Functor (Sigma z)
-fmapS1 = \ d. /\ a b. \ f w.
-         ana [\X : * -> *. X a] (\ l x. con l (sel d l f x)) w
+fmapS1 = \ d. /\ a. \ f w.
+         ana [\x. x a] (\ l x. con l (sel d l f x)) w
 
 fmapS20 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
 fmapS20 = /\ z. \ d. /\ a b. \ f w.

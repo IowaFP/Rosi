@@ -62,6 +62,10 @@ True = con #'True tt
 False : Bool
 False = con #'False tt
 
+not : Bool -> Bool
+not = case #'True (con #'False)
+    ? case #'False (con #'True)
+
 -------------------------------------------------------------------------------
 -- Basic analysis / synthesis
 
@@ -78,3 +82,8 @@ eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
 eqS = \ d v. ana (\ l y. (case l (\x. sel d l x y) ? (\x. False)) v)
 
 -- eqP requires `fold`, which I'm ignoring for the time being...
+
+-------------------------------------------------------------------------------
+
+eqBool : Eq Bool
+eqBool = eqS (#'True := (\x y. True) ++ #'False := (\x y. True))
