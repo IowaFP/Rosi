@@ -19,33 +19,41 @@ import System.FilePath
 import System.IO (hPutStrLn, stderr, stdout, hSetBuffering, BufferMode(..))
 
 import Checker
-import Naive
+import Interp.Erased as E
+import Interp.Naive as N
 import Parser
 import Printer
 import Scope
 import Syntax
 
-data Flag = Eval String | Input String | Import String | TraceTypeInference | TraceEvaluation | PrintTypedTerms | Reset
+data Flag = Eval String | Input String | Import String | UseNaiveInterpreter | TraceTypeInference
+          | TraceEvaluation | PrintTypedTerms | PrintOkay | Reset
   deriving Show
 
-data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String], doTraceInference, doTraceEvaluation, doPrintTyped :: Bool }
+data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
+                   , useNaiveInterpreter, doTraceInference, doTraceEvaluation
+                   , doPrintTyped, printOkay :: Bool }
 
 interpretFlag :: Flags -> Flag -> Flags
 interpretFlag f (Eval s)           = f { evals = evals f ++ splitOn "," s }
 interpretFlag f (Input s)          = f { inputs = inputs f ++ [s] }
 interpretFlag f (Import s)         = f { imports = imports f ++ [s] }
+interpretFlag f UseNaiveInterpreter = f { useNaiveInterpreter = True }
+interpretFlag f PrintOkay          = f { printOkay = True }
 interpretFlag f TraceTypeInference = f { doTraceInference = True }
 interpretFlag f TraceEvaluation    = f { doTraceEvaluation = True }
 interpretFlag f PrintTypedTerms    = f { doPrintTyped = True }
-interpretFlag f Reset              = Flags [] [] [] False False False
+interpretFlag f Reset              = Flags [] [] [] False False False False False
 
-interpretFlags = foldl interpretFlag (Flags [] [] [] False False False)
+interpretFlags = foldl interpretFlag (Flags [] [] [] False False False False False)
 
 options :: [OptDescr Flag]
 options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
           , Option ['i'] ["import"] (ReqArg Import "DIR") "directory to search"
           , Option [] [] (ReqArg Input "FILE") "file to process"
           , Option ['t'] [] (NoArg PrintTypedTerms) "print typed terms"
+          , Option [] ["okay"] (NoArg PrintOkay) "print okay after execution"
+          , Option ['N'] ["naive"] (NoArg UseNaiveInterpreter) "use naive interpreter"
           , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference"
           , Option ['E'] ["trace-evaluation"] (NoArg TraceEvaluation) "generate trace output from evaluation"
           , Option [] ["reset"] (NoArg Reset) "reset flags" ]
@@ -95,7 +103,8 @@ main = do nowArgs <- getArgs
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   exitFailure
           writeIORef traceTypeInference (doTraceInference flags)
-          writeIORef traceEvaluation (doTraceEvaluation flags)
+          writeIORef N.traceEvaluation (doTraceEvaluation flags)
+          writeIORef E.traceEvaluation (doTraceEvaluation flags)
           when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
@@ -103,10 +112,14 @@ main = do nowArgs <- getArgs
           checked <- goCheck [] [] scoped
           when (doPrintTyped flags) $
             mapM_ ((putDocWLn 120 . pprTyping) <=< thirdM flattenE) checked
-          evaled <- goEval [] checked
-          let output = filter ((`elem` evals flags) . fst) evaled
-          mapM_ (putDocWLn 120 . uncurry pprBinding) output
-          putStrLn "ok"
+          if useNaiveInterpreter flags
+          then do evaled <- goEvalN [] checked
+                  let output = filter ((`elem` evals flags) . fst) evaled
+                  mapM_ (putDocWLn 120 . uncurry pprBinding) output
+          else do evaled <- goEvalE [] checked
+                  let output = filter ((`elem` evals flags) . fst) evaled
+                  sequence_ [putStrLn $ x ++ " = " ++ show v | (x, v) <- output]
+          when (printOkay flags) $ putStrLn "okay"
   where goCheck d g [] = return []
         goCheck d g (TyDecl x k t : ds) =
           do t' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType t) $ checkTy t k)
@@ -119,11 +132,17 @@ main = do nowArgs <- getArgs
         goCheck d g (TyDecl {} : ds) =
           goCheck d g ds
 
-        goEval _ [] = return []
-        goEval h ((x, t, m) : ds) =
+        goEvalN _ [] = return []
+        goEvalN h ((x, t, m) : ds) =
           do m' <- flattenE m
-             let v = eval (E ([], h)) m'
-             ((x, v) :) <$> goEval (v : h) ds
+             let v = N.eval (E ([], h)) m'
+             ((x, v) :) <$> goEvalN (v : h) ds
+
+        goEvalE _ [] = return []
+        goEvalE h ((x, t, m) : ds) =
+          do m' <- flattenE m
+             let v = E.eval ([], h) m'
+             ((x, v) :) <$> goEvalE (v : h) ds
 
         thirdM f (a, b, c) = (a, b,) <$> f c
 
