@@ -134,10 +134,12 @@ checkTy t@(TRow ts) expected =
   do kelem <- kindGoal "e"
      expectK t (KRow kelem) expected
      case mapM label ts of
-       Nothing -> fail "explicit rows must be built from explicitly labeled types"
+       Nothing -> fail "explicit rows must be built from concretely labeled types"
        Just ls | nub ls /= ls -> fail "explicit row labels must be unique"
                | otherwise -> return ()
      TRow <$> mapM (\(TLabeled l u) -> TLabeled l <$> checkTy u kelem) ts
+  where label (TLabeled (TLab s) _) = Just s
+        label _                     = Nothing
 checkTy (TPi r) expected = TPi <$> checkTy r (KRow expected)
 checkTy (TSigma r) expected = TSigma <$> checkTy r (KRow expected)
 checkTy (TMu f) expected = TMu <$> checkTy f (KFun expected expected)

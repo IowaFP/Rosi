@@ -79,10 +79,10 @@ infixr 5 `funTy`
 
 label, labeled :: Ty -> Maybe Ty
 
-label (TLabeled l _) = Just l -- Just (unshift l)
+label (TLabeled l _) = Just l
 label _ = Nothing
 
-labeled (TLabeled _ t) = Just t -- Just (unshift t)
+labeled (TLabeled _ t) = Just t
 labeled _ = Nothing
 
 splitLabel :: Ty -> Maybe (Ty, Ty)
