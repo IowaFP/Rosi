@@ -10,7 +10,7 @@ import Control.Monad.Writer
 import Data.Bifunctor (first, second)
 import Data.Dynamic
 import Data.IORef
-import Data.List (elemIndex, partition)
+import Data.List (elemIndex, partition, sortOn)
 import Data.Maybe (fromJust, isNothing)
 
 import Checker.Monad
@@ -501,9 +501,17 @@ normalize eqns (TLabeled tl te) =
   do (tl', ql) <- normalize eqns tl
      (te', qe) <- normalize eqns te
      return (TLabeled tl' te', VEqLabeled ql qe)
+normalize eqns (TRow [t]) =
+  do (t', q) <- normalize eqns t
+     return (TRow [t'], VEqRow [q])
+normalize eqns (TRow ts)
+  | Just ps <- mapM splitConcreteLabel ts =
+      let ps' = sortOn fst ps
+          is  = [fromJust (elemIndex i (map fst ps')) | i <- map fst ps] in
+      do (ts', qs) <- unzip <$> mapM (normalize eqns . snd) ps'
+         return (TRow (zipWith (TLabeled . TLab) (map fst ps') ts'), VEqRowPermute is `VTrans` VEqRow qs)
 normalize eqns (TRow ts) =
-  do (ts', qs) <- unzip <$> mapM (normalize eqns) ts
-     return (TRow ts', VEqRow qs)
+  error $ "normalize: asked to normalize non-concrete row " ++ show (TRow ts)
 normalize eqns (TSigma z) =
   do (z', q) <- normalize eqns z
      return (TSigma z', VEqCon Sigma q)
