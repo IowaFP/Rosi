@@ -302,14 +302,16 @@ data Evid =
   | VPlusComplR Evid              -- x < y      ==>  x + (y - x) ~ y
   -- Eq proofs
   --
-  -- For now, I'm only keeping enough information here to identify the rule,
-  -- not to identify the rule instance. As equality proofs should be irrelevant
-  -- at runtime, this shouldn't be able to immediately hurt us. It does make
-  -- direct translation to Agda seem further and further away...
+  -- For now, I'm only keeping enough information here to identify the rule, not
+  -- to identify the rule instance. As equality proofs *other than row
+  -- permutations and singleton identification* should be irrelevant at runtime,
+  -- this shouldn't be able to immediately hurt us. It does make direct
+  -- translation to Agda seem further and further away...
   | VEqSym Evid
   | VEqBeta                         -- (λ α : κ. τ) υ ~ τ [υ / α]
   | VEqMap                          -- ^f {t1, ..., tn} ~ {f t1, ..., f tn}
   | VEqCompl                        -- complement of known rows
+  | VEqRowPermute [Int]             -- reordering of rows
   | VEqDefn                         -- Inlining definitions
   --
   | VEqLiftTyCon TyCon                -- (K r) t ~ K (r^ t), where r^ t = ^(\x. x t) r
@@ -364,6 +366,11 @@ flattenV (VPlusLeqR v) = VPlusLeqR <$> flattenV v
 flattenV (VPlusLiftL t v) = foldUnary (VPlusLiftL t) <$> flattenV v
 flattenV (VPlusLiftR v t) = foldUnary (`VPlusLiftR` t) <$> flattenV v
 flattenV (VEqSym v) = foldUnary VEqSym <$> flattenV v
+flattenV v@(VEqRowPermute is)
+  | countUp is 0 = return VRefl
+  | otherwise    = return v
+  where countUp [] _ = True
+        countUp (i : is) j = i == j && countUp is (j + 1)
 flattenV (VEqThen v1 v2) = foldBinary VEqThen <$> flattenV v1 <*> flattenV v2
 flattenV (VEqLambda v) = foldUnary VEqLambda <$> flattenV v
 flattenV (VEqForall v) = foldUnary VEqForall <$> flattenV v

@@ -10,7 +10,7 @@ import Control.Monad.Writer
 import Data.Bifunctor (first, second)
 import Data.Dynamic
 import Data.IORef
-import Data.List (partition)
+import Data.List (elemIndex, partition)
 import Data.Maybe (fromJust, isNothing)
 
 import Checker.Monad
@@ -330,11 +330,13 @@ unify0 (TSing ta) (TSing tx) =
 unify0 (TLabeled la ta) (TLabeled lx tx) =
   liftM2 VEqLabeled <$> unify' la lx <*> unify' ta tx
 unify0 (TRow ra) (TRow rx)
-  | Just as <- mapM splitLabel ra, Just xs <- mapM splitLabel rx, sameSet (map fst as) (map fst xs) =
+  | Just as <- mapM splitLabel ra, Just xs <- mapM splitLabel rx, Just is <- sameSet (map fst as) (map fst xs) =
       do qs <- sequence [unify' a (fromJust x) | (l, a) <- as, let x = lookup l xs]
-         return (VEqRow <$> sequence qs)
-  where sameSet xs ys = all (`elem` xs) ys && all (`elem` ys) xs
-  -- liftM VEqRow . sequence <$> zipWithM unify' ra rx
+         return (VTrans (VEqRowPermute is) . VEqRow <$> sequence qs)
+  where sameSet xs ys
+          | Just is <- sequence [elemIndex y xs | y <- ys], all (`elem` ys) xs =
+              Just is
+          | otherwise = Nothing
 unify0 (TPi ra) (TPi rx) =
   liftM (VEqCon Pi) <$> unify' ra rx
 unify0 (TPi r) u
