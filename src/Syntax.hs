@@ -78,9 +78,13 @@ funTy = TApp . TApp TFun
 infixr 5 `funTy`
 
 label, labeled :: Ty -> Maybe Ty
+concreteLabel :: Ty -> Maybe String
 
 label (TLabeled l _) = Just l
 label _ = Nothing
+
+concreteLabel (TLabeled (TLab s) _) = Just s
+concreteLabel _                     = Nothing
 
 labeled (TLabeled _ t) = Just t
 labeled _ = Nothing
@@ -88,6 +92,10 @@ labeled _ = Nothing
 splitLabel :: Ty -> Maybe (Ty, Ty)
 splitLabel (TLabeled l t) = Just (l, t)
 splitLabel _              = Nothing
+
+splitConcreteLabel :: Ty -> Maybe (String, Ty)
+splitConcreteLabel (TLabeled (TLab s) t) = Just (s, t)
+splitConcreteLabel _                     = Nothing
 
 data Quant = QuForall String Kind | QuThen Pred
   deriving (Data, Eq, Show, Typeable)

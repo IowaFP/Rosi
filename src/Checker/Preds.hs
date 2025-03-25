@@ -207,14 +207,14 @@ solve (cin, p, r) =
          Just q  -> return ()
 
   prim p@(PLeq (TRow y) (TRow z))
-    | Just yd <- mapM label y, Just zd <- mapM label z =
-      case sequence [elemIndex e zd | e <- yd] of
-        Nothing -> return Nothing
-        Just is ->
-          do mapM_ (\(i, TLabeled _ t) -> let TLabeled _ u = z !! i in force p t u) (zip is y)
-             return (Just (VLeqSimple is))
+    | Just yd <- mapM concreteLabel y, Just zd <- mapM concreteLabel z =
+      do case sequence [elemIndex e zd | e <- yd] of
+           Nothing -> return Nothing
+           Just is ->
+             do mapM_ (\(i, TLabeled _ t) -> let TLabeled _ u = z !! i in force p t u) (zip is y)
+                return (Just (VLeqSimple is))
   prim (PPlus (TRow x) (TRow y) (TRow z))
-    | Just xd <- mapM label x, Just yd <- mapM label y, Just zd <- mapM label z
+    | Just xd <- mapM concreteLabel x, Just yd <- mapM concreteLabel y, Just zd <- mapM concreteLabel z
     , length xd + length yd == length zd, sameSet (xd ++ yd) zd =
         case sequence [(Left <$> elemIndex e xd) `mplus` (Right <$> elemIndex e yd) | e <- zd] of
           Nothing -> return Nothing
@@ -224,23 +224,23 @@ solve (cin, p, r) =
     where align (Left i, TLabeled _ t) = force p t u where TLabeled _ u = x !! i
           align (Right i, TLabeled _ t) = force p t u where TLabeled _ u = y !! i
   prim p@(PPlus (TRow x) y (TRow z))
-    | Just xs <- mapM splitLabel x, Just zs <- mapM splitLabel z, Just is <- mapM (flip elemIndex (map fst zs)) (map fst xs) =
+    | Just xs <- mapM splitConcreteLabel x, Just zs <- mapM splitConcreteLabel z, Just is <- mapM (flip elemIndex (map fst zs)) (map fst xs) =
         do forceAssocs xs (map (zs !!) is)
            let js = [j | j <- [0..length zs - 1], j `notElem` is]
-               ys = (map (uncurry TLabeled . (zs !!)) js)
+               ys = (map (uncurry (TLabeled . TLab) . (zs !!)) js)
            trace $ "to solve " ++ show p ++ ": " ++ show y ++ " ~ " ++ show (TRow ys)
            force p y (TRow ys)
            return (Just (VPlusSimple (map Left is ++ map Right js)))
   prim p@(PPlus x (TRow y) (TRow z))
-    | Just ys <- mapM splitLabel y, Just zs <- mapM splitLabel z, Just js <- mapM (flip elemIndex (map fst zs)) (map fst ys) =
+    | Just ys <- mapM splitConcreteLabel y, Just zs <- mapM splitConcreteLabel z, Just js <- mapM (flip elemIndex (map fst zs)) (map fst ys) =
         do forceAssocs ys (map (zs !!) js)
            let is = [i | i <- [0..length zs - 1], i `notElem` js]
-               xs = (map (uncurry TLabeled . (zs !!)) is)
+               xs = (map (uncurry (TLabeled . TLab) . (zs !!)) is)
            trace $ "to solve " ++ show p ++ ": " ++ show x ++ " ~ " ++ show (TRow xs)
            force p x (TRow xs)
            return (Just (VPlusSimple (map Left is ++ map Right js)))
   prim p@(PPlus (TRow x) (TRow y) z)
-    | Just xs <- mapM splitLabel x, Just ys <- mapM splitLabel y, all (`notElem` map fst xs) (map fst ys), all (`notElem` map fst ys) (map fst xs) =
+    | Just xs <- mapM splitConcreteLabel x, Just ys <- mapM splitConcreteLabel y, all (`notElem` map fst xs) (map fst ys), all (`notElem` map fst ys) (map fst xs) =
         do force p z (TRow (x ++ y))
            return (Just (VPlusSimple ([Left i | i <- [0..length xs - 1]] ++ [Right (length xs + j) | j <- [0..length ys - 1]])))
   prim (PEq t u) =
