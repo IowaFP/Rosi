@@ -72,8 +72,8 @@ checkTerm0 implicitTyLams (EVar (-1) x) expected =
 checkTerm0 implicitTyLams e@(EVar i v) expected =
   do ir <- newRef Nothing
      t <- lookupVar i
-     expectT e t (TInst (Unknown (Goal ("i", ir))) expected)
-     return (EInst (EVar i v) (Unknown (Goal ("i", ir))))
+     q <- expectT e t (TInst (Unknown (Goal ("i", ir))) expected)
+     return (EInst (wrap q (EVar i v)) (Unknown (Goal ("i", ir)))) -- TODO: does the cast go inside or outside the inst??
 checkTerm0 implicitTyLams (ELam v Nothing e) expected =
   do tdom <- typeGoal "dom"
      checkTerm0 implicitTyLams (ELam v (Just tdom) e) expected
