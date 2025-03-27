@@ -7,7 +7,10 @@ import Control.Monad.Reader
 import Data.IORef (readIORef)
 import Data.String
 import qualified Prettyprinter as P
+import qualified Prettyprinter.Render.String as P
 import qualified Prettyprinter.Util as P
+import System.IO.Unsafe
+
 import Syntax
 
 data PrinterOptions = PO { level :: Int, printKinds :: Bool }
@@ -132,7 +135,7 @@ instance Printable Ty where
   ppr (TInst (Known is) t) =
     with 3 $ fillSep (map pprI is ++ [ppr t]) where
       pprI (TyArg t) = brackets (ppr t)
-      pprI (PrArg _) = mempty -- dunno what to put here, honestly...
+      pprI (PrArg v) = brackets (ppre (show v)) -- dunno what to put here, honestly...
   ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr t = "<missing: " <> ppre (show t) <> ">"
 
@@ -161,7 +164,7 @@ instance Printable Term where
   ppr (ETyLam x Nothing m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <> ".", ppr m]
   ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
     pprI (TyArg t) = brackets (ppr t)
-    pprI _         = mempty
+    pprI (PrArg v) = brackets (ppre (show v))
   ppr (EInst m (Unknown (Goal (s, r)))) =
     do minst <- liftIO $ readIORef r
        case minst of
@@ -184,7 +187,8 @@ instance Printable Term where
   ppr (EFold {}) = "<fold>"
   -- Not printing internals (yet)
   ppr (EPrLam _ m) = ppr m
-  ppr (ECast m _) = ppr m
+  ppr (ECast m VEqRefl) = ppr m
+  ppr (ECast m q) = parens (fillSep [ppr m <+> "<|", fromString (show q)])
 
 instance Printable Evid where
   ppr _ = "<evid>"
@@ -219,3 +223,9 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
 f :: Int -> Bool -> RDoc ann -> IO ()
 f n pk d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = pk})
               putStrLn ""
+
+renderString :: Bool -> RDoc ann -> String
+renderString pk doc =
+  unsafePerformIO $
+  do d <- runReaderT doc (PO {level = 0, printKinds = pk})
+     return (P.renderString (P.layoutPretty (P.LayoutOptions P.Unbounded) d))
