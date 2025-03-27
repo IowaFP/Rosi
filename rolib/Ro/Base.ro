@@ -25,7 +25,7 @@ sel = \ r l. prj r / l
 con : forall l : L, t : *, z : R[*]. {l := t} < z => #l -> t -> Sigma z
 con = \l x. inj (l := x)
 
-case : forall l t u. #l -> (t -> u) -> (l := t) -> u
+case : forall l t u. #l -> (t -> u) -> Sigma { l := t } -> u
 case = \ l f x. f (x / l)
 
 brnl : forall x z t. x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
