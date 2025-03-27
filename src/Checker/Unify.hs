@@ -156,11 +156,11 @@ unify' actual expected =
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected -- TODO: do we need to renormalize each time around?
      let f = case q of
-               VRefl -> id
-               _     -> VTrans q
+               VEqRefl -> id
+               _       -> VEqTrans q
          f' = case q' of
-               VRefl -> id
-               _     -> VTrans (VEqSym q')
+               VEqRefl -> id
+               _       -> VEqTrans (VEqSym q')
      ((f' . f) <$>) <$> unify0 actual' expected'
 
 
@@ -232,9 +232,9 @@ unifyInstantiating t u unify
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
 unify0 (TVar i _ _) (TVar j _ _)
-  | i == j = return (Just VRefl)
+  | i == j = return (Just VEqRefl)
 unify0 (TUnif n (Goal (_, r)) t) (TUnif n' (Goal (_, r')) t')
-  | n == n', r == r' = return (Just VRefl)
+  | n == n', r == r' = return (Just VEqRefl)
 unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
   do mt <- readRef r
      case mt of
@@ -247,7 +247,7 @@ unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
                     trace ("About to shiftTN 0 " ++ show (negate n) ++ " (" ++ show actual' ++ ")")
                     writeRef r (Just (shiftTN 0 (negate n) actual'))
                     trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) actual'))
-                    return (Just VRefl)
+                    return (Just VEqRefl)
             else return Nothing
 unify0 actual@(TUnif n (Goal (uvar, r)) k) expected =
   do mt <- readRef r
@@ -261,13 +261,13 @@ unify0 actual@(TUnif n (Goal (uvar, r)) k) expected =
                     trace ("About to shiftTN 0 " ++ show (negate n) ++ " (" ++ show expected' ++ ")")
                     writeRef r (Just (shiftTN 0 (negate n) expected'))
                     trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) expected'))
-                    return (Just VRefl)
+                    return (Just VEqRefl)
             else return Nothing
 unify0 t u@(TInst {}) =
   unifyInstantiating t u unify'
 unify0 t@(TInst {}) u =
   unifyInstantiating u t (flip unify')
-unify0 TFun TFun = return (Just VRefl)
+unify0 TFun TFun = return (Just VEqRefl)
 unify0 (TThen pa ta) (TThen px tx) =
   liftM2 VEqThen <$> unifyP pa px <*> unify' ta tx
 
@@ -324,15 +324,18 @@ unify0 a@(TLam xa (Just ka) ta) x@(TLam xx (Just kx) tx) =  -- Note: this case i
      else do trace $ "2 incoming unification failure: " ++ show a ++ ", " ++ show x
              return Nothing
 unify0 (TLab sa) (TLab sx)
-  | sa == sx = return (Just VRefl)
+  | sa == sx = return (Just VEqRefl)
 unify0 (TSing ta) (TSing tx) =
   liftM VEqSing <$> unify' ta tx
 unify0 (TLabeled la ta) (TLabeled lx tx) =
   liftM2 VEqLabeled <$> unify' la lx <*> unify' ta tx
+unify0 (TRow [t]) (TRow [u]) =
+  do q <- unify' t u
+     return (VEqRow . (:[]) <$> q)
 unify0 (TRow ra) (TRow rx)
   | Just as <- mapM splitLabel ra, Just xs <- mapM splitLabel rx, Just is <- sameSet (map fst as) (map fst xs) =
       do qs <- sequence [unify' a (fromJust x) | (l, a) <- as, let x = lookup l xs]
-         return (VTrans (VEqRowPermute is) . VEqRow <$> sequence qs)
+         return (VEqTrans (VEqRowPermute is) . VEqRow <$> sequence qs)
   where sameSet xs ys
           | Just is <- sequence [elemIndex y xs | y <- ys], all (`elem` ys) xs =
               Just is
@@ -340,27 +343,27 @@ unify0 (TRow ra) (TRow rx)
 unify0 (TPi ra) (TPi rx) =
   liftM (VEqCon Pi) <$> unify' ra rx
 unify0 (TPi r) u
-  | TRow [t] <- r = liftM (VTrans (VEqTyConSing Pi)) <$> unify' t u
-  | TLabeled tl tt <- u = liftM (`VTrans` VEqTyConSing Pi) <$> unify' r (TRow [u])
+  | TRow [t] <- r = liftM (VEqTrans (VEqTyConSing Pi)) <$> unify' t u
+  | TLabeled tl tt <- u = liftM (`VEqTrans` VEqTyConSing Pi) <$> unify' r (TRow [u])
 unify0 t (TPi r)
-  | TRow [u] <- r = liftM (`VTrans` VEqTyConSing Pi) <$> unify' t u
-  | TLabeled tl tt <- t = liftM (`VTrans` VEqTyConSing Pi) <$> unify' (TRow [t]) r
+  | TRow [u] <- r = liftM (`VEqTrans` VEqSym (VEqTyConSing Pi)) <$> unify' t u
+  | TLabeled tl tt <- t = liftM (`VEqTrans` VEqSym (VEqTyConSing Pi)) <$> unify' (TRow [t]) r
 unify0 (TSigma ra) (TSigma rx) =
   liftM (VEqCon Sigma) <$> unify' ra rx
 unify0 (TSigma r) u
-  | TRow [t] <- r = liftM (VTrans (VEqTyConSing Sigma)) <$> unify' t u
-  | TLabeled tl tt <- u = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' r (TRow [u])
+  | TRow [t] <- r = liftM (VEqTrans (VEqTyConSing Sigma)) <$> unify' t u
+  | TLabeled tl tt <- u = liftM (`VEqTrans` VEqTyConSing Sigma) <$> unify' r (TRow [u])
 unify0 t (TSigma r)
-  | TRow [u] <- r = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' t u
-  | TLabeled tl tt <- t = liftM (`VTrans` VEqTyConSing Sigma) <$> unify' (TRow [t]) r
+  | TRow [u] <- r = liftM (`VEqTrans` VEqSym (VEqTyConSing Sigma)) <$> unify' t u
+  | TLabeled tl tt <- t = liftM (`VEqTrans` VEqSym (VEqTyConSing Sigma)) <$> unify' (TRow [t]) r
 unify0 (TMu f) (TMu g) =
   liftM (VEqCon Mu) <$> unify' f g
 unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
   do q <- unify' f g
      case q of
-       Just VRefl -> return (Just VRefl)
-       Just q     -> return (Just (VEqMapCong q))
-       Nothing    ->
+       Just VEqRefl -> return (Just VEqRefl)
+       Just q       -> return (Just (VEqMapCong q))
+       Nothing      ->
         do trace $ "3 incoming unification failure: " ++ show a ++ ", " ++ show x
            return Nothing
 unify0 t@(TCompl x y) u@(TCompl x' y') =
@@ -432,41 +435,41 @@ normalize' eqns t =
   do (u, q) <- normalize eqns t
      theKCtxt <- asks kctxt
      case q of
-       VRefl -> return (u, q)
-       _     -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
-                   return (u, q)
+       VEqRefl -> return (u, q)
+       _       -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
+                     return (u, q)
 
 
 normalize :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
 normalize eqns t
   | Just (u, v) <- lookup t eqns =
     do (u', q) <- normalize eqns u
-       return (u', VTrans v q)
+       return (u', VEqTrans v q)
 normalize eqns t@(TVar i _ _) =
   do (_, mdef) <- asks ((!! i) . kctxt)
      case mdef of
-       Nothing -> return (t, VRefl)
+       Nothing -> return (t, VEqRefl)
        Just def -> do (t', q) <- normalize eqns (shiftTN 0 (i + 1) def)
-                      return (t', VTrans VEqDefn q)
+                      return (t', VEqTrans VEqDefn q)
 normalize eqns t0@(TApp (TLam x (Just k) t) u) =
   do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
      (t2, q) <- normalize eqns t1
-     return (t2, VTrans VEqBeta q)
+     return (t2, VEqTrans VEqBeta q)
 normalize eqns (TApp (TPi r) t) =
   do (t1, q) <- normalize eqns (TPi (TApp (TMapArg r) t))  -- To do: check kinding
-     return (t1, VTrans (VEqLiftTyCon Pi) q)
+     return (t1, VEqTrans (VEqLiftTyCon Pi) q)
 normalize eqns (TApp (TSigma r) t) =
   do (t1, q) <- normalize eqns (TSigma (TApp (TMapArg r) t))
-     return (t1, VTrans (VEqLiftTyCon Sigma) q)
+     return (t1, VEqTrans (VEqLiftTyCon Sigma) q)
 normalize eqns (TApp (TMapFun f) (TRow es))
   | Just ls <- mapM label es, Just ts <- mapM labeled es =
     do (t, q) <- normalize eqns (TRow (zipWith TLabeled ls (map (TApp f) ts)))
-       return (t, VTrans VEqMap q)
+       return (t, VEqTrans VEqMap q)
 -- The next rule implements `map id == id`
 normalize eqns (TApp (TMapFun f) z)
   | TLam _ k (TVar 0 _ _) <- f =
     do (z, q) <- normalize eqns z
-       return (z, VTrans VEqMapId q)
+       return (z, VEqTrans VEqMapId q)
 -- The following rules (attempt to) implement `map f . map g == map (f . g)`.
 -- The need for special cases arises from our various ways to represent type
 -- functions: they're not all `TLam`. There are probably some cases missing: in
@@ -474,18 +477,18 @@ normalize eqns (TApp (TMapFun f) z)
 normalize eqns (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
   do f' <- subst 0 g f
      (t, q) <- normalize eqns (TApp (TMapFun (TLam v k f')) z)
-     return (t, VTrans VEqMapCompose q)
+     return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TApp (TMapFun (TLam v (Just (KFun KType KType)) f)) (TApp (TMapFun TFun) z)) =
   do f' <- subst 0 (TApp TFun (TVar 0 v (Just KType))) f
      (t, q) <- normalize eqns (TApp (TMapFun (TLam v (Just KType) f')) z)
-     return (t, VTrans VEqMapCompose q)
+     return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
   do (t, q) <- normalize eqns (TApp (TMapFun (TLam v k (TApp TFun f))) z)
-     return (t, VTrans VEqMapCompose q)
+     return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TApp (TMapArg (TRow es)) t)
   | Just ls <- mapM label es, Just fs <- mapM labeled es =
     do (t, q) <- normalize eqns (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
-       return (t, VTrans VEqMapCompose q)
+       return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TMapArg z)
   | KRow (KFun k1 k2) <- kindOf z =
     return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y" (Just (KFun k1 k2))) (TVar 1 "X" (Just k1))))) (shiftTN 0 1 z)), VEqDefn)
@@ -493,25 +496,23 @@ normalize eqns (TApp t1 t2) =
   do (t1', q1) <- normalize eqns t1
      q1' <- flattenV q1
      case q1' of
-       VRefl -> do (t2', q2) <- normalize eqns t2
-                   return (TApp t1 t2', VEqApp VRefl q2)
+       VEqRefl -> do (t2', q2) <- normalize eqns t2
+                     return (TApp t1 t2', VEqApp VEqRefl q2)
        _ -> do (t', q) <- normalize eqns (TApp t1' t2)
-               return (t', VTrans (VEqApp q1 VRefl) q)
+               return (t', VEqTrans (VEqApp q1 VEqRefl) q)
 normalize eqns (TLabeled tl te) =
   do (tl', ql) <- normalize eqns tl
      (te', qe) <- normalize eqns te
      return (TLabeled tl' te', VEqLabeled ql qe)
-normalize eqns (TRow [t]) =
-  do (t', q) <- normalize eqns t
-     return (TRow [t'], VEqRow [q])
-normalize eqns (TRow ts)
-  | Just ps <- mapM splitConcreteLabel ts =
-      let ps' = sortOn fst ps
-          is  = [fromJust (elemIndex i (map fst ps')) | i <- map fst ps] in
-      do (ts', qs) <- unzip <$> mapM (normalize eqns . snd) ps'
-         return (TRow (zipWith (TLabeled . TLab) (map fst ps') ts'), VEqRowPermute is `VTrans` VEqRow qs)
 normalize eqns (TRow ts) =
-  error $ "normalize: asked to normalize non-concrete row " ++ show (TRow ts)
+  do (ts', qs) <- unzip <$> mapM (normalize eqns) ts
+     case mapM splitConcreteLabel ts' of
+       Just ps ->
+         let ps' = sortOn (fst . fst) (zip ps qs)
+             is  = [fromJust (elemIndex i (map (fst . fst) ps')) | i <- map fst ps] in
+         return (TRow (map (uncurry (TLabeled . TLab)) (map fst ps')), VEqRowPermute is `VEqTrans` VEqRow (map snd ps'))
+       Nothing ->
+         return (TRow ts', VEqRow qs)
 normalize eqns (TSigma z) =
   do (z', q) <- normalize eqns z
      return (TSigma z', VEqCon Sigma q)
@@ -537,7 +538,7 @@ normalize eqns (TCompl x y) =
        (TRow xs, TRow ys)
          | Just xls <- mapM label xs
          , Just yls <- mapM label ys
-         , all (`elem` xls) yls -> return (TRow [TLabeled l t | TLabeled l t <- xs, l `notElem` yls], VTrans (VEqComplCong q q') VEqCompl)
+         , all (`elem` xls) yls -> return (TRow [TLabeled l t | TLabeled l t <- xs, l `notElem` yls], VEqTrans (VEqComplCong q q') VEqCompl)
        _ -> return (TCompl x' y', VEqComplCong q q')
 normalize eqns (TInst ig@(Unknown (Goal (_, r))) t) =
   do minsts <- readRef r
@@ -549,13 +550,13 @@ normalize eqns (TInst (Known is) t) =
      first (TInst (Known (map fst is'))) <$> normalize eqns t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
   where normI (TyArg t) = first TyArg <$> normalize eqns t
         normI (PrArg v) =
-          return (PrArg v, VRefl)
+          return (PrArg v, VEqRefl)
 normalize eqns (TThen p t) =
   do p' <- normalizeP eqns p
      (t', q) <- normalize eqns t
-     return (TThen p' t', VEqThen VRefl q)
+     return (TThen p' t', VEqThen VEqRefl q)
 -- TODO: remaining homomorphic cases
-normalize eqns t = return (t, VRefl)
+normalize eqns t = return (t, VEqRefl)
 
 normalizeP :: MonadCheck m => [Eqn] -> Pred -> m Pred -- no evidence structure for predicate equality yet soooo....
 normalizeP eqns (PLeq x y) = PLeq <$> (fst <$> normalize eqns x) <*> (fst <$> normalize eqns y)

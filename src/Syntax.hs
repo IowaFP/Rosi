@@ -293,9 +293,9 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
 data Evid =
     VVar Int | VGoal (Goal Evid)     -- VVars are entirely internal, so I'll only give them de Bruijn indices
   | VPredEq Evid Evid             -- p1 ~ p2 /\ p1  ==>  p2
-  -- Shared: Leq and Eq:
-  | VRefl | VTrans Evid Evid
+
   -- Leq proofs
+  | VLeqRefl | VLeqTrans Evid Evid
   | VLeqSimple [Int]              -- Ground evidence for r1 <= r2: indices of r1 entries in r2
   | VLeqLiftL Ty Evid             -- x <= y     ==>  f x <= f y
   | VLeqLiftR Evid Ty             -- x <= y     ==>  x t <= y t
@@ -315,6 +315,7 @@ data Evid =
   -- permutations and singleton identification* should be irrelevant at runtime,
   -- this shouldn't be able to immediately hurt us. It does make direct
   -- translation to Agda seem further and further away...
+  | VEqRefl | VEqTrans Evid Evid
   | VEqSym Evid
   | VEqBeta                         -- (λ α : κ. τ) υ ~ τ [υ / α]
   | VEqMap                          -- ^f {t1, ..., tn} ~ {f t1, ..., f tn}
@@ -339,13 +340,20 @@ data Evid =
 data TyCon = Pi | Sigma | Mu
   deriving (Data, Eq, Show, Typeable)
 
+isRefl :: Evid -> Bool
+isRefl VEqRefl = True
+isRefl VLeqRefl = True
+isRefl v = False
+
 foldUnary :: (Evid -> Evid) -> Evid -> Evid
-foldUnary _ VRefl = VRefl
-foldUnary k q     = k q
+foldUnary k q
+  | isRefl q = q
+  | otherwise = k q
 
 foldBinary :: (Evid -> Evid -> Evid) -> Evid -> Evid -> Evid
-foldBinary _ VRefl VRefl = VRefl
-foldBinary k q1 q2       = k q1 q2
+foldBinary k q1 q2
+  | isRefl q1, isRefl q2 = q1
+  | otherwise = k q1 q2
 
 flattenV :: MonadIO m => Evid -> m Evid
 flattenV v@(VGoal (Goal (_, r))) =
@@ -357,16 +365,24 @@ flattenV (VPredEq v1 v2) =
   do v1' <- flattenV v1
      v2' <- flattenV v2
      return $ case v1' of
-       VRefl -> v2'
+       VEqRefl -> v2'
        _     -> VPredEq v1' v2'
-flattenV VRefl = return VRefl
-flattenV (VTrans v1 v2) =
+flattenV VLeqRefl = return VLeqRefl
+flattenV VEqRefl = return VEqRefl
+flattenV (VLeqTrans v1 v2) =
   do v1' <- flattenV v1
      v2' <- flattenV v2
      return $ case (v1', v2') of
-       (VRefl, _) -> v2'
-       (_, VRefl) -> v1'
-       _          -> VTrans v1' v2'
+       (VLeqRefl, _) -> v2'
+       (_, VLeqRefl) -> v1'
+       _          -> VLeqTrans v1' v2'
+flattenV (VEqTrans v1 v2) =
+  do v1' <- flattenV v1
+     v2' <- flattenV v2
+     return $ case (v1', v2') of
+       (VEqRefl, _) -> v2'
+       (_, VEqRefl) -> v1'
+       _          -> VLeqTrans v1' v2'
 flattenV (VLeqLiftL t v) = foldUnary (VLeqLiftL t) <$> flattenV v
 flattenV (VLeqLiftR v t) = foldUnary (`VLeqLiftR` t) <$> flattenV v
 flattenV (VPlusLeqL v) = VPlusLeqL <$> flattenV v
@@ -375,7 +391,7 @@ flattenV (VPlusLiftL t v) = foldUnary (VPlusLiftL t) <$> flattenV v
 flattenV (VPlusLiftR v t) = foldUnary (`VPlusLiftR` t) <$> flattenV v
 flattenV (VEqSym v) = foldUnary VEqSym <$> flattenV v
 flattenV v@(VEqRowPermute is)
-  | countUp is 0 = return VRefl
+  | countUp is 0 = return VEqRefl
   | otherwise    = return v
   where countUp [] _ = True
         countUp (i : is) j = i == j && countUp is (j + 1)
@@ -384,10 +400,10 @@ flattenV (VEqLambda v) = foldUnary VEqLambda <$> flattenV v
 flattenV (VEqForall v) = foldUnary VEqForall <$> flattenV v
 flattenV (VEqApp v1 v2) = foldBinary VEqApp <$> flattenV v1 <*> flattenV v2
 flattenV (VEqLabeled v1 v2) = foldBinary VEqLabeled <$> flattenV v1 <*> flattenV v2
-flattenV (VEqRow []) = return VRefl
+flattenV (VEqRow []) = return VEqRefl
 flattenV (VEqRow vs) =
   do vs' <- mapM flattenV vs
-     return (if all (VRefl ==) vs' then VRefl else VEqRow vs')
+     return (if all isRefl vs' then VEqRefl else VEqRow vs')
 flattenV (VEqSing v) = foldUnary VEqSing <$> flattenV v
 flattenV (VEqCon t v) = foldUnary (VEqCon t) <$> flattenV v
 flattenV (VEqMapCong v) = foldUnary VEqMapCong <$> flattenV v
@@ -395,7 +411,7 @@ flattenV (VEqComplCong v1 v2) = foldBinary VEqComplCong <$> flattenV v1 <*> flat
 flattenV (VEqLeq v1 v2) = foldBinary VEqLeq <$> flattenV v1 <*> flattenV v2
 flattenV (VEqPlus v1 v2 v3) =
   do vs' <- mapM flattenV [v1, v2, v3]
-     return (if all (VRefl ==) vs' then VRefl else VEqPlus (vs' !! 0) (vs' !! 1) (vs' !! 2))
+     return (if all isRefl vs' then VEqRefl else VEqPlus (vs' !! 0) (vs' !! 1) (vs' !! 2))
 flattenV v = return v
   -- Covers: VVar, VRefl, VLeqSimple, VPlusSimple, VEqBeta, VEqMap, VEqCompl, VEqDefn,
   -- VEqLiftTyCon, VEqTyConSing, VEqMapId, VEqMapCompose,

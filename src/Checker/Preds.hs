@@ -112,10 +112,10 @@ solve (cin, p, r) =
 
   refl (PLeq x y) =
     suppose (typesEqual x y) $
-    return (Just VRefl)
+    return (Just VLeqRefl)
   refl (PEq x y) =
     suppose (typesEqual x y) $
-    return (Just VRefl)
+    return (Just VEqRefl)
   refl _ = return Nothing
 
   matchLeqMap p@(PLeq (TRow es) (TApp (TMapFun f) z)) q@(PLeq (TRow es') z', v) =
@@ -187,8 +187,8 @@ solve (cin, p, r) =
 
   expand2 :: (Pred, Evid) -> (Pred, Evid) -> [(Pred, Evid)]
   expand2 (PLeq x y, v1) (PLeq z w, v2)
-    | y == z = [(PLeq x w, VTrans v1 v2)]
-    | x == w = [(PLeq z y, VTrans v2 v1)]
+    | y == z = [(PLeq x w, VLeqTrans v1 v2)]
+    | x == w = [(PLeq z y, VLeqTrans v2 v1)]
   expand2 _ _ = []
 
   expandAll :: [(Pred, Evid)] -> [(Pred, Evid)]
@@ -228,21 +228,36 @@ solve (cin, p, r) =
         do forceAssocs xs (map (zs !!) is)
            let js = [j | j <- [0..length zs - 1], j `notElem` is]
                ys = (map (uncurry (TLabeled . TLab) . (zs !!)) js)
+               go n m
+                 | n >= length zs = []
+                 | Just i <- elemIndex n is = Left i : go (n + 1) m
+                 | otherwise = Right m : go (n + 1) (m + 1)
            trace $ "to solve " ++ show p ++ ": " ++ show y ++ " ~ " ++ show (TRow ys)
            force p y (TRow ys)
-           return (Just (VPlusSimple (map Left is ++ map Right js)))
+           return (Just (VPlusSimple (go 0 0)))
   prim p@(PPlus x (TRow y) (TRow z))
     | Just ys <- mapM splitConcreteLabel y, Just zs <- mapM splitConcreteLabel z, Just js <- mapM (flip elemIndex (map fst zs)) (map fst ys) =
         do forceAssocs ys (map (zs !!) js)
            let is = [i | i <- [0..length zs - 1], i `notElem` js]
                xs = (map (uncurry (TLabeled . TLab) . (zs !!)) is)
+               go n m
+                 | n >= length zs = []
+                 | Just j <- elemIndex n js = Right j : go (n + 1) m
+                 | otherwise = Left m : go (n + 1) (m + 1)
            trace $ "to solve " ++ show p ++ ": " ++ show x ++ " ~ " ++ show (TRow xs)
            force p x (TRow xs)
-           return (Just (VPlusSimple (map Left is ++ map Right js)))
+           return (Just (VPlusSimple (go 0 0)))
   prim p@(PPlus (TRow x) (TRow y) z)
     | Just xs <- mapM splitConcreteLabel x, Just ys <- mapM splitConcreteLabel y, all (`notElem` map fst xs) (map fst ys), all (`notElem` map fst ys) (map fst xs) =
-        do force p z (TRow (x ++ y))
-           return (Just (VPlusSimple ([Left i | i <- [0..length xs - 1]] ++ [Right (length xs + j) | j <- [0..length ys - 1]])))
+        let zs = sortOn fst (xs ++ ys)
+            pick k =
+              case (elemIndex k (map fst xs), elemIndex k (map fst ys)) of
+                (Just i, _) -> Left i
+                (_, Just j) -> Right j
+            is = map (pick . fst) zs
+        in
+        do force p z (TRow (map (uncurry (TLabeled . TLab)) zs))
+           return (Just (VPlusSimple is))
   prim (PEq t u) =
     unifyProductive [] t u
   prim _ = return Nothing
@@ -267,7 +282,7 @@ solve (cin, p, r) =
     | TLam v (Just k) (TVar i w _) <- f  -- I think this case should actually have been normalized away....
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel y =
-      fmap (VPredEq (VEqLeq (VEqMap `VTrans` VEqRow [ VEqSym VEqBeta | t <- ts]) VRefl) .
+      fmap (VPredEq (VEqLeq (VEqMap `VEqTrans` VEqRow [ VEqSym VEqBeta | t <- ts]) VEqRefl) .
             VLeqLiftL f) <$> everything as (PLeq (TRow y) z)
   mapFunApp as p@(PLeq (TApp (TMapFun f) y) (TRow [])) =
     fmap (VLeqLiftL f) <$> everything as (PLeq y (TRow []))
@@ -278,7 +293,7 @@ solve (cin, p, r) =
     | TLam v (Just k) (TVar i w _) <- f
     , v == w
     , Just (ls, ts) <- mapAndUnzipM splitLabel z =
-      fmap (VPredEq (VEqLeq VRefl (VEqMap `VTrans` VEqRow [ VEqSym VEqBeta | t <- ts])) .
+      fmap (VPredEq (VEqLeq VEqRefl (VEqMap `VEqTrans` VEqRow [ VEqSym VEqBeta | t <- ts])) .
             VLeqLiftL f) <$> everything as (PLeq y (TRow z))
   mapFunApp as p@(PPlus (TApp (TMapFun f) x) (TApp (TMapFun g) y) (TApp (TMapFun h) z)) =
     do force p f g

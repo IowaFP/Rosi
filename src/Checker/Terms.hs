@@ -26,8 +26,8 @@ typeMismatch m actual expected =
      throwError (ErrTypeMismatch m actual' expected')
 
 wrap :: Evid -> Term -> Term
-wrap VRefl t = t
-wrap q t     = ECast t q
+wrap VEqRefl t = t
+wrap q t       = ECast t q
 
 checkTerm' :: Bool -> Term -> Ty -> CheckM Term
 checkTerm' implicitTyLams e t = checkTerm implicitTyLams e =<< flattenT t
@@ -207,5 +207,5 @@ checkTop m t =
   do (t', q) <- normalize' [] t
      m' <- checkTerm True m t'
      return (case q of
-               VRefl -> m'
+               VEqRefl -> m'
                _ -> ECast m' q)
