@@ -20,17 +20,6 @@ trace s x =
 
 type Env = ([EValue], [Value])
 
--- TODO: should we even have VTyLam values at all?
---  * Arguments for: they delay evaluation regardless.
---  * Arguments against: they don't do anything else, how important is the simulation result here?
---  * Also, how should we handle instantiation of `VTyLam`s with unknown types?
-
--- TODO: should distinguish VPrLam from VLam?
---  * Arguments for: more likely to catch bugs
---  * Arguments against: they do the same thing
-
--- TODO: how to represent constants?
-
 data Body = Term Term | Prim (Env -> Value)
 
 instance Show Body where
@@ -38,31 +27,27 @@ instance Show Body where
   show (Prim _) = "<<prim>>"
 
 data Value = VPrLam Env Body | VLam Env Body
-           | VBranch [(Int, Bool)] Value Value | VAna Value
            | VIn Value | VSing | VVariant Int Value | VRecord [Value] | VSyn (Int -> Value)
 
 instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
   show (VLam _ b) = "\\ " ++ show b
-  show (VBranch is f g) = "br " ++ show is ++ "(" ++ show f ++ ") (" ++ show g ++ ")"
-  show (VAna v) = "ana (" ++ show v ++ ")"
   show (VIn v) = "in (" ++ show v ++ ")"
   show VSing = "()"
   show (VVariant k w) = "<" ++ show k ++ ", " ++ show w ++ ">"
   show (VRecord vs) = "(" ++ intercalate ", " (map show vs) ++ ")"
-  show (VSyn _) = "<<syn>>"
+  show (VSyn t) = "<<syn>>"
 
 
 data EValue = VLeq [Int] | VPlus [Either Int Int] | VEq
   deriving Show
 
+evalB :: Env -> Body -> Value
+evalB h (Term e) = eval h e
+evalB h (Prim f) = f h
+
 app :: Env -> Value -> Value -> Value
 app _ (VLam (hp, he) f') v = evalB (hp, v : he) f'
-app h (VBranch e f g) (VVariant k w)
-  | left = app h f (VVariant k' w)
-  | otherwise = app h g (VVariant k' w)
-  where (k', left) = e !! k
-app h (VAna f) (VVariant k w) = app h (app h (prapp h f (VLeq [k])) VSing) w
 app h v w = error $ "don't know how to apply " ++ show v ++ " to " ++ show w
 
 prapp :: Env -> Value -> EValue -> Value
@@ -78,7 +63,6 @@ recordSize :: HasCallStack => Value -> Int
 recordSize (VRecord vs) = length vs
 recordSize (VSyn f)     = error "unbounded"
 recordSize v            = 1
-
 
 variantFrom :: HasCallStack => Value -> (Int, Value)
 variantFrom (VVariant k v) = (k, v)
@@ -114,8 +98,7 @@ eval' h (EConst CPrj) = -- VPrLam h (Value (VLam h (Const CPrj)))
       (VLeq is : _, v : _) ->
         case v of
           VSyn f -> VSyn (\i -> f (is !! i))
-          _ -> let vs = recordFrom v in
-               VRecord (map vs is)
+          _ -> VRecord (map (recordFrom v) is)
       _ -> error $ "bad environment for prj: " ++ show h
 eval' h (EConst CInj) = -- VPrLam h (Value (VLam h (Const CPrj)))
   VPrLam h $ Prim $ \ h ->
@@ -174,7 +157,10 @@ eval' h (EConst CFix) = -- VLam h (Const CFix)
 --     eval (hp, eval h (EApp (EConst CFix) (ELam "x" Nothing e)) : he) e
 eval' h (ESyn _ e) = VSyn (\i -> app h (prapp h f (VLeq [i])) VSing)
   where f = eval h e
-eval' h (EAna _ e) = VAna (eval h e)
+eval' h (EAna _ e) =
+  VLam h $ Prim $ \ (_, VVariant k w : _) ->
+    app h (app h (prapp h f (VLeq [k])) VSing) w
+  where f = eval h e
 eval' h (ECast e (VEqTyConSing Pi)) =
   case eval h e of
     VRecord [v] -> v
@@ -187,38 +173,6 @@ eval' h (ECast e (VEqSym (VEqTyConSing Sigma))) =
   VVariant 0 (eval h e)
 eval' h (ECast e q) = eval h e
 eval' h (ETyped e _) = eval h e
-
-evalB :: Env -> Body -> Value
-evalB h (Term e) = eval h e
-evalB h (Prim f) = f h
--- evalB h (Value v) = v
--- evalB h (Const CPrj) = VRecord (map (vs !!) is) where
---   VRecord vs = h !! 0
---   VLeq is    = h !! 1
--- evalB h (Const CInj) = VVariant (is !! k) v where
---   VVariant k v = h !! 0
---   VLeq is      = h !! 1
--- evalB h (Const CConcat) = VRecord (map pick is) where
---   VRecord ws = h !! 0
---   VRecord vs = h !! 1
---   VPlus is   = h !! 2
---   pick (Left i) = vs !! i
---   pick (Right i) = ws !! i
--- evalB h (Const CBranch) =
---   case is !! k of
---     Left i  -> app h f (VVariant i w)
---     Right i -> app h g (VVariant i w)
---   where
---   VVariant k w = h !! 0
---   g = h !! 1
---   f = h !! 2
---   VPlus is = h !! 3
--- evalB h (Const CIn) = VIn (h !! 0)
--- evalB h (Const COut) = v where
---   VIn v = h !! 0
--- -- I do not feel good about this...
--- evalB h (Const CFix) = eval (eval h (EApp (EConst CFix) (ELam "x" Nothing e)) : h') e where
---   VLam h' (Term e) = h !! 0
 
 evalV :: Env -> Evid -> EValue
 evalV (hp, he) (VVar i)    = hp !! i
