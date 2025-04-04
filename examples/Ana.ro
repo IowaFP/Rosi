@@ -35,6 +35,10 @@ fmapS20 = /\ z. \ d. /\ a b. \ f w.
               (\ l x. sel d l [a] [b] f x)
               w
 
+fmapS21 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
+fmapS21 = /\ z. \ d. /\ a b. \ f.
+            mapS [z] [\ X. X a] [\ X. X b] (/\ l u. \ ll. (sel d ll : Functor u) f)
+
 -- How many annotations can I leave out?
 -- bug here: why do we need to bring `z` into scope? Without doing so, we fail to solve predicates...
 
