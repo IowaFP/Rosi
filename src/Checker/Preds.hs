@@ -259,7 +259,11 @@ solve (cin, p, r) =
         do force p z (TRow (map (uncurry (TLabeled . TLab)) zs))
            return (Just (VPlusSimple is))
   prim (PEq t u) =
-    unifyProductive [] t u
+    unifyProductive [] t u <|> instInst t u <|> instInst u t where
+      instInst (TInst (Unknown _ (Goal (_, r))) t@(TInst (Unknown {}) _)) u@(TForall {}) =
+        do writeRef r (Just [])
+           prim (PEq t u)
+      instInst _ _ = return Nothing
   prim _ = return Nothing
 
   funCallsFrom :: [Ty] -> Maybe ([Ty], [Ty], [Ty])

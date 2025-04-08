@@ -127,10 +127,10 @@ instance Printable Ty where
   ppr (TMu t) = with 3 $ "Mu" <+> at 4 (ppr t)
   ppr (TMapFun t) = ppr t
   ppr (TMapArg t) = ppr t
-  ppr (TInst (Unknown (Goal (s, r))) t) =
+  ppr (TInst (Unknown n (Goal (s, r))) t) =
     do minst <- liftIO $ readIORef r
        case minst of
-         Nothing -> brackets ("%" <> ppre s) <+> parens (ppr t)
+         Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
          Just is  -> ppr (TInst (Known is) t)
   ppr (TInst (Known is) t) =
     with 3 $ fillSep (map pprI is ++ [ppr t]) where
@@ -165,7 +165,7 @@ instance Printable Term where
   ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
     pprI (TyArg t) = brackets (ppr t)
     pprI (PrArg v) = brackets (ppre (show v))
-  ppr (EInst m (Unknown (Goal (s, r)))) =
+  ppr (EInst m (Unknown n (Goal (s, r)))) =
     do minst <- liftIO $ readIORef r
        case minst of
          Nothing -> with 4 (fillSep [ppr m, brackets (ppre s)])

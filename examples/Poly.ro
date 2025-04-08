@@ -126,7 +126,6 @@ type IdTy = forall A. A -> A
 
 -- let single : {A} → A → List A                  = λ a. cons a nil;
 
--- Bug here
 single : forall B. B -> List B
 single = \a. cons a nil
 
@@ -142,7 +141,6 @@ ids = nil
 
 -- let oneId  : Id IdTy                           = mkId id;
 
--- Bug here
 oneId : Id IdTy
 oneId = mkId id
 
@@ -210,9 +208,17 @@ a6 = id auto2
 -- let A9 : ({A} → (A → A) → List A → A) → IdTy
 --     = λ f. f (choose id) ids;
 
--- bug here?
--- a9 : (forall a. (a -> a) -> List a -> a) -> IdTy
--- a9 = \f. f (choose id) ids
+a9 : (forall a. (a -> a) -> List a -> a) -> IdTy
+a9 = \f. f (choose id) ids
+
+idsp : forall a. List (a -> a)
+idsp = single id
+
+a9a : (forall a. (a -> a) -> List a -> a) -> IdTy
+a9a = \f. f (choose id) idsp
+
+a9b : (forall a. (a -> a) -> List a -> a) -> IdTy
+a9b = \f. /\a. f (choose [a -> a] id) idsp
 
 -- let A10 = poly id;
 --

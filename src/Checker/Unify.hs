@@ -182,15 +182,16 @@ unifyInstantiating t u unify
         nuqs      = length (fst (quants u'))
 
         -- match needs its arguments **reversed** from their appearance in the type
-        match :: [Insts] -> [Quant] -> Maybe [Either (Ty, Kind) (Goal [Inst], [Quant])]
+        match :: [Insts] -> [Quant] -> Maybe [Either (Ty, Kind) (Int, Goal [Inst], [Quant])]
         match [] [] = return []
-        match [Unknown g] qs = return [Right (g, reverse qs)]
-        match (Unknown g : is@(Known _ : _)) qs = (Right (g, reverse thens) :) <$> match is rest where
+        match [Unknown n g] qs = return [Right (n, g, reverse qs)]
+        match (Unknown n g : is@(Known _ : _)) qs = (Right (n, g, reverse thens) :) <$> match is rest where
           isThen (QuThen _) = True
           isThen _          = False
           (thens, rest) = partition isThen qs
-        match (Unknown g : is@(Unknown _ : _)) qs =  -- still think this shouldn't be possible, clearly I don't understand my own code
-          (Right (g, []) :) <$> match is qs
+        match (Unknown n g : is@(Unknown _ _ : _)) qs
+          | QuForall {} : _ <- qs = Nothing
+          | otherwise = (Right (n, g, []) :) <$> match is qs
         match (Known is : is') qs =
           do (ms, qs') <- matchKnown is qs
              (reverse ms ++) <$> match is' qs'
@@ -198,7 +199,7 @@ unifyInstantiating t u unify
                 matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (t, k) :)) <$> matchKnown is qs
                 matchKnown (PrArg _ : _) _ = Nothing
                 matchKnown _ [] = Nothing
-        match is qs = error $ "ruh-roh: " ++ show is ++ " " ++ show qs
+        match is qs = Nothing -- error $ unlines ["ruh-roh: in ", renderString False (ppr t), " ~ ", renderString False (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
 
         -- Need to write function to apply list of instantiations derived from
         -- `match` above. Problem is (a) need to work outside in, but (b)
@@ -207,28 +208,28 @@ unifyInstantiating t u unify
         --
         -- Approach: go back to original type, using list of insts to guide
         -- instantiation??
-        instantiates :: [Either (Ty, Kind) (Goal [Inst], [Quant])] -> Ty -> UnifyM Ty
+        instantiates :: [Either (Ty, Kind) (Int, Goal [Inst], [Quant])] -> Ty -> UnifyM Ty
         instantiates [] t = return t
         instantiates (Left (u, _) : is) (TForall x k t) =
             do t' <- subst 0 (shiftTN 0 1 u) t
                instantiates is (shiftTN 0 (-1) t')
-        instantiates (Right (Goal (ivar, r), qs) : is) t =
-          do (is', t') <- instantiate (length qs) t
+        instantiates (Right (n, Goal (ivar, r), qs) : is) t =
+          do (is', t') <- instantiate (length qs) n t
              trace $ "instantiating " ++ ivar ++ " to " ++ show is'
              writeRef r (Just is')
              instantiates is t'
 
-        instantiate :: Int -> Ty -> UnifyM ([Inst], Ty)
-        instantiate 0 t = return ([], t)
-        instantiate n (TForall x (Just k) t) =
+        instantiate :: Int -> Int -> Ty -> UnifyM ([Inst], Ty)
+        instantiate 0 _ t = return ([], t)
+        instantiate n m (TForall x (Just k) t) =
           do u <- typeGoal' x k
-             t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
-             (is', t'') <- instantiate (n - 1) t'
+             t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) (shiftTN 0 m t)
+             (is', t'') <- instantiate (n - 1) m t'
              return (TyArg u : is', t'')
-        instantiate n (TThen p t) =
+        instantiate n m (TThen p t) =
           do vr <- newRef Nothing
              require p vr
-             (is, t') <- instantiate (n - 1) t
+             (is, t') <- instantiate (n - 1) m t
              return (PrArg (VGoal (Goal ("v", vr))) : is, t')
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
@@ -245,9 +246,8 @@ unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
             if chk
             then do actual' <- flattenT actual
                     expectK actual' (kindOf actual') k
-                    trace ("About to shiftTN 0 " ++ show (negate n) ++ " (" ++ show actual' ++ ")")
                     writeRef r (Just (shiftTN 0 (negate n) actual'))
-                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) actual'))
+                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) actual')) -- renderString False (ppr (shiftTN 0 (negate n) actual')))
                     return (Just VEqRefl)
             else return Nothing
 unify0 actual@(TUnif n (Goal (uvar, r)) k) expected =
@@ -259,15 +259,22 @@ unify0 actual@(TUnif n (Goal (uvar, r)) k) expected =
             if chk
             then do expected' <- flattenT expected
                     expectK expected' (kindOf expected') k
-                    trace ("About to shiftTN 0 " ++ show (negate n) ++ " (" ++ show expected' ++ ")")
                     writeRef r (Just (shiftTN 0 (negate n) expected'))
-                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) expected'))
+                    trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) expected')) --renderString False (ppr (shiftTN 0 (negate n) expected')))
                     return (Just VEqRefl)
             else return Nothing
+unify0 (TInst (Unknown n i1) t) (TInst (Unknown n' i2) u)
+  | n == n' && i1 == i2 = unify' t u
 unify0 t u@(TInst {}) =
-  unifyInstantiating t u unify'
+  do mq <- unifyInstantiating t u unify'
+     case mq of
+       Nothing -> refine $ requireEq t u
+       Just q  -> return (Just q)
 unify0 t@(TInst {}) u =
-  unifyInstantiating u t (flip unify')
+  do mq <- unifyInstantiating u t (flip unify')
+     case mq of
+       Nothing -> refine $ requireEq t u
+       Just q  -> return (Just q)
 unify0 TFun TFun = return (Just VEqRefl)
 unify0 (TThen pa ta) (TThen px tx) =
   liftM2 VEqThen <$> unifyP pa px <*> unify' ta tx
@@ -418,11 +425,11 @@ instance HasTyVars Ty where
   subst v t (TInst (Known is) u) = TInst <$> (Known <$> mapM substI is) <*> subst v t u where
     substI (TyArg u) = TyArg <$> subst v t u
     substI (PrArg v) = return (PrArg v)
-  subst v t (TInst i@(Unknown (Goal (_, r))) u) =
+  subst v t (TInst i@(Unknown n (Goal (_, r))) u) =
     do minst <- readRef r
        case minst of
          Nothing -> TInst i <$> subst v t u
-         Just is -> subst v t (TInst (Known is) u)
+         Just is -> subst v t (TInst (shiftIs 0 n (Known is)) u)
   subst v t (TMapFun f) = TMapFun <$> subst v t f
   subst v t (TMapArg f) = TMapArg <$> subst v t f
   subst v t u = error $ "internal: subst " ++ show v ++ " (" ++ show t ++ ") (" ++ show u ++")"
@@ -541,7 +548,7 @@ normalize eqns (TCompl x y) =
          , Just yls <- mapM label ys
          , all (`elem` xls) yls -> return (TRow [TLabeled l t | TLabeled l t <- xs, l `notElem` yls], VEqTrans (VEqComplCong q q') VEqCompl)
        _ -> return (TCompl x' y', VEqComplCong q q')
-normalize eqns (TInst ig@(Unknown (Goal (_, r))) t) =
+normalize eqns (TInst ig@(Unknown n (Goal (s, r))) t) =
   do minsts <- readRef r
      case minsts of
        Nothing -> first (TInst ig) <$> normalize eqns t

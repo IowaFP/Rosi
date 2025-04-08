@@ -80,7 +80,7 @@ instance HasVars Term where
   scope (EInst m (Known is)) = EInst <$> scope m <*> (Known <$> mapM scopeI is) where
     scopeI (TyArg t) = TyArg <$> scope t
     scopeI (PrArg v) = return (PrArg v)
-  scope (EInst m (Unknown g)) = EInst <$> scope m <*> return (Unknown g) -- how is this case actually possible?
+  scope (EInst m (Unknown n g)) = EInst <$> scope m <*> return (Unknown n g) -- how is this case actually possible?
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
   scope ECast{} = error "scope: ETyEqu"

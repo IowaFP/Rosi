@@ -44,12 +44,12 @@ checkTerm m t =
      checkTerm0 m t
 
 elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
-elimForm expected@(TInst {}) k =
-  k expected
+-- elimForm expected@(TInst (Unknown {}) _) k =
+--   k expected
 elimForm expected k =
   do iv <- newRef Nothing
      name <- fresh "i"
-     flip EInst (Unknown (Goal (name, iv))) <$> k (TInst (Unknown (Goal (name, iv))) expected)
+     flip EInst (Unknown 0 (Goal (name, iv))) <$> k (TInst (Unknown 0 (Goal (name, iv))) expected)
 
 checkTerm0 :: Term -> Ty -> CheckM Term
 checkTerm0 (ETyLam v Nothing e) expected =
@@ -72,10 +72,10 @@ checkTerm0 e (TThen p t) =
 checkTerm0 (EVar (-1) x) expected =
   throwError (ErrOther $ "scoping error: variable " ++ x ++ " not resolved")
 checkTerm0 e@(EVar i v) expected =
-  do ir <- newRef Nothing
-     t <- lookupVar i
-     q <- expectT e t (TInst (Unknown (Goal ("i", ir))) expected)
-     return (EInst (wrap q (EVar i v)) (Unknown (Goal ("i", ir)))) -- TODO: does the cast go inside or outside the inst??
+  do t <- lookupVar i
+     elimForm expected $ \ expected ->
+       do q <- expectT e t expected
+          return (wrap q (EVar i v)) -- TODO: does the cast go inside or outside the inst??
 checkTerm0 (ELam v Nothing e) expected =
   do tdom <- typeGoal "dom"
      checkTerm0 (ELam v (Just tdom) e) expected
@@ -91,14 +91,14 @@ checkTerm0 e0@(EApp f e) expected =
          checkTerm f (funTy tdom expected) <*>
          checkTerm' e tdom
 -- Unknown instantiations should be *introduced* during type checking, so how are we trying to type check one...?
-checkTerm0 e0@(EInst e (Unknown ig)) expected =
+checkTerm0 e0@(EInst e (Unknown _ ig)) expected =
   fail $ "in " ++ show e0 ++ ": unexpected instantiation hole in type checking"
 checkTerm0 e0@(EInst e is) expected =
   do is' <- checkInsts is
      elimForm expected $ \expected ->
        EInst <$> checkTerm e (TInst is' expected) <*> pure is'
   where checkInsts :: Insts -> CheckM Insts
-        checkInsts (Unknown _) = error "internal: why am I type checking an unknown instantiation?"
+        checkInsts (Unknown _ _) = error "internal: why am I type checking an unknown instantiation?"
         checkInsts (Known is) = Known <$> mapM checkInst is
         checkInst :: Inst -> CheckM Inst
         checkInst (TyArg t) =
@@ -126,8 +126,9 @@ checkTerm0 e0@(EUnlabel e el) expected =
 checkTerm0 e@(EConst c) expected =
   do ir <- newRef Nothing
      t <- constType c
-     expectT e t (TInst (Unknown (Goal ("i", ir))) expected)
-     return (EInst e (Unknown (Goal ("i", ir))))
+     name <- fresh "i"
+     expectT e t (TInst (Unknown 0 (Goal (name, ir))) expected)
+     return (EInst e (Unknown 0 (Goal (name, ir))))
   where -- This is necessary because I don't yet support kind polymorphism, so I can't express the
         -- types of the constants directly
         constType CPrj =

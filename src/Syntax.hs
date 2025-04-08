@@ -67,7 +67,7 @@ data Ty =
 data Inst = TyArg Ty | PrArg Evid
   deriving (Data, Eq, Show, Typeable)
 
-data Insts = Known [Inst] | Unknown (Goal [Inst])
+data Insts = Known [Inst] | Unknown Int (Goal [Inst])
   deriving (Data, Eq, Show, Typeable)
 
 infixr 4 `TThen`
@@ -157,11 +157,11 @@ flattenT (TMapFun t) =
 flattenT (TCompl r0 r1) =
   TCompl <$> flattenT r0 <*> flattenT r1
 -- not entirely sure what *should* happen here
-flattenT (TInst g@(Unknown (Goal (_, r))) t) =
+flattenT (TInst g@(Unknown n (Goal (s, r))) t) =
   do minsts <- liftIO $ readIORef r
      case minsts of
        Nothing -> TInst g <$> flattenT t
-       Just _  -> flattenT t
+       Just insts  -> flattenT (TInst (shiftIs 0 n (Known insts)) t)
 flattenT (TInst (Known is) t) =
   TInst <$> (Known <$> mapM flattenI is) <*> flattenT t
   where flattenI (TyArg t) = TyArg <$> flattenT t
@@ -236,7 +236,7 @@ shiftTN j n (TCompl r0 r1) = TCompl (shiftTN j n r0) (shiftTN j n r1)
 shiftTN _ _ t = error $ "shiftTN: unhandled: " ++ show t
 
 shiftIs :: Int -> Int -> Insts -> Insts
-shiftIs j n (Unknown ig) = Unknown ig -- FIXME
+shiftIs j n (Unknown n' ig) = Unknown (n + n') ig
 shiftIs j n (Known is) = Known (map shiftI is) where
   shiftI (TyArg t) = TyArg (shiftTN j n t)
   shiftI (PrArg v) = PrArg v
@@ -283,11 +283,11 @@ data Term =
 flattenE :: MonadIO m => Term -> m Term
 flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) where
   (f <=< g) x = g x >>= f
-  flattenInsts (EInst m (Unknown (Goal (_, r)))) =
+  flattenInsts (EInst m (Unknown n (Goal (_, r)))) =
     do minsts <- liftIO $ readIORef r
        case minsts of
          Nothing -> return m
-         Just insts -> return (EInst m (Known insts))
+         Just insts -> return (EInst m (shiftIs 0 n (Known insts)))
   flattenInsts m = return m
 
 data Evid =
