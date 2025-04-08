@@ -4,15 +4,17 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Error.Class
 import Control.Monad.Reader.Class
+import Data.List (intercalate)
 
 import Checker.Types
 import Checker.Unify
 import Checker.Monad
 import Syntax
+import Printer
 
 expectT :: Term -> Ty -> Ty -> CheckM Evid
 expectT m actual expected =
-  do trace ("expect (" ++ show actual ++ ") (" ++ show expected ++ ")")
+  do trace ("expect (" ++ renderString False (ppr actual) ++ ") (" ++ renderString False (ppr expected) ++ ")")
      b <- unify [] actual expected
      case b of
        Nothing -> typeMismatch m actual expected
@@ -38,7 +40,7 @@ lookupVar i = asks (lookupV i . tctxt)
 checkTerm :: Term -> Ty -> CheckM Term
 checkTerm m t =
   do g <- asks tctxt
-     trace $ "checkTerm (" ++ show m ++ ") (" ++ show t ++ ") in (" ++ show g ++ ")"
+     trace $ "checkTerm (" ++ renderString False (ppr m) ++ ") (" ++ renderString False (ppr t) ++ ") in (" ++ intercalate "," (map (renderString False . ppr) g) ++ ")"
      checkTerm0 m t
 
 elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term

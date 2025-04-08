@@ -15,6 +15,7 @@ import Data.Maybe (fromJust, isNothing)
 
 import Checker.Monad
 import Checker.Types
+import Printer
 import Syntax
 
 import GHC.Stack
@@ -151,7 +152,7 @@ requireEq t u =
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
 unify' actual expected =
-  do trace ("(" ++ show actual ++ ") ~ (" ++ show expected ++ ")")
+  do trace ("(" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
      eqns <- theEqns
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected -- TODO: do we need to renormalize each time around?
