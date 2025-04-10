@@ -3,7 +3,7 @@ module Parser where
 
 import Syntax
 
-import Control.Monad (foldM, mplus, replicateM, void, when)
+import Control.Monad (foldM, guard, mplus, replicateM, void, when)
 -- import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader
 import Control.Monad.State
@@ -150,19 +150,19 @@ binders p =
      return (map (, m) xs)
 
 ty :: Parser Ty
-ty = do (xss, pfs) <- unzip <$> many prefix
+ty = do pfs <- many prefix
         ty <- thenTy
         return (foldr ($) ty pfs) where
-  prefix :: Parser ([String], Ty -> Ty)
+  prefix :: Parser (Ty -> Ty)
   prefix = choice
              [ do symbol "\\"
                   bs <- commaSep1 (binders kind)
                   dot
-                  return (fst <$> concat bs, foldr (\(v, k) f -> TLam v k . f) id (concat bs))
+                  return (foldr (\(v, k) f -> TLam v k . f) id (concat bs))
              , do symbol "forall"
                   bs <- commaSep1 (binders kind)
                   dot
-                  return (fst <$> concat bs, foldr (\(v, k) f -> TForall v k . f) id (concat bs)) ]
+                  return (foldr (\(v, k) f -> TForall v k . f) id (concat bs)) ]
 
   thenTy :: Parser Ty
   thenTy = scan where
@@ -232,23 +232,30 @@ pr = do t <- arrTy
 term :: Parser Term
 term = prefixes typedTerm where
 
-  prefix :: Parser (([String], [String]), Term -> Term) -- now this `Term -> Term` trick is really not paying off any longer...
+  prefix :: Parser (Term -> Term)
   prefix = do symbol "\\"
               bs <- commaSep1 (binders ty)
               dot
-              return (([], fst <$> concat bs), foldr1 (.) (map (uncurry ELam) (concat bs)))
+              return (foldr1 (.) (map (uncurry ELam) (concat bs)))
          <|>
            do symbol "/\\"
               bs <- commaSep1 (binders kind)
               dot
-              return ((fst <$> concat bs, []), foldr1 (.) (map (uncurry ETyLam) (concat bs)))
+              return (foldr1 (.) (map (uncurry ETyLam) (concat bs)))
+         <|>
+           do symbol "let"
+              x <- identifier
+              symbol "="
+              t <- term
+              symbol ";"
+              return (ELet x t)
 
   prefixes :: Parser Term -> Parser Term
   prefixes rest =
     do mp <- optional (try prefix)
        case mp of
          Nothing -> rest
-         Just (bs, f) -> f <$> prefixes rest
+         Just f -> f <$> prefixes rest
 
   op s k = symbol s >> k
 
@@ -325,7 +332,7 @@ prog = whitespace >> block topLevel >>= defns
 
 defns :: MonadFail m => [(String, TL)] -> m Program
 defns tls
-  | not (null unmatchedTermDefs) = fail $ "definitions of " ++ intercalate ", " unmatchedTermDefs ++ " lack type signatures"
+  -- | not (null unmatchedTermDefs) = fail $ "definitions of " ++ intercalate ", " unmatchedTermDefs ++ " lack type signatures"
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
@@ -345,15 +352,14 @@ defns tls
             | x `elem` seen = go seen tls
             | otherwise = x : go (x : seen) tls
 
-        unmatchedTermDefs = filter (`notElem` map fst typeSigs) (map fst termDefs)
+        -- unmatchedTermDefs = filter (`notElem` map fst typeSigs) (map fst termDefs)
         unmatchedTypeSigs = filter (`notElem` map fst termDefs) (map fst typeSigs)
         unmatchedTypeDefs = filter (`notElem` map fst kindSigs) (map fst typeDefs)
         unmatchedKindSigs = filter (`notElem` map fst typeDefs) (map fst kindSigs)
 
         mkDecl x = fromMaybe (error $ "in building declaration of " ++ x) decl where
-          decl = do ty <- lookup x typeSigs
-                    tm <- lookup x termDefs
-                    return (TmDecl x ty tm)
+          decl = do tm <- lookup x termDefs
+                    return (TmDecl x (lookup x typeSigs) tm)
                  `mplus`
                  do k <- lookup x kindSigs
                     ty <- lookup x typeDefs

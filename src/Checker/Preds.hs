@@ -261,7 +261,7 @@ solve (cin, p, r) =
   prim (PEq t u) =
     unifyProductive [] t u <|> instInst t u <|> instInst u t where
       instInst (TInst (Unknown _ (Goal (_, r))) t@(TInst (Unknown {}) _)) u@(TForall {}) =
-        do writeRef r (Just [])
+        do writeRef r (Just (Known []))
            prim (PEq t u)
       instInst _ _ = return Nothing
   prim _ = return Nothing
@@ -305,29 +305,36 @@ solve (cin, p, r) =
        fmap (VPlusLiftL f) <$> everything as (PPlus x y z)
   mapFunApp _ _ = return Nothing
 
-loop :: [Problem] -> CheckM ()
-loop [] = return ()
-loop ps =
+solverLoop :: [Problem] -> CheckM [Problem]
+solverLoop [] = return []
+solverLoop ps =
   do (b, ps') <- once False [] ps
      if b
-     then loop ps'
-     else throwError . ErrNotEntailed =<< mapM notEntailed ps'
+     then solverLoop ps'
+     else return ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
           do (b', TCOut ps') <- listen $ solve p
              once (b || b')
                   (if b' then qs else p : qs)
                   (ps ++ ps')
-        notEntailed (cin, p, _) =
-          do p' <- flattenP p
-             ps' <- mapM flattenP (pctxt cin)
-             return (p', ps')
 
 andSolve :: CheckM a -> CheckM a
 andSolve m =
   censor (const (TCOut [])) $
   do (x, TCOut goals) <- listen m
      trace "-- solver start --"
-     loop goals
+     remaining <- solverLoop goals
      trace "-- solver stop --"
-     return x
+     if null remaining
+     then return x
+     else notEntailed remaining
+
+notEntailed :: [Problem] -> CheckM a
+notEntailed problems = throwError . ErrNotEntailed =<< mapM mkError problems
+  where mkError (cin, p, _) =
+          do p' <- flattenP p
+             ps' <- mapM flattenP (pctxt cin)
+             return (p', ps')
+
+

@@ -95,21 +95,24 @@ instance Printable Kind where
 -- TODO: fix precedence in printing
 -- TODO: I think the precedence above is not what the parser implements
 
-instance Printable Ty where
-  ppr (TVar _ s mk) =
-    do pk <- asks printKinds
-       case mk of
-         Just k | pk -> ppre s <:> (P.align <$> ppr k)
-         _ -> ppre s
-  ppr (TUnif n (Goal (s, rmt)) k) =
+instance Printable UVar where
+  ppr (UV n l (Goal (s, rmt)) k) =
     do mt <- liftIO (readIORef rmt)
        case mt of
          Just t -> ppr t
          Nothing ->
            do pk <- asks printKinds
               if pk
-              then ("^" <> ppre n <> "%" <> ppre s) <:> (P.align <$> ppr k)
-              else "^" <> ppre n <> "%" <> ppre s
+              then ("^" <> ppre n <> "%" <> ppre s <> "@" <> ppre l) <:> (P.align <$> ppr k)
+              else "^" <> ppre n <> "%" <> ppre s <> "@" <> ppre l
+
+instance Printable Ty where
+  ppr (TVar _ s mk) =
+    do pk <- asks printKinds
+       case mk of
+         Just k | pk -> ppre s <:> (P.align <$> ppr k)
+         _ -> ppre s
+  ppr (TUnif v) = ppr v
   ppr TFun = "(->)"
   ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
   ppr (TForall x (Just k) t) = with 0 $ nest 2 $ fillSep ["forall" <+> ppre x <:> ppr k <> ".", ppr t]
@@ -131,7 +134,7 @@ instance Printable Ty where
     do minst <- liftIO $ readIORef r
        case minst of
          Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
-         Just is  -> ppr (TInst (Known is) t)
+         Just is  -> ppr (TInst is t)
   ppr (TInst (Known is) t) =
     with 3 $ fillSep (map pprI is ++ [ppr t]) where
       pprI (TyArg t) = brackets (ppr t)
@@ -169,7 +172,7 @@ instance Printable Term where
     do minst <- liftIO $ readIORef r
        case minst of
          Nothing -> with 4 (fillSep [ppr m, brackets (ppre s)])
-         Just is -> ppr (EInst m (Known is))
+         Just is -> ppr (EInst m is)
   ppr (ESing t) = "#" <> at 4 (ppr t)
   ppr (ELabel l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)])
   ppr (EUnlabel m l) = with 3 (fillSep [ppr m <+> "/", at 3 (ppr l)])
@@ -183,6 +186,7 @@ instance Printable Term where
     name CFix = "fix"
   ppr (ESyn f m) = with 4 (fillSep ["syn", brackets (ppr f), at 5 (ppr m)])
   ppr (EAna f m) = with 4 (fillSep ["ana", brackets (ppr f), at 5 (ppr m)])
+  ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> ";", ppr n]
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   ppr (EFold {}) = "<fold>"
   -- Not printing internals (yet)

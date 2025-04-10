@@ -9,6 +9,7 @@ import Control.Monad.State
 import Data.IORef
 import Data.List (findIndex, break)
 import Data.List.Split
+import Data.Bitraversable
 import qualified Prettyprinter as P
 import qualified Prettyprinter.Util as P
 import System.Console.GetOpt
@@ -111,7 +112,7 @@ main = do nowArgs <- getArgs
           scoped <- reportErrors $ runScopeM $ scopeProg decls
           checked <- goCheck [] [] scoped
           when (doPrintTyped flags) $
-            mapM_ ((putDocWLn 120 . pprTyping) <=< thirdM flattenE) checked
+            mapM_ (putDocWLn 120 . pprTyping) checked
           if useNaiveInterpreter flags
           then do evaled <- goEvalN [] checked
                   let output = filter ((`elem` evals flags) . fst) evaled
@@ -124,11 +125,15 @@ main = do nowArgs <- getArgs
         goCheck d g (TyDecl x k t : ds) =
           do t' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType t) $ checkTy t k)
              goCheck ((k, Just t') : d) g ds
-        goCheck d g (TmDecl v ty te : ds) =
+        goCheck d g (TmDecl v (Just ty) te : ds) =
           do ty' <- flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
-             te' <- flattenE =<< reportErrors =<< runCheckM' d g (withError (ErrContextTerm te) $ checkTop te ty')
+             te' <- flattenE =<< reportErrors =<< runCheckM' d g (withError (ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              ds' <- goCheck d (ty' : g) ds
              return ((v, ty', te') : ds')
+        goCheck d g (TmDecl v Nothing te : ds) =
+          do (te', ty) <- bitraverse flattenE flattenT =<< reportErrors =<< runCheckM' d g (withError (ErrContextTerm te) $ checkTop te Nothing)
+             ds' <- goCheck d (ty : g) ds
+             return ((v, ty, te') : ds')
         goCheck d g (TyDecl {} : ds) =
           goCheck d g ds
 

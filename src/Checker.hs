@@ -15,10 +15,10 @@ import Checker.Unify
 import Data.IORef
 import Syntax
 
-runCheckM m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (TCIn [] [] [])) (TCSt 0)) where
+runCheckM m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') emptyTCIn) emptyTCSt) where
   CM m' = andSolve m
 
-runCheckM' d g m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (TCIn d g [])) (TCSt 0)) where
+runCheckM' d g m = runExceptT (fst <$> evalStateT (runReaderT (runWriterT m') (emptyTCIn { kctxt = d, tctxt = g })) emptyTCSt) where
   CM m' = andSolve m
 
 {-
@@ -44,9 +44,9 @@ puzzle =
          rf = Goal ("r", r)
          q1 = Goal ( "q1", v1)
          q2 = Goal ( "q2", v2)
-         t1 = TApp (TUnif 0 gf (KFun KType KType)) (TRow [])
-         u1 = TSigma (TUnif 0 rf (KRow KType))
-         t2 = TUnif 0 gf (KFun KType KType)
+         t1 = TApp (TUnif (UV 0 0 gf (KFun KType KType))) (TRow [])
+         u1 = TSigma (TUnif (UV 0 0 rf (KRow KType)))
+         t2 = TUnif (UV 0 0 gf (KFun KType KType))
          u2 = TLam "x" (Just KType) (TSigma (TVar 0 "x" (Just (KRow KType))))
      require (PEq t1 u1) v1
      require (PEq t2 u2) v2
@@ -58,15 +58,11 @@ puzzle2 =
   andSolve $
   do f <- newRef Nothing
      r <- newRef Nothing
-     -- v1 <- newRef Nothing
-     -- v2 <- newRef Nothing
      let gf = Goal ("f", f)
          rf = Goal ("r", r)
-         -- q1 = Goal ( "q1", v1)
-         -- q2 = Goal ( "q2", v2)
-         t1 = TApp (TUnif 0 gf (KFun KType KType)) (TRow [])
-         u1 = TSigma (TUnif 0 rf (KRow KType))
-         t2 = TUnif 0 gf (KFun KType KType)
+         t1 = TApp (TUnif (UV 0 0 gf (KFun KType KType))) (TRow [])
+         u1 = TSigma (TUnif (UV 0 0 rf (KRow KType)))
+         t2 = TUnif (UV 0 0 gf (KFun KType KType))
          u2 = TLam "x" (Just KType) (TSigma (TVar 0 "x" (Just (KRow KType))))
      v1 <- unify [] t1 u1
      v2 <- unify [] t2 u2

@@ -35,6 +35,9 @@ class HasVars t where
 instance HasVars t => HasVars [t] where
   scope = mapM scope
 
+instance HasVars t => HasVars (Maybe t) where
+  scope = mapM scope
+
 instance HasVars Ty where
   scope (TVar _ x mk) =
     TVar <$> tyvar x <*> pure x <*> pure mk
@@ -76,6 +79,7 @@ instance HasVars Term where
   scope (ESyn t m) = ESyn <$> scope t <*> scope m
   scope (EAna t m) = EAna <$> scope t <*> scope m
   scope (EFold m n1 n2 n3) = EFold <$> scope m <*> scope n1 <*> scope n2 <*> scope n3
+  scope (ELet x m n) = ELet x <$> scope m <*> bindVar x (scope n)
   scope (ETyped m t) = ETyped <$> scope m <*> scope t
   scope (EInst m (Known is)) = EInst <$> scope m <*> (Known <$> mapM scopeI is) where
     scopeI (TyArg t) = TyArg <$> scope t
@@ -86,7 +90,7 @@ instance HasVars Term where
   scope ECast{} = error "scope: ETyEqu"
 
 instance HasVars Decl where
-  scope (TmDecl x t m) = TmDecl x <$> withError (ErrContextType t) (scope t) <*> withError (ErrContextTerm m) (scope m)
+  scope (TmDecl x t m) = TmDecl x <$> (maybe id (withError . ErrContextType) t) (scope t) <*> withError (ErrContextTerm m) (scope m)
   scope (TyDecl x k t) = TyDecl x k <$> withError (ErrContextType t) (scope t)
 
 scopeProg :: [Decl] -> ScopeM [Decl]

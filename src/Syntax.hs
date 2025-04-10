@@ -1,5 +1,5 @@
 {-# LANGUAGE PatternGuards #-}
-module Syntax where
+module Syntax (module Syntax) where
 
 import Control.Monad.IO.Class
 import Data.Bifunctor (first)
@@ -10,7 +10,7 @@ import GHC.Stack
 data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
 
-data Decl = TyDecl String Kind Ty | TmDecl String Ty Term
+data Decl = TyDecl String Kind Ty | TmDecl String (Maybe Ty) Term
   deriving (Eq, Show)
 
 data Kind =
@@ -34,6 +34,12 @@ data Pred =
 newtype Goal t = Goal (String, IORef (Maybe t))
   deriving (Data, Typeable)
 
+goalName :: Goal t -> String
+goalName (Goal (s, _)) = s
+
+goalRef :: Goal t -> IORef (Maybe t)
+goalRef (Goal (_, r)) = r
+
 instance Eq (Goal t) where
   Goal (x, _) == Goal (y, _) = x == y
 
@@ -52,10 +58,19 @@ of the variable, and the `String` is just for printing purposes.
 
 -------------------------------------------------------------------------------}
 
+instance Show (IORef Int) where
+  show _ = "<ref:int>"
+
+data UVar = UV { uvShift :: Int, uvLevel :: Int, uvGoal :: Goal Ty, uvKind :: Kind }
+  deriving (Data, Show, Typeable)
+
+instance Eq UVar where
+  v == v' = uvShift v == uvShift v' && goalRef (uvGoal v) == goalRef (uvGoal v')
 
 data Ty =
     TVar Int String (Maybe Kind)
-  | TUnif Int (Goal Ty) Kind  -- we essentially have a delayed shiftTN call here: TUnif n g k delays a shift of variables by n
+  | TUnif UVar
+    -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
   | TMu Ty | TMapFun Ty
@@ -67,7 +82,7 @@ data Ty =
 data Inst = TyArg Ty | PrArg Evid
   deriving (Data, Eq, Show, Typeable)
 
-data Insts = Known [Inst] | Unknown Int (Goal [Inst])
+data Insts = Known [Inst] | Unknown Int (Goal Insts)
   deriving (Data, Eq, Show, Typeable)
 
 infixr 4 `TThen`
@@ -124,10 +139,10 @@ spine t = (t, [])
 flattenT :: MonadIO m => Ty -> m Ty
 flattenT t@(TVar i v Nothing) = return t
 flattenT (TVar i v (Just k)) = TVar i v . Just <$> flattenK k
-flattenT t@(TUnif n g@(Goal (_, r)) k) =
+flattenT t@(TUnif (UV n l g@(Goal (_, r)) k)) =
   do mt <- liftIO $ readIORef r
      case mt of
-       Nothing -> TUnif n g <$> flattenK k
+       Nothing -> TUnif . UV n l g <$> flattenK k
        Just t' -> flattenT (shiftTN 0 n t')
 flattenT TFun =
   return TFun
@@ -157,15 +172,8 @@ flattenT (TMapFun t) =
 flattenT (TCompl r0 r1) =
   TCompl <$> flattenT r0 <*> flattenT r1
 -- not entirely sure what *should* happen here
-flattenT (TInst g@(Unknown n (Goal (s, r))) t) =
-  do minsts <- liftIO $ readIORef r
-     case minsts of
-       Nothing -> TInst g <$> flattenT t
-       Just insts  -> flattenT (TInst (shiftIs 0 n (Known insts)) t)
-flattenT (TInst (Known is) t) =
-  TInst <$> (Known <$> mapM flattenI is) <*> flattenT t
-  where flattenI (TyArg t) = TyArg <$> flattenT t
-        flattenI (PrArg v) = return (PrArg v)
+flattenT (TInst is t) =
+  TInst <$> flattenIs is <*> flattenT t
 flattenT (TMapArg t) =
   TMapArg <$> flattenT t
 
@@ -177,93 +185,137 @@ flattenP (PPlus x y z) =
 flattenP (PEq t u) =
   PEq <$> flattenT t <*> flattenT u
 
-kindOf :: HasCallStack => Ty -> Kind
-kindOf (TVar _ _ (Just k)) = k
+
+flattenIs :: MonadIO m => Insts -> m Insts
+flattenIs is@(Unknown n (Goal (s, r))) =
+  do mis <- liftIO $ readIORef r
+     case mis of
+       Nothing -> return is
+       Just is -> flattenIs (shiftIsV [] 0 n is)
+flattenIs (Known is) = Known <$> mapM flattenI is
+  where flattenI (TyArg t) = TyArg <$> flattenT t
+        flattenI (PrArg v) = return (PrArg v)
+
+kindOf :: (HasCallStack, MonadIO m, MonadFail m) => Ty -> m Kind
+kindOf (TVar _ _ (Just k)) = flattenK k
 kindOf (TVar _ x Nothing) = error $ "internal: unkinded type variable " ++ x
-kindOf (TUnif _ _ k) = k
-kindOf TFun = KFun KType (KFun KType KType)
+kindOf (TUnif (UV {uvKind = k})) = flattenK k
+kindOf TFun = return $ KFun KType (KFun KType KType)
 kindOf (TThen _ t) = kindOf t
 kindOf (TForall _ _ t) = kindOf t
-kindOf (TLam x (Just k) t) = KFun k (kindOf t)
+kindOf (TLam x (Just k) t) = KFun k <$> kindOf t
 kindOf (TLam x Nothing t) = error "kindOf: TLam without kind"
-kindOf (TApp f _)
-  | KFun _ k <- kindOf f = k
-kindOf (TLab _) = KLabel
-kindOf (TSing _) = KType
+kindOf (TApp f _) =
+  do KFun _ k <- kindOf f
+     return k
+kindOf (TLab _) = return KLabel
+kindOf (TSing _) = return KType
 kindOf (TLabeled _ t) = kindOf t
-kindOf (TRow []) = KRow KType -- probably wrong
-kindOf (TRow (t : _)) = KRow (kindOf t)
-kindOf (TPi r)
-  | KRow k <- kindOf r = k
-kindOf (TSigma r)
-  | KRow k <- kindOf r = k
-kindOf (TMu f)
-  | KFun k _ <- kindOf f = k
+kindOf (TRow []) = return $ KRow KType -- probably wrong
+kindOf (TRow (t : _)) = KRow <$> kindOf t
+kindOf (TPi r) =
+  do KRow k <- kindOf r
+     return k
+kindOf (TSigma r) =
+  do KRow k <- kindOf r
+     return k
+kindOf (TMu f)=
+  do KFun k _ <- kindOf f
+     return k
 kindOf (TInst _ t) = kindOf t
-kindOf (TMapFun f)
-  | KFun kd kc <- kindOf f = KFun (KRow kd) (KRow kc)
-kindOf (TMapArg f)
-  | KRow (KFun kd kc) <- kindOf f = KFun kd (KRow kc)
+kindOf (TMapFun f) =
+  do KFun kd kc <- kindOf f
+     return $ KFun (KRow kd) (KRow kc)
+kindOf (TMapArg f) =
+  do KRow (KFun kd kc) <- kindOf f
+     return $ KFun kd (KRow kc)
 kindOf (TCompl r _) = kindOf r
 kindOf t = error $ "internal: kindOf " ++ show t
 
--- shiftTN j n t shifts variables at or above `j` up by `n`
-shiftTN :: HasCallStack => Int -> Int -> Ty -> Ty
-shiftTN _ 0 t = t
-shiftTN j n (TVar i x k)
+
+shiftTNV :: HasCallStack => [UVar] -> Int -> Int -> Ty -> Ty
+shiftTNV _ _ 0 t = t
+shiftTNV _ j n (TVar i x k)
   | i >= j =
     if i + n < j
     then error "negative shift produced capture"
     else TVar (i + n) x k
   | otherwise = TVar i x k
-shiftTN _ n (TUnif n' g k) = TUnif (n + n') g k
-shiftTN j n (TThen p t) = TThen (shiftPN j n p) (shiftTN j n t)
-shiftTN j n (TForall x k t) = TForall x k (shiftTN (j + 1) n t)
-shiftTN j n (TLam x k t) = TLam x k (shiftTN (j + 1) n t)
-shiftTN j n (TApp t u) = TApp (shiftTN j n t) (shiftTN j n u)
-shiftTN j n (TSing t) = TSing (shiftTN j n t)
-shiftTN j n (TLabeled l t) = TLabeled (shiftTN j n l) (shiftTN j n t)
-shiftTN j n (TRow ts) = TRow (shiftTN j n <$> ts)
-shiftTN _ _ t@TFun = t
-shiftTN _ _ t@(TLab s) = t
-shiftTN j n (TPi t) = TPi (shiftTN j n t)
-shiftTN j n (TSigma t) = TSigma (shiftTN j n t)
-shiftTN j n (TMu t) = TMu (shiftTN j n t)
-shiftTN j n (TMapFun t) = TMapFun (shiftTN j n t)
-shiftTN j n (TMapArg t) = TMapArg (shiftTN j n t)
-shiftTN j n (TInst is t) = TInst (shiftIs j n is) (shiftTN j n t) where
-shiftTN j n (TCompl r0 r1) = TCompl (shiftTN j n r0) (shiftTN j n r1)
-shiftTN _ _ t = error $ "shiftTN: unhandled: " ++ show t
+shiftTNV vs _ n t@(TUnif v@(UV n' l g k))
+  | v `elem` vs = t
+  | otherwise = TUnif (UV (n + n') l g k)
+shiftTNV vs j n (TThen p t) = TThen (shiftPNV vs j n p) (shiftTNV vs j n t)
+shiftTNV vs j n (TForall x k t) = TForall x k (shiftTNV vs (j + 1) n t)
+shiftTNV vs j n (TLam x k t) = TLam x k (shiftTNV vs (j + 1) n t)
+shiftTNV vs j n (TApp t u) = TApp (shiftTNV vs j n t) (shiftTNV vs j n u)
+shiftTNV vs j n (TSing t) = TSing (shiftTNV vs j n t)
+shiftTNV vs j n (TLabeled l t) = TLabeled (shiftTNV vs j n l) (shiftTNV vs j n t)
+shiftTNV vs j n (TRow ts) = TRow (shiftTNV vs j n <$> ts)
+shiftTNV vs _ _ t@TFun = t
+shiftTNV vs _ _ t@(TLab s) = t
+shiftTNV vs j n (TPi t) = TPi (shiftTNV vs j n t)
+shiftTNV vs j n (TSigma t) = TSigma (shiftTNV vs j n t)
+shiftTNV vs j n (TMu t) = TMu (shiftTNV vs j n t)
+shiftTNV vs j n (TMapFun t) = TMapFun (shiftTNV vs j n t)
+shiftTNV vs j n (TMapArg t) = TMapArg (shiftTNV vs j n t)
+shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t) where
+shiftTNV vs j n (TCompl r0 r1) = TCompl (shiftTNV vs j n r0) (shiftTNV vs j n r1)
+shiftTNV vs _ _ t = error $ "shiftTN: unhandled: " ++ show t
 
-shiftIs :: Int -> Int -> Insts -> Insts
-shiftIs j n (Unknown n' ig) = Unknown (n + n') ig
-shiftIs j n (Known is) = Known (map shiftI is) where
-  shiftI (TyArg t) = TyArg (shiftTN j n t)
+-- shiftTN j n t shifts variables at or above `j` up by `n`
+shiftTN :: HasCallStack => Int -> Int -> Ty -> Ty
+shiftTN = shiftTNV []
+
+shiftIsV :: [UVar] -> Int -> Int -> Insts -> Insts
+shiftIsV vs j n (Unknown n' ig) = Unknown (n + n') ig
+shiftIsV vs j n (Known is) = Known (map shiftI is) where
+  shiftI (TyArg t) = TyArg (shiftTNV vs j n t)
   shiftI (PrArg v) = PrArg v
 
-shiftPN :: Int -> Int -> Pred -> Pred
-shiftPN j n (PLeq y z) = PLeq (shiftTN j n y) (shiftTN j n z)
-shiftPN j n (PPlus x y z) = PPlus (shiftTN j n x) (shiftTN j n y) (shiftTN j n z)
-
-shiftEN :: Int -> Int -> Term -> Term
-shiftEN _ _ e@(EVar {})   = e
-shiftEN j n (ELam x mt e) = ELam x (shiftTN j n <$> mt) (shiftEN j n e)
-shiftEN j n (EApp f e)    = EApp (shiftEN j n f) (shiftEN j n e)
-shiftEN j n (ETyLam x mk e) = ETyLam x mk (shiftEN (j + 1) n e)
-shiftEN j n (EPrLam p e) = EPrLam (shiftPN j n p) e
-shiftEN j n (EInst e is) = EInst (shiftEN j n e) (shiftIs j n is)
-shiftEN j n (ESing t) = ESing (shiftTN j n t)
-shiftEN j n (ELabel l e) = ELabel (shiftEN j n l) (shiftEN j n e)
-shiftEN j n (EUnlabel e l) = EUnlabel (shiftEN j n e) (shiftEN j n l)
-shiftEN _ _ e@(EConst {}) = e
-shiftEN j n (ESyn t e) = ESyn (shiftTN j n t) e
-shiftEN j n (EAna t e) = EAna (shiftTN j n t) e
-shiftEN j n (EFold e f g h) = EFold (shiftEN j n e) (shiftEN j n f) (shiftEN j n g) (shiftEN j n h)
-shiftEN j n (ECast e q) = ECast (shiftEN j n e) q
-shiftEN j n (ETyped e t) = ETyped e (shiftTN j n t)
+shiftPNV :: [UVar] -> Int -> Int -> Pred -> Pred
+shiftPNV vs j n (PEq t u) = PEq (shiftTNV vs j n t) (shiftTNV vs j n u)
+shiftPNV vs j n (PLeq y z) = PLeq (shiftTNV vs j n y) (shiftTNV vs j n z)
+shiftPNV vs j n (PPlus x y z) = PPlus (shiftTNV vs j n x) (shiftTNV vs j n y) (shiftTNV vs j n z)
 
 shiftT :: Int -> Ty -> Ty
 shiftT j = shiftTN j 1
+
+tyLevel :: MonadIO m => Ty -> m Int
+tyLevel (TVar {}) = return maxBound
+tyLevel (TUnif (UV { uvLevel = lev, uvGoal = Goal (_, tyr) })) =
+  do mt <- liftIO (readIORef tyr)
+     case mt of
+       Nothing -> return lev
+       Just t  -> tyLevel t
+tyLevel TFun = return maxBound
+tyLevel (TThen p t) = min <$> prLevel p <*> tyLevel t
+tyLevel (TForall _ _ t) = tyLevel t
+tyLevel (TLam _ _ t) = tyLevel t
+tyLevel (TApp t u) = min <$> tyLevel t <*> tyLevel u
+tyLevel (TLab _) = return maxBound
+tyLevel (TSing t) = tyLevel t
+tyLevel (TLabeled l t) = min <$> tyLevel l <*> tyLevel t
+tyLevel (TRow ts) = foldr min maxBound <$> mapM tyLevel ts
+tyLevel (TPi t) = tyLevel t
+tyLevel (TSigma t) = tyLevel t
+tyLevel (TMu t) = tyLevel t
+tyLevel (TMapFun f) = tyLevel f
+tyLevel (TCompl z y) = min <$> tyLevel z <*> tyLevel y
+tyLevel (TInst is t) = min <$> isLevel is <*> tyLevel t
+  where isLevel (Unknown _ (Goal (_, r))) =
+          do mis <- liftIO (readIORef r)
+             case mis of
+               Just is -> isLevel is
+               Nothing -> return maxBound
+        isLevel (Known is) = foldr min maxBound <$> mapM iLevel is
+        iLevel (TyArg t) = tyLevel t
+        iLevel (PrArg _) = return maxBound
+tyLevel (TMapArg f) = tyLevel f
+
+prLevel :: MonadIO m => Pred -> m Int
+prLevel (PEq t u) = min <$> tyLevel t <*> tyLevel u
+prLevel (PLeq y z) = min <$> tyLevel y <*> tyLevel z
+prLevel (PPlus x y z) = min <$> tyLevel x <*> (min <$> tyLevel y <*> tyLevel z)
 
 data Const =
     CPrj | CConcat | CInj | CBranch | CIn | COut | CFix
@@ -277,17 +329,35 @@ data Term =
   | ESing Ty | ELabel Term Term | EUnlabel Term Term
   | EConst Const
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
-  | ECast Term Evid | ETyped Term Ty
+  | ELet String Term Term | ECast Term Evid | ETyped Term Ty
   deriving (Data, Eq, Show, Typeable)
+
+shiftENV :: [UVar] -> Int -> Int -> Term -> Term
+shiftENV _ _ _ e@(EVar {})   = e
+shiftENV vs j n (ELam x mt e) = ELam x (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
+shiftENV vs j n (EApp f e)    = EApp (shiftENV vs j n f) (shiftENV vs j n e)
+shiftENV vs j n (ETyLam x mk e) = ETyLam x mk (shiftENV vs (j + 1) n e)
+shiftENV vs j n (EPrLam p e) = EPrLam (shiftPNV vs j n p) e
+shiftENV vs j n (EInst e is) = EInst (shiftENV vs j n e) (shiftIsV [] j n is)
+shiftENV vs j n (ESing t) = ESing (shiftTNV vs j n t)
+shiftENV vs j n (ELabel l e) = ELabel (shiftENV vs j n l) (shiftENV vs j n e)
+shiftENV vs j n (EUnlabel e l) = EUnlabel (shiftENV vs j n e) (shiftENV vs j n l)
+shiftENV _ _ _ e@(EConst {}) = e
+shiftENV vs j n (ESyn t e) = ESyn (shiftTNV vs j n t) e
+shiftENV vs j n (EAna t e) = EAna (shiftTNV vs j n t) e
+shiftENV vs j n (EFold e f g h) = EFold (shiftENV vs j n e) (shiftENV vs j n f) (shiftENV vs j n g) (shiftENV vs j n h)
+shiftENV vs j n (ELet x e f) = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
+shiftENV vs j n (ECast e q) = ECast (shiftENV vs j n e) q
+shiftENV vs j n (ETyped e t) = ETyped e (shiftTNV vs j n t)
+
+shiftEN :: Int -> Int -> Term -> Term
+shiftEN = shiftENV []
+
 
 flattenE :: MonadIO m => Term -> m Term
 flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) where
   (f <=< g) x = g x >>= f
-  flattenInsts (EInst m (Unknown n (Goal (_, r)))) =
-    do minsts <- liftIO $ readIORef r
-       case minsts of
-         Nothing -> return m
-         Just insts -> return (EInst m (shiftIs 0 n (Known insts)))
+  flattenInsts (EInst m is) = EInst m <$> flattenIs is
   flattenInsts m = return m
 
 data Evid =
