@@ -48,7 +48,9 @@ shiftE :: TCtxt -> TCtxt
 shiftE = map (shiftTN 0 1)
 
 newtype TCSt = TCSt { next :: Int }
-data TCIn = TCIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt }
+emptyTCSt = TCSt 0
+data TCIn = TCIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt, level :: Int }
+emptyTCIn = TCIn [] [] [] 0
 type Problem = (TCIn, Pred, IORef (Maybe Evid))
 newtype TCOut = TCOut { goals :: [Problem] }
   deriving (Semigroup, Monoid)
@@ -68,9 +70,13 @@ class (Monad m, MonadError Error m, MonadRef m, MonadIO m, MonadReader TCIn m) =
   bindTy :: Kind -> m a -> m a
   defineTy :: Kind -> Ty -> m a -> m a
   bind :: Ty -> m a -> m a
+
   assume :: Pred -> m a -> m a
   require :: Pred -> IORef (Maybe Evid) -> m ()
+
   fresh :: String -> m String
+  upLevel :: m a -> m a
+  theLevel :: m Int
 
 instance MonadCheck CheckM where
   bindTy k = local (\env -> env { kctxt = (k, Nothing) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPN 0 1) (pctxt env)  })
@@ -85,3 +91,5 @@ instance MonadCheck CheckM where
   fresh x = do i <- gets next
                modify (\st -> st { next = i + 1 })
                return (x ++ '#' : show i)
+  upLevel = local (\st -> st { level = level st + 1 })
+  theLevel = asks level

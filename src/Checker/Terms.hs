@@ -20,7 +20,6 @@ expectT m actual expected =
        Nothing -> typeMismatch m actual expected
        Just q  -> flattenV q
 
-
 typeMismatch :: Term -> Ty -> Ty -> CheckM a
 typeMismatch m actual expected =
   do actual' <- flattenT actual

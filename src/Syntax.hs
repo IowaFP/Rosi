@@ -52,10 +52,13 @@ of the variable, and the `String` is just for printing purposes.
 
 -------------------------------------------------------------------------------}
 
+instance Show (IORef Int) where
+  show _ = "<ref:int>"
 
 data Ty =
     TVar Int String (Maybe Kind)
-  | TUnif Int (Goal Ty) Kind  -- we essentially have a delayed shiftTN call here: TUnif n g k delays a shift of variables by n
+  | TUnif { uvShift :: Int, uvLevel :: IORef Int, uvGoal :: Goal Ty, uvKind :: Kind }
+    -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
   | TMu Ty | TMapFun Ty
@@ -124,10 +127,10 @@ spine t = (t, [])
 flattenT :: MonadIO m => Ty -> m Ty
 flattenT t@(TVar i v Nothing) = return t
 flattenT (TVar i v (Just k)) = TVar i v . Just <$> flattenK k
-flattenT t@(TUnif n g@(Goal (_, r)) k) =
+flattenT t@(TUnif n l g@(Goal (_, r)) k) =
   do mt <- liftIO $ readIORef r
      case mt of
-       Nothing -> TUnif n g <$> flattenK k
+       Nothing -> TUnif n l g <$> flattenK k
        Just t' -> flattenT (shiftTN 0 n t')
 flattenT TFun =
   return TFun
@@ -180,7 +183,7 @@ flattenP (PEq t u) =
 kindOf :: HasCallStack => Ty -> Kind
 kindOf (TVar _ _ (Just k)) = k
 kindOf (TVar _ x Nothing) = error $ "internal: unkinded type variable " ++ x
-kindOf (TUnif _ _ k) = k
+kindOf (TUnif {uvKind = k}) = k
 kindOf TFun = KFun KType (KFun KType KType)
 kindOf (TThen _ t) = kindOf t
 kindOf (TForall _ _ t) = kindOf t
@@ -216,7 +219,7 @@ shiftTN j n (TVar i x k)
     then error "negative shift produced capture"
     else TVar (i + n) x k
   | otherwise = TVar i x k
-shiftTN _ n (TUnif n' g k) = TUnif (n + n') g k
+shiftTN _ n (TUnif n' l g k) = TUnif (n + n') l g k
 shiftTN j n (TThen p t) = TThen (shiftPN j n p) (shiftTN j n t)
 shiftTN j n (TForall x k t) = TForall x k (shiftTN (j + 1) n t)
 shiftTN j n (TLam x k t) = TLam x k (shiftTN (j + 1) n t)
@@ -245,6 +248,47 @@ shiftPN :: Int -> Int -> Pred -> Pred
 shiftPN j n (PLeq y z) = PLeq (shiftTN j n y) (shiftTN j n z)
 shiftPN j n (PPlus x y z) = PPlus (shiftTN j n x) (shiftTN j n y) (shiftTN j n z)
 
+shiftT :: Int -> Ty -> Ty
+shiftT j = shiftTN j 1
+
+tyLevel :: MonadIO m => Ty -> m Int
+tyLevel (TVar {}) = return maxBound
+tyLevel (TUnif { uvLevel = r }) = liftIO (readIORef r)
+tyLevel TFun = return maxBound
+tyLevel (TThen p t) = min <$> prLevel p <*> tyLevel t
+tyLevel (TForall _ _ t) = tyLevel t
+tyLevel (TLam _ _ t) = tyLevel t
+tyLevel (TApp t u) = min <$> tyLevel t <*> tyLevel u
+tyLevel (TLab _) = return maxBound
+tyLevel (TSing t) = tyLevel t
+tyLevel (TLabeled l t) = min <$> tyLevel l <*> tyLevel t
+tyLevel (TRow ts) = minimum <$> mapM tyLevel ts
+tyLevel (TPi t) = tyLevel t
+tyLevel (TSigma t) = tyLevel t
+tyLevel (TMu t) = tyLevel t
+tyLevel (TMapFun f) = tyLevel f
+tyLevel (TCompl z y) = min <$> tyLevel z <*> tyLevel y
+
+prLevel :: MonadIO m => Pred -> m Int
+prLevel (PEq t u) = min <$> tyLevel t <*> tyLevel u
+prLevel (PLeq y z) = min <$> tyLevel y <*> tyLevel z
+prLevel (PPlus x y z) = min <$> tyLevel x <*> (min <$> tyLevel y <*> tyLevel z)
+
+data Const =
+    CPrj | CConcat | CInj | CBranch | CIn | COut | CFix
+    deriving (Data, Eq, Show, Typeable)
+    -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
+    -- TODO: can treat label and unlabel as constants with provided type argument?
+
+data Term =
+    EVar Int String | ELam String (Maybe Ty) Term | EApp Term Term
+  | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
+  | ESing Ty | ELabel Term Term | EUnlabel Term Term
+  | EConst Const
+  | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
+  | ECast Term Evid | ETyped Term Ty
+  deriving (Data, Eq, Show, Typeable)
+
 shiftEN :: Int -> Int -> Term -> Term
 shiftEN _ _ e@(EVar {})   = e
 shiftEN j n (ELam x mt e) = ELam x (shiftTN j n <$> mt) (shiftEN j n e)
@@ -262,23 +306,6 @@ shiftEN j n (EFold e f g h) = EFold (shiftEN j n e) (shiftEN j n f) (shiftEN j n
 shiftEN j n (ECast e q) = ECast (shiftEN j n e) q
 shiftEN j n (ETyped e t) = ETyped e (shiftTN j n t)
 
-shiftT :: Int -> Ty -> Ty
-shiftT j = shiftTN j 1
-
-data Const =
-    CPrj | CConcat | CInj | CBranch | CIn | COut | CFix
-    deriving (Data, Eq, Show, Typeable)
-    -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
-    -- TODO: can treat label and unlabel as constants with provided type argument?
-
-data Term =
-    EVar Int String | ELam String (Maybe Ty) Term | EApp Term Term
-  | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
-  | ESing Ty | ELabel Term Term | EUnlabel Term Term
-  | EConst Const
-  | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
-  | ECast Term Evid | ETyped Term Ty
-  deriving (Data, Eq, Show, Typeable)
 
 flattenE :: MonadIO m => Term -> m Term
 flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) where

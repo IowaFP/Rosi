@@ -7,7 +7,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Bifunctor (first, second)
+import Data.Bifunctor (first)
 import Data.Dynamic
 import Data.IORef
 import Data.List (elemIndex, partition, sortOn)
@@ -57,6 +57,8 @@ instance MonadCheck UnifyM where
   assume g m = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> assume g (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns))
   require p r = tell ([], [(p, r)])
   fresh = UM . lift . lift . lift . fresh
+  upLevel m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> upLevel (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  theLevel = UM $ lift $ lift $ lift theLevel
 
 canUpdate :: Typeable a => IORef a -> UnifyM Bool
 canUpdate r = UM (StateT $ \checking -> WriterT (body checking)) where
@@ -235,9 +237,9 @@ unifyInstantiating t u unify
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
 unify0 (TVar i _ _) (TVar j _ _)
   | i == j = return (Just VEqRefl)
-unify0 (TUnif n (Goal (_, r)) t) (TUnif n' (Goal (_, r')) t')
+unify0 (TUnif n _ (Goal (_, r)) t) (TUnif n' _ (Goal (_, r')) t')
   | n == n', r == r' = return (Just VEqRefl)
-unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
+unify0 actual t@(TUnif n l (Goal (uvar, r)) k) =
   do mt <- readRef r
      case mt of
        Just t -> unify' actual (shiftTN 0 n t)
@@ -247,10 +249,11 @@ unify0 actual t@(TUnif n (Goal (uvar, r)) k) =
             then do actual' <- flattenT actual
                     expectK actual' (kindOf actual') k
                     writeRef r (Just (shiftTN 0 (negate n) actual'))
+                    writeRef l =<< (min <$> readRef l <*> tyLevel actual')
                     trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) actual')) -- renderString False (ppr (shiftTN 0 (negate n) actual')))
                     return (Just VEqRefl)
             else return Nothing
-unify0 actual@(TUnif n (Goal (uvar, r)) k) expected =
+unify0 actual@(TUnif n l (Goal (uvar, r)) k) expected =
   do mt <- readRef r
      case mt of
        Just t -> unify' (shiftTN 0 n t) expected
@@ -260,6 +263,7 @@ unify0 actual@(TUnif n (Goal (uvar, r)) k) expected =
             then do expected' <- flattenT expected
                     expectK expected' (kindOf expected') k
                     writeRef r (Just (shiftTN 0 (negate n) expected'))
+                    writeRef l =<< (min <$> readRef l <*> tyLevel expected')
                     trace ("1 instantiating " ++ uvar ++ " to " ++ show (shiftTN 0 (negate n) expected')) --renderString False (ppr (shiftTN 0 (negate n) expected')))
                     return (Just VEqRefl)
             else return Nothing
@@ -393,7 +397,6 @@ unify0 t u
         refinable (TUnif {}) = True
         refinable _          = False
 
-
 class HasTyVars t where
   subst :: MonadRef m => Int -> Ty -> t -> m t
 
@@ -401,7 +404,7 @@ instance HasTyVars Ty where
   subst j t (TVar i w k)
     | i == j = return t
     | otherwise = return (TVar i w k)
-  subst v t u@(TUnif n (Goal (y, r)) k) =
+  subst v t u@(TUnif n _ (Goal (y, r)) k) =
     do mt <- readRef r
        case mt of
          Nothing -> return u
@@ -578,9 +581,11 @@ unifyP (PPlus x y z) (PPlus x' y' z') = liftM3 VEqPlus <$> unify' x x' <*> unify
 typeGoal :: MonadCheck m => String -> m Ty
 typeGoal s =
   do s' <- fresh ("t$" ++ s)
-     (flip (TUnif 0) KType) . Goal . (s',) <$> newRef Nothing
+     l  <- newRef =<< theLevel
+     (flip (TUnif 0 l) KType) . Goal . (s',) <$> newRef Nothing
 
 typeGoal' :: MonadCheck m => String -> Kind -> m Ty
 typeGoal' s k =
   do s' <- fresh ("t$" ++ s)
-     (flip (TUnif 0) k) . Goal . (s',) <$> newRef Nothing
+     l  <- newRef =<< theLevel
+     (flip (TUnif 0 l) k) . Goal . (s',) <$> newRef Nothing

@@ -101,7 +101,7 @@ instance Printable Ty where
        case mk of
          Just k | pk -> ppre s <:> (P.align <$> ppr k)
          _ -> ppre s
-  ppr (TUnif n (Goal (s, rmt)) k) =
+  ppr (TUnif n l (Goal (s, rmt)) k) =
     do mt <- liftIO (readIORef rmt)
        case mt of
          Just t -> ppr t
