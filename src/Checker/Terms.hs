@@ -4,13 +4,17 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Error.Class
 import Control.Monad.Reader.Class
+import Control.Monad.Writer.Class
+import Data.IORef
 import Data.List (intercalate)
 
 import Checker.Types
 import Checker.Unify
 import Checker.Monad
 import Syntax
+import Checker.Preds
 import Printer
+
 
 expectT :: Term -> Ty -> Ty -> CheckM Evid
 expectT m actual expected =
@@ -204,10 +208,116 @@ checkTerm0 e0@(ETyped e t) expected =
        do q <- expectT e0 t' expected
           return (ECast e' q)
 
-checkTop :: Term -> Ty -> CheckM Term
-checkTop m t =
-  do (t', q) <- normalize' [] t
-     m' <- checkTerm m t'
-     return (case q of
-               VEqRefl -> m'
-               _ -> ECast m' q)
+generalize :: Term -> CheckM (Term, Ty)
+generalize e =
+  do t <- typeGoal "t"
+     assumed <- asks pctxt
+     ((level, e'), tcout) <-
+       censor (const (TCOut [])) $
+       listen $
+       upLevel $
+       local (\cin -> cin { pctxt = [] }) $
+       do level <- theLevel
+          (level,) <$> checkTerm e t
+     genVars <- uvars level t
+     (psHere, psThere) <- splitProblems level (goals tcout)
+     remaining <- solverLoop psHere
+     let (generalizable, ungeneralizable) = splitGeneralizable remaining
+     when (not (null ungeneralizable)) $ notEntailed ungeneralizable
+     tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ assumed }, p, evar)) psThere))
+     generalizeVars genVars
+     generalizePreds generalizable
+     return . buildFinal genVars generalizable e' =<< flattenT t
+
+  where uvars :: Int -> Ty -> CheckM [Ty]
+        uvars _ (TVar {}) = return []
+        uvars level t@(TUnif { uvLevel = lref, uvGoal = Goal (_, r) }) =
+          do mt <- readRef r
+             case mt of
+               Just t -> uvars level t
+               Nothing ->
+                 do uvl <- readRef lref
+                    if uvl >= level
+                    then return [t]
+                    else return []
+        uvars _ TFun = return []
+        uvars level (TThen p t) = cat <$> puvars level p <*> uvars level t
+        uvars level (TForall _ _ t) = uvars level t
+        uvars level (TLam _ _ t) = uvars level t
+        uvars level (TApp t u) = cat <$> uvars level t <*> uvars level u
+        uvars _ (TLab {}) = return []
+        uvars level (TSing t) = uvars level t
+        uvars level (TLabeled l t) = cat <$> uvars level t <*> uvars level t
+        uvars level (TRow ts) = foldl cat [] <$> mapM (uvars level) ts
+        uvars level (TPi t) = uvars level t
+        uvars level (TSigma t) = uvars level t
+        uvars level (TMu t) = uvars level t
+        uvars level (TMapFun t) = uvars level t
+        uvars level (TInst is t) = cat <$> isuvars is <*> uvars level t where
+          isuvars (Unknown {}) = return []
+          isuvars (Known is) = foldl cat [] <$> mapM iuvars is
+          iuvars (TyArg t) = uvars level t
+          iuvars (PrArg {}) = return []
+        uvars level (TMapArg t) = uvars level t
+
+        puvars :: Int -> Pred -> CheckM [Ty]
+        puvars level (PEq t u) = cat <$> uvars level t <*> uvars level u
+        puvars level (PLeq y z) = cat <$> uvars level y <*> uvars level z
+        puvars level (PPlus x y z) = cat <$> (cat <$> uvars level x <*> uvars level y) <*> uvars level z
+
+        cat :: [Ty] -> [Ty] -> [Ty]
+        cat ts us = ts ++ filter (\u -> all (different u) ts) us
+
+        ref (TUnif { uvGoal = Goal (_, r) }) = r
+        different t u = ref t /= ref u
+        same t u = ref t == ref u
+
+        splitProblems :: Int -> [Problem] -> CheckM ([Problem], [Problem])
+        splitProblems level [] = return ([], [])
+        splitProblems level (pr@(tcin, p, _) : prs) =
+          do (here, there) <- splitProblems level prs
+             prUvars <- (++) <$> (foldr (++) [] <$> mapM (puvars level) (pctxt tcin)) <*> puvars level p
+             if null prUvars
+             then return (here, pr : there)
+             else return (pr : here, there)
+
+        splitGeneralizable :: [Problem] -> ([(Pred, IORef (Maybe Evid))], [Problem])
+        splitGeneralizable [] = ([], [])
+        splitGeneralizable (pr@(cin, p, evar) : ps)
+          | null (pctxt cin) = ((p, evar) : gen, notGen)
+          | otherwise        = (gen, pr : notGen)
+          where (gen, notGen) = splitGeneralizable ps
+
+        names = [[c] | c <- ['a'..'z']] ++ [n ++ [c] | n <- names, c <- ['a'..'z']]
+
+        generalizeVars :: [Ty] -> CheckM ()
+        generalizeVars ts =
+          sequence_ [generalize t b i | (t, b, i) <- zip3 ts names [0..]]
+          where n = length ts - 1
+                generalize (TUnif { uvGoal = Goal (_, r), uvKind = k }) b i =
+                  writeRef r (Just (TVar (n - i) b (Just k)))
+
+        generalizePreds :: [(Pred, IORef (Maybe Evid))] -> CheckM ()
+        generalizePreds ps =
+          sequence_ [generalize v i | ((_, v), i) <- zip ps [0..]]
+          where n = length ps - 1
+                generalize v i = writeRef v (Just (VVar (n - i)))
+
+        buildFinal :: [Ty] -> [(Pred, IORef (Maybe Evid))] -> Term -> Ty -> (Term, Ty)
+        buildFinal ts ps e t =
+          (tyLams ts names (prLams ps e), quantifiers ts names (qualifiers ps t))
+          where quantifiers [] _ t = t
+                quantifiers (u : us) (b : bs) t = TForall b (Just (uvKind u)) (quantifiers us bs t)
+                qualifiers [] t = t
+                qualifiers ((p, _) : ps) t = TThen p (qualifiers ps t)
+                tyLams [] _ e = e
+                tyLams (u : us) (b : bs) e = ETyLam b (Just (uvKind u)) (tyLams us bs e)
+                prLams [] e = e
+                prLams ((p, _) : ps) e = EPrLam p (prLams ps e)
+
+checkTop :: Term -> Maybe Ty -> CheckM (Term, Ty)
+checkTop m (Just t) =
+  do m' <- checkTerm m t
+     return (m', t)
+checkTop m Nothing =
+  generalize m

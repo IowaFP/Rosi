@@ -325,7 +325,7 @@ prog = whitespace >> block topLevel >>= defns
 
 defns :: MonadFail m => [(String, TL)] -> m Program
 defns tls
-  | not (null unmatchedTermDefs) = fail $ "definitions of " ++ intercalate ", " unmatchedTermDefs ++ " lack type signatures"
+  -- | not (null unmatchedTermDefs) = fail $ "definitions of " ++ intercalate ", " unmatchedTermDefs ++ " lack type signatures"
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
@@ -345,15 +345,14 @@ defns tls
             | x `elem` seen = go seen tls
             | otherwise = x : go (x : seen) tls
 
-        unmatchedTermDefs = filter (`notElem` map fst typeSigs) (map fst termDefs)
+        -- unmatchedTermDefs = filter (`notElem` map fst typeSigs) (map fst termDefs)
         unmatchedTypeSigs = filter (`notElem` map fst termDefs) (map fst typeSigs)
         unmatchedTypeDefs = filter (`notElem` map fst kindSigs) (map fst typeDefs)
         unmatchedKindSigs = filter (`notElem` map fst typeDefs) (map fst kindSigs)
 
         mkDecl x = fromMaybe (error $ "in building declaration of " ++ x) decl where
-          decl = do ty <- lookup x typeSigs
-                    tm <- lookup x termDefs
-                    return (TmDecl x ty tm)
+          decl = do tm <- lookup x termDefs
+                    return (TmDecl x (lookup x typeSigs) tm)
                  `mplus`
                  do k <- lookup x kindSigs
                     ty <- lookup x typeDefs

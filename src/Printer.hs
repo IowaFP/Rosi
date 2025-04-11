@@ -183,6 +183,7 @@ instance Printable Term where
     name CFix = "fix"
   ppr (ESyn f m) = with 4 (fillSep ["syn", brackets (ppr f), at 5 (ppr m)])
   ppr (EAna f m) = with 4 (fillSep ["ana", brackets (ppr f), at 5 (ppr m)])
+  ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> "in", ppr n]
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   ppr (EFold {}) = "<fold>"
   -- Not printing internals (yet)

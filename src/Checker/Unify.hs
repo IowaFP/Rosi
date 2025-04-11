@@ -397,6 +397,7 @@ unify0 t u
         refinable (TUnif {}) = True
         refinable _          = False
 
+
 class HasTyVars t where
   subst :: MonadRef m => Int -> Ty -> t -> m t
 

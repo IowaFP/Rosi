@@ -10,7 +10,7 @@ import GHC.Stack
 data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
 
-data Decl = TyDecl String Kind Ty | TmDecl String Ty Term
+data Decl = TyDecl String Kind Ty | TmDecl String (Maybe Ty) Term
   deriving (Eq, Show)
 
 data Kind =
@@ -253,7 +253,11 @@ shiftT j = shiftTN j 1
 
 tyLevel :: MonadIO m => Ty -> m Int
 tyLevel (TVar {}) = return maxBound
-tyLevel (TUnif { uvLevel = r }) = liftIO (readIORef r)
+tyLevel (TUnif { uvLevel = levr, uvGoal = Goal (_, tyr) }) =
+  do mt <- liftIO (readIORef tyr)
+     case mt of
+       Nothing -> liftIO (readIORef levr)
+       Just t  -> tyLevel t
 tyLevel TFun = return maxBound
 tyLevel (TThen p t) = min <$> prLevel p <*> tyLevel t
 tyLevel (TForall _ _ t) = tyLevel t
@@ -268,6 +272,16 @@ tyLevel (TSigma t) = tyLevel t
 tyLevel (TMu t) = tyLevel t
 tyLevel (TMapFun f) = tyLevel f
 tyLevel (TCompl z y) = min <$> tyLevel z <*> tyLevel y
+tyLevel (TInst is t) = min <$> isLevel is <*> tyLevel t
+  where isLevel (Unknown _ (Goal (_, r))) =
+          do mis <- liftIO (readIORef r)
+             case mis of
+               Just is -> minimum <$> mapM iLevel is
+               Nothing -> return maxBound
+        isLevel (Known is) = minimum <$> mapM iLevel is
+        iLevel (TyArg t) = tyLevel t
+        iLevel (PrArg _) = return maxBound
+tyLevel (TMapArg f) = tyLevel f
 
 prLevel :: MonadIO m => Pred -> m Int
 prLevel (PEq t u) = min <$> tyLevel t <*> tyLevel u
@@ -286,7 +300,7 @@ data Term =
   | ESing Ty | ELabel Term Term | EUnlabel Term Term
   | EConst Const
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
-  | ECast Term Evid | ETyped Term Ty
+  | ELet String Term Term | ECast Term Evid | ETyped Term Ty
   deriving (Data, Eq, Show, Typeable)
 
 shiftEN :: Int -> Int -> Term -> Term
@@ -303,9 +317,9 @@ shiftEN _ _ e@(EConst {}) = e
 shiftEN j n (ESyn t e) = ESyn (shiftTN j n t) e
 shiftEN j n (EAna t e) = EAna (shiftTN j n t) e
 shiftEN j n (EFold e f g h) = EFold (shiftEN j n e) (shiftEN j n f) (shiftEN j n g) (shiftEN j n h)
+shiftEN j n (ELet x e f) = ELet x (shiftEN j n e) (shiftEN j n f)
 shiftEN j n (ECast e q) = ECast (shiftEN j n e) q
 shiftEN j n (ETyped e t) = ETyped e (shiftTN j n t)
-
 
 flattenE :: MonadIO m => Term -> m Term
 flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) where
