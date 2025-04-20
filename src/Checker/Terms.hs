@@ -9,7 +9,7 @@ import Data.Generics (everywhereM, mkM)
 import Data.IORef
 import Data.List (intercalate)
 
-import Checker.Types
+import Checker.Types hiding (trace)
 import Checker.Unify
 import Checker.Monad
 import Syntax

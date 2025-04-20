@@ -17,6 +17,10 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import Syntax
 
+{-# NOINLINE traceKindInference #-}
+traceKindInference :: IORef Bool
+traceKindInference = unsafePerformIO (newIORef False)
+
 {-# NOINLINE traceTypeInference #-}
 traceTypeInference :: IORef Bool
 traceTypeInference = unsafePerformIO (newIORef False)

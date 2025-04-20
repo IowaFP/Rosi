@@ -15,7 +15,7 @@ import Data.List (elemIndex, partition, sortOn)
 import Data.Maybe (fromJust, isNothing)
 
 import Checker.Monad
-import Checker.Types
+import Checker.Types hiding (trace)
 import Printer
 import Syntax
 

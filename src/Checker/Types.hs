@@ -2,11 +2,18 @@ module Checker.Types where
 
 import Control.Monad
 import Control.Monad.Error.Class
+import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
+import Data.IORef
 import Data.List
 
-import Checker.Monad
+import Checker.Monad hiding (trace)
 import Syntax
+
+trace :: MonadIO m => String -> m ()
+trace s = liftIO $
+  do b <- readIORef traceKindInference
+     when b $ putStrLn s
 
 kindGoal :: String -> CheckM Kind
 kindGoal s =

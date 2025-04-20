@@ -1,9 +1,10 @@
-module Checker.Preds (module Checker.Preds) where
+module Checker.Preds where
 
 import Control.Monad
 import Control.Monad.Error.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
+import Data.Bifunctor
 import Data.IORef
 import Data.List
 import Data.Maybe (isNothing)
