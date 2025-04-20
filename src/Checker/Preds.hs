@@ -14,7 +14,6 @@ import Checker.Unify
 import Syntax
 
 import GHC.Stack
-import Data.Bifunctor
 
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
@@ -114,9 +113,6 @@ solve (cin, p, r) =
   refl (PLeq x y) =
     suppose (typesEqual x y) $
     return (Just VLeqRefl)
-  refl (PEq x y) =
-    suppose (typesEqual x y) $
-    return (Just VEqRefl)
   refl _ = return Nothing
 
   matchLeqMap p@(PLeq (TRow es) (TApp (TMapFun f) z)) q@(PLeq (TRow es') z', v) =
@@ -260,11 +256,7 @@ solve (cin, p, r) =
         do force p z (TRow (map (uncurry (TLabeled . TLab)) zs))
            return (Just (VPlusSimple is))
   prim (PEq t u) =
-    unifyProductive [] t u <|> instInst t u <|> instInst u t where
-      instInst (TInst (Unknown _ (Goal (_, r))) t@(TInst (Unknown {}) _)) u@(TForall {}) =
-        do writeRef r (Just (Known []))
-           prim (PEq t u)
-      instInst _ _ = return Nothing
+    unifyProductive [] t u
   prim _ = return Nothing
 
   funCallsFrom :: [Ty] -> Maybe ([Ty], [Ty], [Ty])
@@ -306,13 +298,32 @@ solve (cin, p, r) =
        fmap (VPlusLiftL f) <$> everything as (PPlus x y z)
   mapFunApp _ _ = return Nothing
 
+guess :: [(TCIn, Pred, IORef (Maybe Evid))] -> CheckM Bool
+guess ((tcin, PEq t u, v) : prs) =
+  do (t', _) <- normalize [] t
+     case t' of
+       TInst (Unknown n (Goal (s, r))) t@(TInst (Unknown {}) _) ->
+         do trace $ unwords ["guessing", s, ":= {}"]
+            writeRef r (Just (Known []))
+            return True
+       _ -> do (u', _) <- normalize [] u
+               case u' of
+                 TInst (Unknown n (Goal (s, r))) t@(TInst (Unknown {}) _) ->
+                   do trace $ unwords ["guessing", s, ":= {}"]
+                      writeRef r (Just (Known []))
+                      return True
+                 _ -> guess prs
+guess (_ : prs) = guess prs
+guess [] = return False
+
 solverLoop :: [Problem] -> CheckM [Problem]
 solverLoop [] = return []
 solverLoop ps =
   do (b, ps') <- once False [] ps
      if b
      then solverLoop ps'
-     else return ps'
+     else do b' <- guess ps'
+             if b' then solverLoop ps' else return ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
           do (b', TCOut ps') <- listen $ solve p
