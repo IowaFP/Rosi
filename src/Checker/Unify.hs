@@ -251,42 +251,48 @@ unifyInstantiating t u unify =
 -- If that much ever works, I'll then return to the levels question, as
 -- I suspect thatthe better way to handle levels is via promotion rather
 -- than having level references
+
 promote :: UVar -> Ty -> UnifyM (Maybe Ty)
-promote (UV n _ _ _) t@(TVar i s mk)
-  | n == 0 = return (Just t)
+promote uv = promoteN uv 0
+
+promoteN :: UVar -> Int -> Ty -> UnifyM (Maybe Ty)
+promoteN (UV n _ _ _) m t@(TVar i s mk)
+  | i < m = return (Just t)
   | i >= n = return (Just $ TVar (i - n) s mk)
   | otherwise = return Nothing
-promote v@(UV n l (Goal (_, r)) _) t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k'))
+promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k'))
   | r == r' = return Nothing -- Occurs check
   | otherwise =
     do trace $ "promote: (" ++ show v ++ ") (" ++ show t ++ ")"
        mt <- readRef r'
        case mt of
-         Just t' ->promote v (shiftTN 0 n' t')
+         Just t' -> promoteN v m (shiftTN 0 n' t')
          Nothing
-           | n' >= n && l >= l' ->
+           | n' < m ->
+             return (Just t)
+           | n' >= m + n && l >= l' ->
              return (Just $ TUnif (v' { uvShift = n' - n }))
            | otherwise ->
              do r'' <- newRef Nothing
                 uvar'' <- fresh uvar'
                 let newT n = TUnif (UV n l (Goal (uvar'', r'')) k')
-                writeRef r' (Just (newT (n - n')))
-                return (Just (newT 0))
-promote v TFun = return (Just TFun)
-promote v (TThen p t) = liftM2 TThen <$> promoteP v p <*> promote v t
-promote v (TForall s k t) = liftM (TForall s k) <$> promote v t
-promote v (TLam s k t) = liftM (TLam s k) <$> promote v t
-promote v (TApp t u) = liftM2 TApp <$> promote v t <*> promote v u
-promote _ (TLab s) = return (Just (TLab s))
-promote v (TSing t) = liftM TSing <$> promote v t
-promote v (TLabeled l t) = liftM2 TLabeled <$> promote v l <*> promote v t
-promote v (TRow ts) = liftM TRow . sequence <$> mapM (promote v) ts
-promote v (TPi t) = liftM TPi <$> promote v t
-promote v (TSigma t) = liftM TSigma <$> promote v t
-promote v (TMu t) = liftM TMu <$> promote v t
-promote v (TMapFun t) = liftM TMapFun <$> promote v t
-promote v (TCompl y z) = liftM2 TCompl <$> promote v y <*> promote v z
-promote v@(UV n l _ _) (TInst is t) = liftM2 TInst <$> promoteIs is <*> promote v t
+                writeRef r' (Just (newT ((m + n) - n')))
+                return (Just (newT m))
+promoteN v _ TFun = return (Just TFun)
+promoteN v n (TThen p t) = liftM2 TThen <$> promoteP v n p <*> promoteN v n t
+promoteN v n (TForall s k t) = liftM (TForall s k) <$> promoteN v (n + 1) t
+promoteN v n (TLam s k t) = liftM (TLam s k) <$> promoteN v (n + 1) t
+promoteN v n (TApp t u) = liftM2 TApp <$> promoteN v n t <*> promoteN v n u
+promoteN _ _ (TLab s) = return (Just (TLab s))
+promoteN v n (TSing t) = liftM TSing <$> promoteN v n t
+promoteN v n (TLabeled l t) = liftM2 TLabeled <$> promoteN v n l <*> promoteN v n t
+promoteN v n (TRow ts) = liftM TRow . sequence <$> mapM (promoteN v n) ts
+promoteN v n (TPi t) = liftM TPi <$> promoteN v n t
+promoteN v n (TSigma t) = liftM TSigma <$> promoteN v n t
+promoteN v n (TMu t) = liftM TMu <$> promoteN v n t
+promoteN v n (TMapFun t) = liftM TMapFun <$> promoteN v n t
+promoteN v n (TCompl y z) = liftM2 TCompl <$> promoteN v n y <*> promoteN v n z
+promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promoteN v n t
   where promoteIs :: Insts -> UnifyM (Maybe Insts)
         promoteIs is@(Unknown n' g@(Goal (s, r))) =
           do mis <- readRef r
@@ -301,15 +307,15 @@ promote v@(UV n l _ _) (TInst is t) = liftM2 TInst <$> promoteIs is <*> promote 
                                    return (Just (newIs 0))
         promoteIs (Known is) = liftM Known . sequence <$> mapM promoteI is
         promoteI :: Inst -> UnifyM (Maybe Inst)
-        promoteI (TyArg t) = liftM TyArg <$> promote v t
+        promoteI (TyArg t) = liftM TyArg <$> promoteN v n t
         promoteI i@(PrArg v) = return (Just i)
-promote v (TMapArg f) = liftM TMapArg <$> promote v f
-promote v t = error $ "promote: missing " ++ show t
+promoteN v n (TMapArg f) = liftM TMapArg <$> promoteN v n f
+promoteN v n t = error $ "promote: missing " ++ show t
 
-promoteP :: UVar -> Pred -> UnifyM (Maybe Pred)
-promoteP v (PEq t u) = liftM2 PEq <$> promote v t <*> promote v u
-promoteP v (PLeq y z) = liftM2 PLeq <$> promote v y <*> promote v z
-promoteP v (PPlus x y z) = liftM3 PPlus <$> promote v x <*> promote v y <*> promote v z
+promoteP :: UVar -> Int -> Pred -> UnifyM (Maybe Pred)
+promoteP v n (PEq t u) = liftM2 PEq <$> promoteN v n t <*> promoteN v n u
+promoteP v n (PLeq y z) = liftM2 PLeq <$> promoteN v n y <*> promoteN v n z
+promoteP v n (PPlus x y z) = liftM3 PPlus <$> promoteN v n x <*> promoteN v n y <*> promoteN v n z
 
 solveUV :: HasCallStack => UVar -> Ty -> UnifyM (Maybe Evid)
 solveUV v t =
@@ -319,7 +325,9 @@ solveUV v t =
      --
      mt' <- promote v t
      case mt' of
-       Nothing -> return Nothing
+       Nothing ->
+        do trace $ unwords ["9 incoming unification failure: unable to promote ", show t, " to match ", show v ]
+           return Nothing
        Just t' ->
          do trace ("1 promoted " ++ renderString False (ppr t) ++ " to " ++ renderString False (ppr t'))
             trace ("1 instantiating " ++ goalName (uvGoal v) ++ " to " ++ renderString False (ppr t'))

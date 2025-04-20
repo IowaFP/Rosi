@@ -178,14 +178,18 @@ auto2 = \a b. b
 -- --------------------------------------------------------------------------------
 --
 -- let A1 = λ x y. y;
---
+
+a1 = \x y. y
+
 -- let A2 : IdTy → IdTy = choose id;
 
 a2 : IdTy -> IdTy
 a2 = choose id
 
 -- let A3 = choose nil ids;
---
+
+a3 = choose nil ids
+
 -- let A4 : IdTy → IdTy = λ (x : IdTy). x x;
 
 a4 : IdTy -> IdTy
@@ -239,7 +243,11 @@ a9b = \f. /\a. f (choose [a -> a] id) idsp
 -- --------------------------------------------------------------------------------
 --
 -- let C1 = length ids;
---
+
+c1 = length ids
+
+
+
 -- let C2 = id ids;
 --
 -- let C3 : IdTy = unId oneId;
