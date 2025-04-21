@@ -1,3 +1,4 @@
+{-# LANGUAGE ParallelListComp #-}
 module Checker.Preds where
 
 import Control.Monad
@@ -298,23 +299,52 @@ solve (cin, p, r) =
        fmap (VPlusLiftL f) <$> everything as (PPlus x y z)
   mapFunApp _ _ = return Nothing
 
-guess :: [(TCIn, Pred, IORef (Maybe Evid))] -> CheckM Bool
-guess ((tcin, PEq t u, v) : prs) =
-  do (t', _) <- normalize [] t
-     case t' of
-       TInst (Unknown n (Goal (s, r))) t@(TInst (Unknown {}) _) ->
+guess :: [Problem] -> CheckM (Maybe [Problem])
+guess (pr@(tcin, PEq t u, v) : prs) =
+  do t' <- fst <$> normalize [] t
+     u' <- fst <$> normalize [] u
+     case (t', u') of
+       (TInst (Unknown n (Goal (s, r))) t@(TInst (Unknown {}) _), _) ->
          do trace $ unwords ["guessing", s, ":= {}"]
             writeRef r (Just (Known []))
-            return True
-       _ -> do (u', _) <- normalize [] u
-               case u' of
-                 TInst (Unknown n (Goal (s, r))) t@(TInst (Unknown {}) _) ->
-                   do trace $ unwords ["guessing", s, ":= {}"]
-                      writeRef r (Just (Known []))
-                      return True
-                 _ -> guess prs
-guess (_ : prs) = guess prs
-guess [] = return False
+            return (Just (pr : prs))
+       (_, TInst (Unknown n (Goal (s, r))) t@(TInst (Unknown {}) _)) ->
+           do trace $ unwords ["guessing", s, ":= {}"]
+              writeRef r (Just (Known []))
+              return (Just (pr : prs))
+       (u@(TInst (Unknown {}) _), t@(TForall {})) ->
+          guessInstantiation t u
+       (t@(TForall {}), u@(TInst (Unknown {}) _)) ->
+          guessInstantiation t u
+       _ -> fmap (pr :) <$> guess prs
+
+  where -- There is a lot of similarity with the code in unifyInstantiating here...
+        -- Assuming t starts with quantifiers, `u` starts with unknown instantiation
+        guessInstantiation t (TInst (Unknown n (Goal (s, r))) u) =
+          do xs' <- mapM fresh xs
+             refs <- replicateM (length xs) (newRef Nothing)
+             let us = [TUnif (UV 0 0 (Goal (x, r)) k) | x <- xs' | r <- refs | k <- ks ]
+             writeRef r (Just (Known (map TyArg us)))
+             t''' <- instantiate t us
+             trace $ unlines [ unwords ["guessing", s, ":=", show us]
+                             , unwords ["refined goal to", show (PEq t''' u)] ]
+             return (Just ((tcin, PEq t''' u, v) : prs))
+
+          where (qus, t') = quants t
+                foralls = takeWhile isForall qus
+                (xs, ks) = unzip [(x, k) | QuForall x k <- foralls]
+                t'' = quantify (drop (length foralls) qus) t'
+
+                isForall (QuForall {}) = True
+                isForall _             = False
+
+                instantiate t [] = return t
+                instantiate (TForall _ _ t) (u : us) =
+                  do t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
+                     instantiate t' us
+
+guess (pr : prs) = fmap (pr :) <$> guess prs
+guess [] = return Nothing
 
 solverLoop :: [Problem] -> CheckM [Problem]
 solverLoop [] = return []
@@ -322,8 +352,10 @@ solverLoop ps =
   do (b, ps') <- once False [] ps
      if b
      then solverLoop ps'
-     else do b' <- guess ps'
-             if b' then solverLoop ps' else return ps'
+     else do mps <- guess ps'
+             case mps of
+               Just ps'' -> solverLoop ps''
+               Nothing -> return ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
           do (b', TCOut ps') <- listen $ solve p

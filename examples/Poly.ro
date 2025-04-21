@@ -203,12 +203,19 @@ a6 : forall b. IdTy -> b -> b
 a6 = id auto2
 
 -- let A7 = choose id auto;
---
+
+a7 = choose id auto
+
 -- -- let A8 = choose id auto2 in -- FAILS the reason is simply that the types are
 -- --   definitionally different, the orders of implicit args do not match. We
 -- --   do *not* reorder or float out implicit args, intentionally, since we
 -- --   support mixing implicit and explicit args in arbitrary order.
---
+
+-- Note: this generates an unsatisfiable equality constraint. Suspect that
+-- generalizing over unsolved equality constraints is still a bad idea.
+
+a8 = choose id auto2
+
 -- let A9 : ({A} → (A → A) → List A → A) → IdTy
 --     = λ f. f (choose id) ids;
 
@@ -221,15 +228,18 @@ idsp = single id
 a9a : (forall a. (a -> a) -> List a -> a) -> IdTy
 a9a = \f. f (choose id) idsp
 
-a9b : (forall a. (a -> a) -> List a -> a) -> IdTy
-a9b = \f. /\a. f (choose [a -> a] id) idsp
-
 -- let A10 = poly id;
---
+
+a10 = poly id
+
 -- let A11 = poly (λ x. x);
---
+
+a11 = poly (\x. x)
+
 -- let A12 = id poly (λ x. x);
---
+
+a12 = id poly (\x. x)
+
 -- -- B: inference of polymorphic arguments
 -- --------------------------------------------------------------------------------
 --
@@ -238,7 +248,7 @@ a9b = \f. /\a. f (choose [a -> a] id) idsp
 --
 -- -- FAILS
 -- -- let B2 = λ x. poly (unId x);
---
+
 -- -- C: functions on polymorphic lists
 -- --------------------------------------------------------------------------------
 --
@@ -246,39 +256,71 @@ a9b = \f. /\a. f (choose [a -> a] id) idsp
 
 c1 = length ids
 
-
-
 -- let C2 = id ids;
---
+
+c2 = id ids
+
 -- let C3 : IdTy = unId oneId;
---
+
+c3 : IdTy
+c3 = unId oneId
+
 -- let C4 : List IdTy = single id;
---
+
+c4 : List IdTy
+c4 = single id
+
 -- let C5 = cons id ids;
---
+
+c5 = cons id ids
+
 -- let C6 = cons (λ x. x) ids;
---
+
+c6 : List IdTy  -- To be fair to me, GHC needs the type signature here as well.
+c6 = cons (\x. x) ids
+
+
 -- let C7 = append (single suc) (single id);
---
+
+c7 = append (single suc) (single id)
+
 -- let C8 : _ → IdTy = λ (g : {A} → List A → List A → A). g (single id) ids;
---
+
+c8 : (forall a. List a -> List a -> a) -> IdTy   -- doesn't work for me without type signature either
+c8 = \ g : forall a. List a -> List a -> a. g (single id) ids
+
 -- let C9 = map poly (single id);
---
+
+c9 = map poly (single id)
+
+
 -- let C10 = map unId (single oneId);
---
+
+c10 = map unId (single oneId)
+
 -- -- D: application functions
 -- --------------------------------------------------------------------------------
 --
 -- let D1 = app poly id;
---
+
+d1 = app poly id
+
 -- let D2 = revapp id poly;
---
+
+d2 = revapp id poly
+
 -- let D3 = runST argST;
---
+
+d3 = runST argST
+
 -- let D4 = app runST argST;
---
+
+d4 = app runST argST
+
 -- let D5 = revapp argST runST;
---
+
+-- d5 = revapp argST runST
+
 -- -- -- E: η-expansion
 -- -- --------------------------------------------------------------------------------
 --
@@ -290,8 +332,17 @@ c1 = length ids
 -- let E2 =
 --   λ (h : Nat → {A} → A → A)(k : {A} → A → List A → A)(lst : List ({A} → Nat → A → A)).
 --   k (λ x. h x) lst;
---
+
+-- e2 = \ h : Nat -> (forall a. a -> a), k : forall a. a -> List a -> a, lst : List (forall a. Nat -> a -> a).
+--        k (\x. h x) lst
+
 -- let E3 =
 --   λ (r : ({A} → A → {B} → B → B) → Nat). r (λ x y. y);
---
+
+e3 = \ r : (forall a. a -> (forall b. b -> b)) -> Nat.
+       r (\x y. y)
+
+
+
+
 -- U

@@ -182,6 +182,8 @@ unifyInstantiating t u unify =
      case (t', u') of
        (TInst (Unknown _ g) t'', TInst (Unknown _ g') u'')
          | goalRef g == goalRef g' -> unify t'' u''
+       (TForall {}, TInst (Unknown {}) (TUnif {})) ->
+         return Nothing
        _
          | Just matches <- match (reverse uis) (reverse (take (length tqs - nuqs) tqs)) ->
              do trace $ unlines ["unifyInstantiating:", "    " ++ show (quants t'), "    " ++ show (insts u'), "    " ++ show matches]
