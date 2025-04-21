@@ -319,7 +319,7 @@ d4 = app runST argST
 
 -- let D5 = revapp argST runST;
 
--- d5 = revapp argST runST
+d5 = revapp argST runST
 
 -- -- -- E: η-expansion
 -- -- --------------------------------------------------------------------------------
@@ -334,15 +334,12 @@ d4 = app runST argST
 --   k (λ x. h x) lst;
 
 -- e2 = \ h : Nat -> (forall a. a -> a), k : forall a. a -> List a -> a, lst : List (forall a. Nat -> a -> a).
---        k (\x. h x) lst
+--        k (/\a. \x. h x [a]) lst
 
 -- let E3 =
 --   λ (r : ({A} → A → {B} → B → B) → Nat). r (λ x y. y);
 
 e3 = \ r : (forall a. a -> (forall b. b -> b)) -> Nat.
        r (\x y. y)
-
-
-
 
 -- U

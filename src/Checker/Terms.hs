@@ -218,8 +218,7 @@ generalize :: Term -> CheckM (Term, Ty)
 generalize e =
   do tcin <- ask
      ((level, t, e'), tcout) <-
-         censor (const (TCOut [])) $
-         listen $
+         collect $
          upLevel $
          local (\cin -> cin { pctxt = [] }) $
          do t <- typeGoal "t"

@@ -358,7 +358,7 @@ solverLoop ps =
                Nothing -> return ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
-          do (b', TCOut ps') <- listen $ solve p
+          do (b', TCOut ps') <- collect $ solve p
              once (b || b')
                   (if b' then qs else p : qs)
                   (ps ++ ps')
@@ -366,7 +366,7 @@ solverLoop ps =
 andSolve :: CheckM a -> CheckM a
 andSolve m =
   censor (const (TCOut [])) $
-  do (x, TCOut goals) <- listen m
+  do (x, TCOut goals) <- collect m
      trace "-- solver start --"
      remaining <- solverLoop goals
      trace "-- solver stop --"

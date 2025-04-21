@@ -97,3 +97,7 @@ instance MonadCheck CheckM where
                return ((takeWhile ('#' /=) x) ++ '#' : show i)
   upLevel = local (\st -> st { level = level st + 1 })
   theLevel = asks level
+
+
+collect :: CheckM a -> CheckM (a, TCOut)
+collect m = censor (const (TCOut [])) $ listen m
