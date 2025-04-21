@@ -177,7 +177,8 @@ unifyInstantiating t u unify =
      u' <- flattenT u
      let(tqs, _) = quants t'
         (uis, u'') = insts u'
-        nuqs      = length (fst (quants u'))
+        nuqs      = length (fst (quants u''))
+     -- trace $ unwords ["unifyInstantiating:", show t', ",", show u']
      case (t', u') of
        (TInst (Unknown _ g) t'', TInst (Unknown _ g') u'')
          | goalRef g == goalRef g' -> unify t'' u''
