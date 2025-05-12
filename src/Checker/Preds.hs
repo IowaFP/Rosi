@@ -12,6 +12,7 @@ import Data.Maybe (isNothing)
 
 import Checker.Monad
 import Checker.Unify
+import Printer
 import Syntax
 
 import GHC.Stack
@@ -19,13 +20,13 @@ import GHC.Stack
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
-  do trace $ "solve: " ++ show p
+  do trace $ "Solving: " ++ show p
      as' <- mapM (normalizeP [] <=< flattenP) (pctxt cin)
-     trace ("Expanding " ++ show as')
+     when (not (null as')) $ trace ("Expanding " ++ show as')
      let as'' = expandAll (zip as' [VVar i | i <- [0..]])
      let eqns = pickEqns as''
-     trace ("Expanded " ++ show as' ++ " to " ++ show as'' ++ "; solving " ++ show p)
-     trace ("Found equations " ++ show eqns)
+     when (not (null as'')) $ trace ("Expanded " ++ show as' ++ " to " ++ show as'')
+     when (not (null eqns)) $ trace ("Found equations " ++ show eqns)
      p' <- normalizeP eqns =<< flattenP p
      trace ("Normalized goal to " ++ show p')
      mv <- everything as'' p'
@@ -349,13 +350,14 @@ guess [] = return Nothing
 solverLoop :: [Problem] -> CheckM [Problem]
 solverLoop [] = return []
 solverLoop ps =
-  do (b, ps') <- once False [] ps
+  do trace $ unlines $ "Solver loop:" : ["    " ++ renderString False (ppr p) | (_, p, _) <- ps]
+     (b, ps') <- once False [] ps
      if b
      then solverLoop ps'
      else do mps <- guess ps'
              case mps of
                Just ps'' -> solverLoop ps''
-               Nothing -> return ps'
+               Nothing -> trace "Solver done" >> return ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
           do (b', TCOut ps') <- collect $ solve p
@@ -367,9 +369,7 @@ andSolve :: CheckM a -> CheckM a
 andSolve m =
   censor (const (TCOut [])) $
   do (x, TCOut goals) <- collect m
-     trace "-- solver start --"
      remaining <- solverLoop goals
-     trace "-- solver stop --"
      if null remaining
      then return x
      else notEntailed remaining

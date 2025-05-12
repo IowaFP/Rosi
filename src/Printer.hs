@@ -102,9 +102,11 @@ instance Printable UVar where
          Just t -> ppr t
          Nothing ->
            do pk <- asks printKinds
+              let name = ppre s <> "@" <> ppre l <>
+                         if n > 0 then "^" <> ppre n else mempty
               if pk
-              then ("^" <> ppre n <> "%" <> ppre s <> "@" <> ppre l) <:> (P.align <$> ppr k)
-              else "^" <> ppre n <> "%" <> ppre s <> "@" <> ppre l
+              then name <:> (P.align <$> ppr k)
+              else name
 
 instance Printable Ty where
   ppr (TVar _ s mk) =

@@ -18,7 +18,7 @@ trace s = liftIO $
 kindGoal :: String -> CheckM Kind
 kindGoal s =
   do kr <- newRef Nothing
-     return (KUnif (Goal ("k$" ++ s, kr)))
+     return (KUnif (Goal (s, kr)))
 
   -- Note: just returning a `Ty` here out of convenience; it's always an exactly the input `Ty`.
 expectK :: MonadCheck m => Ty -> Kind -> Kind -> m Ty

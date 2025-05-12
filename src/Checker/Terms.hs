@@ -342,7 +342,9 @@ generalize e =
 
 checkTop :: Term -> Maybe Ty -> CheckM (Term, Ty)
 checkTop m (Just t) =
-  do m' <- checkTerm m t
+  do trace $ "Begin type checking: " ++ renderString False (ppr m)
+     m' <- checkTerm m t
      return (m', t)
 checkTop m Nothing =
-  generalize m
+  do trace $ "Begin type checking: " ++ renderString False (ppr m)
+     generalize m

@@ -266,8 +266,7 @@ promoteN (UV n _ _ _) m t@(TVar i s mk)
 promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k'))
   | r == r' = return Nothing -- Occurs check
   | otherwise =
-    do trace $ "promote: (" ++ show v ++ ") (" ++ show t ++ ")"
-       mt <- readRef r'
+    do mt <- readRef r'
        case mt of
          Just t' -> promoteN v m (shiftTN 0 n' t')
          Nothing
@@ -684,12 +683,12 @@ unifyP (PPlus x y z) (PPlus x' y' z') = liftM3 VEqPlus <$> unify' x x' <*> unify
 
 typeGoal :: MonadCheck m => String -> m Ty
 typeGoal s =
-  do s' <- fresh ("t$" ++ s)
+  do s' <- fresh s
      l  <- theLevel
      TUnif . (flip (UV 0 l) KType) . Goal . (s',) <$> newRef Nothing
 
 typeGoal' :: MonadCheck m => String -> Kind -> m Ty
 typeGoal' s k =
-  do s' <- fresh ("t$" ++ s)
+  do s' <- fresh s
      l  <- theLevel
      TUnif . (flip (UV 0 l) k) . Goal . (s',) <$> newRef Nothing
