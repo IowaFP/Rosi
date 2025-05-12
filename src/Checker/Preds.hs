@@ -257,8 +257,12 @@ solve (cin, p, r) =
         in
         do force p z (TRow (map (uncurry (TLabeled . TLab)) zs))
            return (Just (VPlusSimple is))
-  prim (PEq t u) =
-    unifyProductive [] t u
+  prim p@(PEq t u) =
+    do result <- unifyProductive [] t u
+       case result of
+         Productive v -> return (Just v)
+         Unproductive -> return Nothing
+         UnificationFails -> throwError (ErrTypeMismatchPred p t u)
   prim _ = return Nothing
 
   funCallsFrom :: [Ty] -> Maybe ([Ty], [Ty], [Ty])

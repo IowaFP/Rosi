@@ -105,7 +105,7 @@ types). How bad are the error messages?
 
 --}
 
-unify, check, unifyProductive :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Maybe Evid)
+unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Maybe Evid)
 unify eqns actual expected =
   do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing) eqns
      if isNothing result
@@ -120,17 +120,21 @@ check eqns actual expected =
      else mapM_ (uncurry require) preds
      return result
 
+data ProductiveUnification = Productive Evid | Unproductive | UnificationFails
+
 unifyProductive eqns actual expected =
   do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runUnifyM $ unify' actual expected) Nothing) eqns
      result' <- traverse flattenV result
-     if isNothing result' || not (productive result')
-     then do mapM_ perform undoes
-             return Nothing
-     else do trace $ show result ++ " is productive!"
-             mapM_ (uncurry require) preds
-             return result'
-  where productive (Just (VGoal _)) = False
-        productive _                = True
+     case result' of
+       Nothing ->
+         do mapM_ perform undoes
+            return UnificationFails
+       Just (VGoal _) ->
+         do mapM_ perform undoes
+            return Unproductive
+       Just v ->
+         do mapM_ (uncurry require) preds
+            return (Productive v)
 
 checking :: UnifyM t -> UnifyM t
 checking m =

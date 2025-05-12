@@ -206,15 +206,15 @@ a6 = id auto2
 
 a7 = choose id auto
 
--- -- let A8 = choose id auto2 in -- FAILS the reason is simply that the types are
--- --   definitionally different, the orders of implicit args do not match. We
--- --   do *not* reorder or float out implicit args, intentionally, since we
--- --   support mixing implicit and explicit args in arbitrary order.
+-- let A8 = choose id auto2 in -- FAILS the reason is simply that the types are
+--   definitionally different, the orders of implicit args do not match. We
+--   do *not* reorder or float out implicit args, intentionally, since we
+--   support mixing implicit and explicit args in arbitrary order.
 
--- Note: this generates an unsatisfiable equality constraint. Suspect that
--- generalizing over unsolved equality constraints is still a bad idea.
+-- We now reject this as well, as we observe that the generated equality
+-- constraint is unsatisfiable
 
-a8 = choose id auto2
+-- a8 = choose id auto2
 
 -- let A9 : ({A} → (A → A) → List A → A) → IdTy
 --     = λ f. f (choose id) ids;
