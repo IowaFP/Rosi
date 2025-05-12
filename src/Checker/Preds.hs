@@ -305,11 +305,11 @@ guess (pr@(tcin, PEq t u, v) : prs) =
   do t' <- fst <$> normalize [] t
      u' <- fst <$> normalize [] u
      case (t', u') of
-       (TInst (Unknown n (Goal (s, r))) t@(TInst (Unknown {}) _), _) ->
+       (TInst (Unknown {}) (TInst (Unknown _ (Goal (s, r))) _), _) ->
          do trace $ unwords ["guessing", s, ":= {}"]
             writeRef r (Just (Known []))
             return (Just (pr : prs))
-       (_, TInst (Unknown n (Goal (s, r))) t@(TInst (Unknown {}) _)) ->
+       (_, TInst (Unknown {}) (TInst (Unknown _ (Goal (s, r))) _)) ->
            do trace $ unwords ["guessing", s, ":= {}"]
               writeRef r (Just (Known []))
               return (Just (pr : prs))
