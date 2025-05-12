@@ -324,7 +324,8 @@ guess (pr@(tcin, PEq t u, v) : prs) =
         guessInstantiation t (TInst (Unknown n (Goal (s, r))) u) =
           do xs' <- mapM fresh xs
              refs <- replicateM (length xs) (newRef Nothing)
-             let us = [TUnif (UV 0 0 (Goal (x, r)) k) | x <- xs' | r <- refs | k <- ks ]
+             l <- theLevel
+             let us = [TUnif (UV 0 l (Goal (x, r)) k) | x <- xs' | r <- refs | k <- ks ]
              writeRef r (Just (Known (map TyArg us)))
              t''' <- instantiate t us
              trace $ unlines [ unwords ["guessing", s, ":=", show us]

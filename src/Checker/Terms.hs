@@ -217,15 +217,15 @@ checkTerm0 e0@(ELet x e f) expected =
 generalize :: Term -> CheckM (Term, Ty)
 generalize e =
   do tcin <- ask
-     ((level, t, e'), tcout) <-
-         collect $
-         upLevel $
-         local (\cin -> cin { pctxt = [] }) $
-         do t <- typeGoal "t"
-            level <- theLevel
-            (level, t,) <$> checkTerm e t
-     (psHere, psThere) <- splitProblems level (goals tcout)
-     remaining <- solverLoop psHere
+     (level, t, e', remaining, psThere) <-
+       upLevel $
+       local (\cin -> cin { pctxt = [] }) $
+       do t <- typeGoal "t"
+          level <- theLevel
+          (e', tcout) <- collect $ checkTerm e t
+          (psHere, psThere) <- splitProblems level (goals tcout)
+          remaining <- solverLoop psHere
+          return (level, t, e', remaining, psThere)
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
      when (not (null ungeneralizable)) $ notEntailed ungeneralizable
      tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere))
