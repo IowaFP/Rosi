@@ -16,6 +16,7 @@ import Data.Maybe (fromJust, isNothing)
 
 import Checker.Monad
 import Checker.Types hiding (trace)
+import Checker.Utils
 import Printer
 import Syntax
 
@@ -58,7 +59,7 @@ instance MonadCheck UnifyM where
   assume g m = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> assume g (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns))
   require p r = tell ([], [(p, r)])
   fresh = UM . lift . lift . lift . fresh
-  upLevel m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> upLevel (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  atLevel l m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> atLevel l (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
   theLevel = UM $ lift $ lift $ lift theLevel
 
 canUpdate :: Typeable a => IORef a -> UnifyM Bool
@@ -256,17 +257,24 @@ unifyInstantiating t u unify =
 --    unshifted far enough, generating a fresh uvar to take their role
 --
 -- If that much ever works, I'll then return to the levels question, as
--- I suspect thatthe better way to handle levels is via promotion rather
+-- I suspect that the better way to handle levels is via promotion rather
 -- than having level references
 
 promote :: UVar -> Ty -> UnifyM (Maybe Ty)
 promote uv = promoteN uv 0
 
 promoteN :: UVar -> Int -> Ty -> UnifyM (Maybe Ty)
-promoteN (UV n _ _ _) m t@(TVar i s mk)
-  | i < m = return (Just t)
-  | i >= n = return (Just $ TVar (i - n) s mk)
-  | otherwise = return Nothing
+promoteN v@(UV n l' _ _) m t@(TVar i s) =
+  do kb <- asks ((!! i) . kctxt)
+     case kb of
+       KBVar _ l
+         | l' < l -> do trace $ "8 incoming unification failure: unable to promote " ++ show v ++ " to " ++ show t
+                        return Nothing
+         | i < m -> return (Just t)
+         | i >= n -> return (Just $ TVar (i - n) s)
+         | otherwise -> return Nothing
+       -- Really don't think this should be possible...
+       KBDefn _ u -> promoteN v m u
 promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k'))
   | r == r' = return Nothing -- Occurs check
   | otherwise =
@@ -286,8 +294,10 @@ promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k
                 return (Just (newT m))
 promoteN v _ TFun = return (Just TFun)
 promoteN v n (TThen p t) = liftM2 TThen <$> promoteP v n p <*> promoteN v n t
-promoteN v n (TForall s k t) = liftM (TForall s k) <$> promoteN v (n + 1) t
-promoteN v n (TLam s k t) = liftM (TLam s k) <$> promoteN v (n + 1) t
+promoteN v n (TForall s (Just k) t) = liftM (TForall s (Just k)) <$> (atLevel 0 $ bindTy k $ promoteN v (n + 1) t)
+promoteN v n (TForall s Nothing t) = error "can't promote unkinded forall"
+promoteN v n (TLam s (Just k) t) = liftM (TLam s (Just k)) <$> (atLevel 0 $ bindTy k $ promoteN v (n + 1) t)
+promoteN v n (TLam s Nothing t) = error "can't promote unkinded lambda"
 promoteN v n (TApp t u) = liftM2 TApp <$> promoteN v n t <*> promoteN v n u
 promoteN _ _ (TLab s) = return (Just (TLab s))
 promoteN v n (TSing t) = liftM TSing <$> promoteN v n t
@@ -326,7 +336,7 @@ promoteP v n (PPlus x y z) = liftM3 PPlus <$> promoteN v n x <*> promoteN v n y 
 solveUV :: HasCallStack => UVar -> Ty -> UnifyM (Maybe Evid)
 solveUV v t =
   do k <- kindOf t
-     -- next line is arguable wrong: should just make unification fail, not immediately signal a type error
+     -- next line is arguably wrong: should just make unification fail, not immediately signal a type error
      expectK t k (uvKind v)
      --
      mt' <- promote v t
@@ -341,7 +351,7 @@ solveUV v t =
             return (Just VEqRefl)
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
-unify0 (TVar i _ _) (TVar j _ _)
+unify0 (TVar i _) (TVar j _)
   | i == j = return (Just VEqRefl)
 unify0 (TUnif v) (TUnif w)
   | uvShift v == uvShift w, goalRef (uvGoal v) == goalRef (uvGoal w) = return (Just VEqRefl)
@@ -505,9 +515,9 @@ class HasTyVars t where
   subst :: MonadRef m => Int -> Ty -> t -> m t
 
 instance HasTyVars Ty where
-  subst j t (TVar i w k)
-    | i == j = return t
-    | otherwise = return (TVar i w k)
+  subst j t u@(TVar i _)
+    | j == i = return t
+    | otherwise = return u
   subst v t u@(TUnif (UV n _ (Goal (y, r)) k)) =
     do mt <- readRef r
        case mt of
@@ -561,12 +571,12 @@ normalize eqns t
   | Just (u, v) <- lookup t eqns =
     do (u', q) <- normalize eqns u
        return (u', VEqTrans v q)
-normalize eqns t@(TVar i _ _) =
-  do (_, mdef) <- asks ((!! i) . kctxt)
-     case mdef of
-       Nothing -> return (t, VEqRefl)
-       Just def -> do (t', q) <- normalize eqns (shiftTN 0 (i + 1) def)
-                      return (t', VEqTrans VEqDefn q)
+normalize eqns t@(TVar i _) =
+  do kb <- asks ((!! i) . kctxt)
+     case kb of
+       KBVar _ _ -> return (t, VEqRefl)
+       KBDefn _ def -> do (t', q) <- normalize eqns (shiftTN 0 (i + 1) def)
+                          return (t', VEqTrans VEqDefn q)
 normalize eqns t0@(TApp (TLam x (Just k) t) u) =
   do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
      (t2, q) <- normalize eqns t1
@@ -583,7 +593,7 @@ normalize eqns (TApp (TMapFun f) (TRow es))
        return (t, VEqTrans VEqMap q)
 -- The next rule implements `map id == id`
 normalize eqns (TApp (TMapFun f) z)
-  | TLam _ k (TVar 0 _ _) <- f =
+  | TLam _ k (TVar 0 _) <- f =
     do (z, q) <- normalize eqns z
        return (z, VEqTrans VEqMapId q)
 -- The following rules (attempt to) implement `map f . map g == map (f . g)`.
@@ -595,7 +605,7 @@ normalize eqns (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
      (t, q) <- normalize eqns (TApp (TMapFun (TLam v k f')) z)
      return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TApp (TMapFun (TLam v (Just (KFun KType KType)) f)) (TApp (TMapFun TFun) z)) =
-  do f' <- subst 0 (TApp TFun (TVar 0 v (Just KType))) f
+  do f' <- subst 0 (TApp TFun (TVar 0 v)) f
      (t, q) <- normalize eqns (TApp (TMapFun (TLam v (Just KType) f')) z)
      return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
@@ -607,7 +617,7 @@ normalize eqns (TApp (TMapArg (TRow es)) t)
        return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TMapArg z) =
     do KRow (KFun k1 k2) <- kindOf z
-       return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y" (Just (KFun k1 k2))) (TVar 1 "X" (Just k1))))) (shiftTN 0 1 z)), VEqDefn)
+       return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y") (TVar 1 "X")))) (shiftTN 0 1 z)), VEqDefn)
 normalize eqns (TApp t1 t2) =
   do (t1', q1) <- normalize eqns t1
      q1' <- flattenV q1

@@ -211,7 +211,7 @@ atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
                , TPi <$> (symbol "Pi" >> atype)
                , TMu <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
-               , flip (TVar (-1)) Nothing <$> identifier
+               , (\x -> TVar (-1) x) <$> identifier
                , parens ty ]
 
 pr :: Parser Pred
@@ -278,9 +278,9 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
   app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
   app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
   app (BuiltIn "ana") (Type phi : Term t : ts) = app (Term (EAna phi t)) ts
-  app (BuiltIn "ana") (Term t : ts) = app (Term (EAna (TLam "X" (Just KType) (TVar 0 "X" (Just KType))) t)) ts
+  app (BuiltIn "ana") (Term t : ts) = app (Term (EAna (TLam "X" (Just KType) (TVar 0 "X")) t)) ts
   app (BuiltIn "syn") (Type phi : Term t : ts) = app (Term (ESyn phi t)) ts
-  app (BuiltIn "syn") (Term t : ts) = app (Term (ESyn (TLam "X" (Just KType) (TVar 0 "X" (Just KType))) t)) ts
+  app (BuiltIn "syn") (Term t : ts) = app (Term (ESyn (TLam "X" (Just KType) (TVar 0 "X")) t)) ts
   app (BuiltIn s) _ = unexpected (Label $ fromList ("ill-formed " ++ s))
 
   goal s = Goal . (s,) <$> newIORef Nothing

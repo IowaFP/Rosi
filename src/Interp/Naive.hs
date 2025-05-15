@@ -150,13 +150,13 @@ substTy h@(E (ht, _)) t = trace (unwords ["substTy:", show t, "->", show t', "in
 
 -- Other than being pure, why am I not using normalization here??...
 substTy' :: Env -> Ty -> Ty
-substTy' (E (ht, _)) t@(TVar i _ _)
+substTy' (E (ht, _)) t@(TVar i _)
   | i >= length ht = error $ "variable " ++ show t ++ " not in environment " ++ show ht
   | otherwise = ht !! i
 substTy' h TUnif{} = error "substTy: TUnif"
 substTy' h (TThen p t) = TThen p (substTy' h t)
-substTy' (E (ht, he)) (TForall x (Just k) t) = TForall x (Just k) (substTy' (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
-substTy' (E (ht, he)) (TLam x (Just k) t) = TLam x (Just k) (substTy' (E (TVar 0 x (Just k) : map (shiftT 0) ht, he)) t)
+substTy' (E (ht, he)) (TForall x (Just k) t) = TForall x (Just k) (substTy' (E (TVar 0 x : map (shiftT 0) ht, he)) t)
+substTy' (E (ht, he)) (TLam x (Just k) t) = TLam x (Just k) (substTy' (E (TVar 0 x : map (shiftT 0) ht, he)) t)
 substTy' e@(E (ht, he)) (TApp t u)
   | TLam _ _ body <- t' = substTy' (E (u' : shiftE ht, he)) body
   | TMapFun f <- t', TRow lts <- u', Just ps <- mapM splitLabel lts = TRow [TLabeled l (substTy' e (TApp f t)) | (l, t) <- ps]

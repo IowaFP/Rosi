@@ -79,15 +79,11 @@ checkTy' :: Term -> Ty -> Kind -> CheckM Ty
 checkTy' e t k = withError (ErrContextTerm e . ErrContextType t) $ checkTy t k
 
 checkTy :: Ty -> Kind -> CheckM Ty
-checkTy (TVar (-1) x _) expected =
+checkTy (TVar (-1) x) expected =
   throwError (ErrOther $ "scoping error: " ++ x ++ " not resolved")
-checkTy (TVar i v Nothing) expected =
-  do (k, _) <- asks ((!! i) . kctxt)
-     expectK (TVar i v (Just k)) k expected
-checkTy (TVar i v (Just kv)) expected =
-  do (k, _) <- asks ((!! i) . kctxt)
-     expectK (TVar i v (Just k)) kv k
-     expectK (TVar i v (Just k)) k expected
+checkTy (TVar i v) expected =
+  do k <- asks (kbKind . (!! i) . kctxt)
+     expectK (TVar i v) k expected
 checkTy t@(TUnif (UV {uvKind = k})) expected = expectK t k expected
 checkTy TFun expected = expectK TFun (KFun KType (KFun KType KType)) expected
 checkTy (TThen pi t) expected =

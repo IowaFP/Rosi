@@ -39,8 +39,8 @@ instance HasVars t => HasVars (Maybe t) where
   scope = mapM scope
 
 instance HasVars Ty where
-  scope (TVar _ x mk) =
-    TVar <$> tyvar x <*> pure x <*> pure mk
+  scope (TVar _ x) =
+    TVar <$> tyvar x <*> pure x
   -- Wild assumption: scoping happens before any goals have been resolved, so
   -- I'm not going to track down the contents of the goal
   scope t@TUnif{} = return t

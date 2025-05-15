@@ -49,8 +49,6 @@ checkTerm m t =
      checkTerm0 m t
 
 elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
--- elimForm expected@(TInst (Unknown {}) _) k =
---   k expected
 elimForm expected k =
   do iv <- newRef Nothing
      name <- fresh "i"
@@ -63,11 +61,17 @@ checkTerm0 (ETyLam v Nothing e) expected =
 checkTerm0 e0@(ETyLam v (Just k) e) expected =
   do tcod <- typeGoal "cod"
      q <- expectT e0 (TForall v (Just k) tcod) expected
-     wrap q . ETyLam v (Just k) <$> bindTy k (checkTerm' e tcod)
+     wrap q . ETyLam v (Just k) <$>
+       (upLevel $
+        bindTy k $
+          checkTerm' e tcod)
 checkTerm0 _ (TForall v Nothing t) =
   error "checkTerm: forall without kind"
 checkTerm0 e (TForall v (Just k) t) =
-  ETyLam v (Just k) <$> bindTy k (checkTerm (shiftEN 0 1 e) t)
+  ETyLam v (Just k) <$>
+    (upLevel $
+     bindTy k $
+       checkTerm (shiftEN 0 1 e) t)
 checkTerm0 e0@(EPrLam p e) expected =
   do tcod <- typeGoal "cod"
      q <- expectT e0 (TThen p tcod) expected
@@ -80,7 +84,7 @@ checkTerm0 e@(EVar i v) expected =
   do t <- lookupVar i
      elimForm expected $ \ expected ->
        do q <- expectT e t expected
-          return (wrap q (EVar i v)) -- TODO: does the cast go inside or outside the inst??
+          return (wrap q (EVar i v))
 checkTerm0 (ELam v Nothing e) expected =
   do tdom <- typeGoal "dom"
      checkTerm0 (ELam v (Just tdom) e) expected
@@ -138,45 +142,51 @@ checkTerm0 e@(EConst c) expected =
         -- types of the constants directly
         constType CPrj =
           do k <- kindGoal "r"
+             let tvar 1 = TVar 1 "y"
+                 tvar 0 = TVar 0 "z"
              return (TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
-                       PLeq (TVar 1 "y" (Just (KRow k))) (TVar 0 "z" (Just (KRow k))) `TThen`
-                         TPi (TVar 0 "z" (Just (KRow k))) `funTy` TPi (TVar 1 "y" (Just (KRow k))))
+                       PLeq (tvar 1) (tvar 0) `TThen`
+                         TPi (tvar 0) `funTy` TPi (tvar 1))
         constType CInj =
           do k <- kindGoal "r"
+             let tvar 1 = TVar 1 "y"
+                 tvar 0 = TVar 0 "z"
              return (TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
-                       PLeq (TVar 1 "y" (Just (KRow k))) (TVar 0 "z" (Just (KRow k))) `TThen`
-                         TSigma (TVar 1 "y" (Just (KRow k))) `funTy` TSigma (TVar 0 "z" (Just (KRow k))))
+                       PLeq (tvar 1) (tvar 0) `TThen`
+                         TSigma (tvar 1) `funTy` TSigma (tvar 0))
         constType CConcat =
           do k <- kindGoal "r"
-             let tvar 2 = TVar 2 "x" (Just (KRow k))
-                 tvar 1 = TVar 1 "y" (Just (KRow k))
-                 tvar 0 = TVar 0 "z" (Just (KRow k))
+             let tvar 2 = TVar 2 "x"
+                 tvar 1 = TVar 1 "y"
+                 tvar 0 = TVar 0 "z"
              return (TForall "x" (Just (KRow k)) $ TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PPlus (tvar 2) (tvar 1) (tvar 0) `TThen`
                          TPi (tvar 2) `funTy` TPi (tvar 1) `funTy` TPi (tvar 0))
         constType CBranch =
           do k <- kindGoal "r"
-             let tvar 3 = TVar 3 "x" (Just (KRow k))
-                 tvar 2 = TVar 2 "y" (Just (KRow k))
-                 tvar 1 = TVar 1 "z" (Just (KRow k))
-                 tvar 0 = TVar 0 "t" (Just KType)
+             let tvar 3 = TVar 3 "x"
+                 tvar 2 = TVar 2 "y"
+                 tvar 1 = TVar 1 "z"
+                 tvar 0 = TVar 0 "t"
              return (TForall "x" (Just (KRow k)) $ TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "t" (Just KType) $
                        PPlus (tvar 3) (tvar 2) (tvar 1) `TThen`
                          (TSigma (tvar 3) `funTy` tvar 0) `funTy`
                          (TSigma (tvar 2) `funTy` tvar 0) `funTy`
                          (TSigma (tvar 1) `funTy` tvar 0))
         constType CIn =
-          return (TForall "f" (Just (KType `KFun` KType)) $
-                    f `TApp` TMu f `funTy` TMu f) where
-          f = TVar 0 "f" (Just (KType `KFun` KType))
+          do let f = TVar 0 "f"
+             return (TForall "f" (Just (KType `KFun` KType)) $
+                       f `TApp` TMu f `funTy` TMu f) where
+
         constType COut =
-          return (TForall "f" (Just (KType `KFun` KType)) $
-                    TMu f `funTy` f `TApp` TMu f) where
-          f = TVar 0 "f" (Just (KType `KFun` KType))
+          do let f = TVar 0 "f"
+             return (TForall "f" (Just (KType `KFun` KType)) $
+                       TMu f `funTy` f `TApp` TMu f) where
         constType CFix =
-          return (TForall "a" (Just KType) $
-                   (a `funTy` a) `funTy` a) where
-          a = TVar 0 "a" (Just KType)
+          do let a = TVar 0 "a"
+             return (TForall "a" (Just KType) $
+                      (a `funTy` a) `funTy` a) where
+
 checkTerm0 e0@(EAna phi e) expected =
   do k <- kindGoal "k"
      phi' <- checkTy' e0 phi (KFun k KType)
@@ -184,21 +194,21 @@ checkTerm0 e0@(EAna phi e) expected =
      t <- typeGoal "t"
      elimForm expected $ \expected ->
        do q <- expectT e0 (TSigma (TApp (TMapFun phi') r) `funTy` t) expected
+          let tvar 0 = TVar 0 "u"
+              tvar 1 = TVar 1 "l"
           EAna phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
-                                                      PLeq (TRow [TLabeled (TVar 1 "l" (Just KLabel)) (TVar 0 "u" (Just k))]) (shiftTN 0 2 r) `TThen`
-                                                      TSing (TVar 1 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 2 phi') (TVar 0 "u" (Just k)) `funTy` shiftTN 0 2 t)
---           EAna phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $ TForall "y1" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "y2" (Just (KRow k)) $
---                                      PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
---                                      PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
---                                      TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 5 phi') (TVar 3 "u" (Just k)) `funTy` shiftTN 0 5 t)
+                                                      PLeq (TRow [TLabeled (tvar 1) (tvar 0)]) (shiftTN 0 2 r) `TThen`
+                                                      TSing (tvar 1) `funTy` TApp (shiftTN 0 2 phi') (tvar 0) `funTy` shiftTN 0 2 t)
 checkTerm0 e0@(ESyn phi e) expected =
   do k <- kindGoal "k"
      phi' <- checkTy' e0 phi (KFun k KType)
      r <- typeGoal' "r" (KRow k)
      q <- expectT e0 (TPi (TApp (TMapFun phi') r)) expected
+     let tvar 0 = TVar 0 "u"
+         tvar 1 = TVar 1 "l"
      ESyn phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
-                                                 PLeq (TRow [TLabeled (TVar 1 "l" (Just KLabel)) (TVar 0 "u" (Just k))]) (shiftTN 0 2 r) `TThen`
-                                                 TSing (TVar 1 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 2 phi') (TVar 0 "u" (Just k)))
+                                                 PLeq (TRow [TLabeled (tvar 1) (tvar 0)]) (shiftTN 0 2 r) `TThen`
+                                                 TSing (tvar 1) `funTy` TApp (shiftTN 0 2 phi') (tvar 0))
 --     ESyn phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $ TForall "y1" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "y2" (Just (KRow k)) $
 --                                PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
 --                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
@@ -304,7 +314,7 @@ generalize e =
              return names
           where n = length ts - 1
                 generalize (UV { uvGoal = Goal (_, r), uvKind = k }) b i =
-                  writeRef r (Just (TVar (n - i) b (Just k)))
+                   writeRef r (Just (TVar (n - i) b))
 
         generalizePreds :: [(Pred, IORef (Maybe Evid))] -> CheckM ()
         generalizePreds ps =

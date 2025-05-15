@@ -109,11 +109,7 @@ instance Printable UVar where
               else name
 
 instance Printable Ty where
-  ppr (TVar _ s mk) =
-    do pk <- asks printKinds
-       case mk of
-         Just k | pk -> ppre s <:> (P.align <$> ppr k)
-         _ -> ppre s
+  ppr (TVar _ x) = ppre x
   ppr (TUnif v) = ppr v
   ppr TFun = "(->)"
   ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]

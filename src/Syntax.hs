@@ -7,11 +7,41 @@ import Data.Generics hiding (TyCon(..))
 import Data.IORef
 import GHC.Stack
 
+--------------------------------------------------------------------------------
+-- Top-level entities
+--------------------------------------------------------------------------------
+
 data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
 
 data Decl = TyDecl String Kind Ty | TmDecl String (Maybe Ty) Term
   deriving (Eq, Show)
+
+--------------------------------------------------------------------------------
+-- Goals
+--
+-- Goals represent problems to be solved during type inference, kind inference,
+-- or predicate solving.
+--------------------------------------------------------------------------------
+
+newtype Goal t = Goal (String, IORef (Maybe t))
+  deriving (Data, Typeable)
+
+goalName :: Goal t -> String
+goalName (Goal (s, _)) = s
+
+goalRef :: Goal t -> IORef (Maybe t)
+goalRef (Goal (_, r)) = r
+
+instance Eq (Goal t) where
+  Goal (x, _) == Goal (y, _) = x == y
+
+instance Show (Goal t) where
+  show (Goal (x, _)) = x
+
+--------------------------------------------------------------------------------
+-- Kinds
+--------------------------------------------------------------------------------
 
 data Kind =
     KType | KLabel | KRow Kind | KFun Kind Kind | KUnif (Goal Kind)
@@ -31,35 +61,9 @@ data Pred =
     PLeq Ty Ty | PPlus Ty Ty Ty | PEq Ty Ty
   deriving (Data, Eq, Show, Typeable)
 
-newtype Goal t = Goal (String, IORef (Maybe t))
-  deriving (Data, Typeable)
-
-goalName :: Goal t -> String
-goalName (Goal (s, _)) = s
-
-goalRef :: Goal t -> IORef (Maybe t)
-goalRef (Goal (_, r)) = r
-
-instance Eq (Goal t) where
-  Goal (x, _) == Goal (y, _) = x == y
-
-instance Show (Goal t) where
-  show (Goal (x, _)) = x
-
-{-------------------------------------------------------------------------------
-
-Variables
-=========
-
-The goal, henceforth, is to use de Bruijn representation of variables. However,
-for error-reporting and debugging purposes, we'll keep the original names
-around. So, in `TVar Int String (Maybe Kind)`, the `Int` is the *real* identity
-of the variable, and the `String` is just for printing purposes.
-
--------------------------------------------------------------------------------}
-
-instance Show (IORef Int) where
-  show _ = "<ref:int>"
+--------------------------------------------------------------------------------
+-- Types
+--------------------------------------------------------------------------------
 
 data UVar = UV { uvShift :: Int, uvLevel :: Int, uvGoal :: Goal Ty, uvKind :: Kind }
   deriving (Data, Show, Typeable)
@@ -68,7 +72,7 @@ instance Eq UVar where
   v == v' = uvShift v == uvShift v' && goalRef (uvGoal v) == goalRef (uvGoal v')
 
 data Ty =
-    TVar Int String (Maybe Kind)
+    TVar Int String
   | TUnif UVar
     -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
@@ -137,8 +141,7 @@ spine t = (t, [])
 
 -- I really need to learn SYB
 flattenT :: MonadIO m => Ty -> m Ty
-flattenT t@(TVar i v Nothing) = return t
-flattenT (TVar i v (Just k)) = TVar i v . Just <$> flattenK k
+flattenT t@(TVar {}) = return t
 flattenT t@(TUnif (UV n l g@(Goal (_, r)) k)) =
   do mt <- liftIO $ readIORef r
      case mt of
@@ -185,7 +188,6 @@ flattenP (PPlus x y z) =
 flattenP (PEq t u) =
   PEq <$> flattenT t <*> flattenT u
 
-
 flattenIs :: MonadIO m => Insts -> m Insts
 flattenIs is@(Unknown n (Goal (s, r))) =
   do mis <- liftIO $ readIORef r
@@ -196,51 +198,14 @@ flattenIs (Known is) = Known <$> mapM flattenI is
   where flattenI (TyArg t) = TyArg <$> flattenT t
         flattenI (PrArg v) = return (PrArg v)
 
-kindOf :: (HasCallStack, MonadIO m, MonadFail m) => Ty -> m Kind
-kindOf (TVar _ _ (Just k)) = flattenK k
-kindOf (TVar _ x Nothing) = error $ "internal: unkinded type variable " ++ x
-kindOf (TUnif (UV {uvKind = k})) = flattenK k
-kindOf TFun = return $ KFun KType (KFun KType KType)
-kindOf (TThen _ t) = kindOf t
-kindOf (TForall _ _ t) = kindOf t
-kindOf (TLam x (Just k) t) = KFun k <$> kindOf t
-kindOf (TLam x Nothing t) = error "kindOf: TLam without kind"
-kindOf (TApp f _) =
-  do KFun _ k <- kindOf f
-     return k
-kindOf (TLab _) = return KLabel
-kindOf (TSing _) = return KType
-kindOf (TLabeled _ t) = kindOf t
-kindOf (TRow []) = return $ KRow KType -- probably wrong
-kindOf (TRow (t : _)) = KRow <$> kindOf t
-kindOf (TPi r) =
-  do KRow k <- kindOf r
-     return k
-kindOf (TSigma r) =
-  do KRow k <- kindOf r
-     return k
-kindOf (TMu f)=
-  do KFun k _ <- kindOf f
-     return k
-kindOf (TInst _ t) = kindOf t
-kindOf (TMapFun f) =
-  do KFun kd kc <- kindOf f
-     return $ KFun (KRow kd) (KRow kc)
-kindOf (TMapArg f) =
-  do KRow (KFun kd kc) <- kindOf f
-     return $ KFun kd (KRow kc)
-kindOf (TCompl r _) = kindOf r
-kindOf t = error $ "internal: kindOf " ++ show t
-
-
 shiftTNV :: HasCallStack => [UVar] -> Int -> Int -> Ty -> Ty
 shiftTNV _ _ 0 t = t
-shiftTNV _ j n (TVar i x k)
+shiftTNV _ j n (TVar i x)
   | i >= j =
     if i + n < j
     then error "negative shift produced capture"
-    else TVar (i + n) x k
-  | otherwise = TVar i x k
+    else TVar (i + n) x
+  | otherwise = TVar i x
 shiftTNV vs _ n t@(TUnif v@(UV n' l g k))
   | v `elem` vs = t
   | otherwise = TUnif (UV (n + n') l g k)
@@ -280,42 +245,9 @@ shiftPNV vs j n (PPlus x y z) = PPlus (shiftTNV vs j n x) (shiftTNV vs j n y) (s
 shiftT :: Int -> Ty -> Ty
 shiftT j = shiftTN j 1
 
-tyLevel :: MonadIO m => Ty -> m Int
-tyLevel (TVar {}) = return maxBound
-tyLevel (TUnif (UV { uvLevel = lev, uvGoal = Goal (_, tyr) })) =
-  do mt <- liftIO (readIORef tyr)
-     case mt of
-       Nothing -> return lev
-       Just t  -> tyLevel t
-tyLevel TFun = return maxBound
-tyLevel (TThen p t) = min <$> prLevel p <*> tyLevel t
-tyLevel (TForall _ _ t) = tyLevel t
-tyLevel (TLam _ _ t) = tyLevel t
-tyLevel (TApp t u) = min <$> tyLevel t <*> tyLevel u
-tyLevel (TLab _) = return maxBound
-tyLevel (TSing t) = tyLevel t
-tyLevel (TLabeled l t) = min <$> tyLevel l <*> tyLevel t
-tyLevel (TRow ts) = foldr min maxBound <$> mapM tyLevel ts
-tyLevel (TPi t) = tyLevel t
-tyLevel (TSigma t) = tyLevel t
-tyLevel (TMu t) = tyLevel t
-tyLevel (TMapFun f) = tyLevel f
-tyLevel (TCompl z y) = min <$> tyLevel z <*> tyLevel y
-tyLevel (TInst is t) = min <$> isLevel is <*> tyLevel t
-  where isLevel (Unknown _ (Goal (_, r))) =
-          do mis <- liftIO (readIORef r)
-             case mis of
-               Just is -> isLevel is
-               Nothing -> return maxBound
-        isLevel (Known is) = foldr min maxBound <$> mapM iLevel is
-        iLevel (TyArg t) = tyLevel t
-        iLevel (PrArg _) = return maxBound
-tyLevel (TMapArg f) = tyLevel f
-
-prLevel :: MonadIO m => Pred -> m Int
-prLevel (PEq t u) = min <$> tyLevel t <*> tyLevel u
-prLevel (PLeq y z) = min <$> tyLevel y <*> tyLevel z
-prLevel (PPlus x y z) = min <$> tyLevel x <*> (min <$> tyLevel y <*> tyLevel z)
+--------------------------------------------------------------------------------
+-- Terms
+--------------------------------------------------------------------------------
 
 data Const =
     CPrj | CConcat | CInj | CBranch | CIn | COut | CFix
@@ -359,6 +291,10 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
   (f <=< g) x = g x >>= f
   flattenInsts (EInst m is) = EInst m <$> flattenIs is
   flattenInsts m = return m
+
+--------------------------------------------------------------------------------
+-- Evidence
+--------------------------------------------------------------------------------
 
 data Evid =
     VVar Int | VGoal (Goal Evid)     -- VVars are entirely internal, so I'll only give them de Bruijn indices
@@ -486,7 +422,11 @@ flattenV v = return v
   -- Covers: VVar, VRefl, VLeqSimple, VPlusSimple, VEqBeta, VEqMap, VEqCompl, VEqDefn,
   -- VEqLiftTyCon, VEqTyConSing, VEqMapId, VEqMapCompose,
 
+--------------------------------------------------------------------------------
+-- Type errors
 --
+-- Probably ought to live somewhere else
+--------------------------------------------------------------------------------
 
 data Error = ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
            | ErrTypeMismatch Term Ty Ty | ErrTypeMismatchFD Pred (Maybe Evid) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Ty Kind Kind

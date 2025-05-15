@@ -35,7 +35,12 @@ class Monad m => MonadRef m where
   writeRef :: Typeable a => IORef a -> a -> m ()
   newRef :: Typeable a => a -> m (IORef a)
 
-type KCtxt = [(Kind, Maybe Ty)]
+data KBinding =
+    KBVar { kbKind :: Kind, kbLevel :: Int }
+  | KBDefn { kbKind :: Kind, kbDefn :: Ty }
+  deriving (Eq, Show)
+
+type KCtxt = [KBinding]
 -- capturing type *definitions* in the kinding context as well; quantifier- and
 -- lambda-bound type definitions get a `Nothing` in the second component.
 -- data TCtxt = Emp | Shift TCtxt | Bind Ty TCtxt
@@ -79,12 +84,12 @@ class (Monad m, MonadFail m, MonadError Error m, MonadRef m, MonadIO m, MonadRea
   require :: Pred -> IORef (Maybe Evid) -> m ()
 
   fresh :: String -> m String
-  upLevel :: m a -> m a
+  atLevel :: Int -> m t -> m t
   theLevel :: m Int
 
 instance MonadCheck CheckM where
-  bindTy k = local (\env -> env { kctxt = (k, Nothing) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPNV [] 0 1) (pctxt env)  })
-  defineTy k t = local (\env -> env { kctxt = (k, Just t) : kctxt env, tctxt = shiftE (tctxt env) })
+  bindTy k = local (\env -> env { kctxt = KBVar k (level env) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPNV [] 0 1) (pctxt env) })
+  defineTy k t = local (\env -> env { kctxt = KBDefn k t : kctxt env, tctxt = shiftE (tctxt env), level = level env + 1 })
   bind t = local (\env -> env { tctxt = t : tctxt env })
   assume g = local (\env -> env { pctxt = g : pctxt env })
   require p r =
@@ -95,9 +100,12 @@ instance MonadCheck CheckM where
   fresh x = do i <- gets next
                modify (\st -> st { next = i + 1 })
                return ((takeWhile ('#' /=) x) ++ '#' : show i)
-  upLevel = local (\st -> st { level = level st + 1 })
+  atLevel l = local (\st -> st { level = l })
   theLevel = asks level
 
 
 collect :: CheckM a -> CheckM (a, TCOut)
 collect m = censor (const (TCOut [])) $ listen m
+
+upLevel m = do l <- theLevel
+               atLevel (l + 1) m
