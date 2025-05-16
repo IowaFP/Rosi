@@ -119,11 +119,12 @@ solve (cin, p, r) =
 
   matchLeqMap p@(PLeq (TRow es) (TApp (TMapFun f) z)) q@(PLeq (TRow es') z', v) =
     suppose (typesEqual z z') $
-    case (mapM splitLabel es, mapM splitLabel es') of
-      (Just ps, Just ps') | sameSet (map fst ps) (map fst ps') ->
-        do trace $ "1 match: (" ++ show p ++ ") (" ++ show q ++ ")"
-           forceAssocs ps (map (second (TApp f)) ps')
-           return (Just v)  -- TODO: really?
+    case (mapM label es, mapM label es') of
+      (Just ed, Just ed')
+         | Just is <- sequence [elemIndex e ed' | e <- ed] ->
+            do mapM_ (\(i, TLabeled _ t) -> let TLabeled _ u = es' !! i in force p t (TApp f u))
+                     (zip is es)
+               return (Just (VLeqSimple is `VLeqTrans` v))
       _ -> return Nothing
   matchLeqMap _ _ = return Nothing
 
