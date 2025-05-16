@@ -190,7 +190,7 @@ unifyInstantiating t u unify =
        (TForall {}, TInst (Unknown {}) (TUnif {})) ->
          return Nothing
        _
-         | Just matches <- match (reverse uis) (reverse (take (length tqs - nuqs) tqs)) ->
+         | Just matches <- match (reverse (map reverseIs uis)) (reverse (take (length tqs - nuqs) tqs)) ->
              do trace $ unlines ["unifyInstantiating:", "    " ++ show (quants t'), "    " ++ show (insts u'), "    " ++ show matches]
                 t'' <- instantiates (reverse matches) t'
                 unify t'' u''
@@ -215,6 +215,7 @@ unifyInstantiating t u unify =
                 matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (t, k) :)) <$> matchKnown is qs
                 matchKnown (PrArg _ : _) _ = Nothing
                 matchKnown _ [] = Nothing
+                matchKnown is qs = error $ "ruh-roh: " ++ show is ++ ", " ++ show qs
         match is qs = Nothing -- error $ unlines ["ruh-roh: in ", renderString False (ppr t), " ~ ", renderString False (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
 
         -- Need to write function to apply list of instantiations derived from
@@ -247,6 +248,10 @@ unifyInstantiating t u unify =
              require p vr
              (is, t') <- instantiate (n - 1) m t
              return (PrArg (VGoal (Goal ("v", vr))) : is, t')
+
+        reverseIs :: Insts -> Insts
+        reverseIs is@(Unknown {}) = is
+        reverseIs (Known is) = Known (reverse is)
 
 -- Promotion is doing (for now) several things:
 --  - The occurs check: making sure we're not attempting to compute an
