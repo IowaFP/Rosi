@@ -196,7 +196,7 @@ flattenIs is@(Unknown n (Goal (s, r))) =
        Just is -> flattenIs (shiftIsV [] 0 n is)
 flattenIs (Known is) = Known <$> mapM flattenI is
   where flattenI (TyArg t) = TyArg <$> flattenT t
-        flattenI (PrArg v) = return (PrArg v)
+        flattenI (PrArg v) = PrArg <$> flattenV v
 
 shiftTNV :: HasCallStack => [UVar] -> Int -> Int -> Ty -> Ty
 shiftTNV _ _ 0 t = t
@@ -366,7 +366,7 @@ flattenV v@(VGoal (Goal (_, r))) =
     do w <- liftIO $ readIORef r
        case w of
          Nothing -> return v
-         Just w' -> return w'
+         Just w' -> flattenV w'
 flattenV (VPredEq v1 v2) =
   do v1' <- flattenV v1
      v2' <- flattenV v2

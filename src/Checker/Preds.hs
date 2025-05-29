@@ -12,6 +12,7 @@ import Data.Maybe (isNothing)
 
 import Checker.Monad
 import Checker.Unify
+import Checker.Utils
 import Printer
 import Syntax
 
@@ -193,7 +194,7 @@ solve (cin, p, r) =
 
   expandAll :: [(Pred, Evid)] -> [(Pred, Evid)]
   expandAll = go [] where
-    go qs [] = qs
+    go qs [] = reverse qs
     go qs (p : ps) = go (p : qs) (ps' ++ ps) where
       ps' = expand1 p ++ concatMap (expand2 p) qs
 
@@ -275,34 +276,39 @@ solve (cin, p, r) =
     where tyAppFrom (TApp f e) = Just (f, e)
           tyAppFrom _          = Nothing
 
-  -- FIXME: these rules are just wrong
+  defer :: Pred -> CheckM (Maybe Evid)
+  defer p =
+    do r <- newRef Nothing
+       require p r
+       name <- fresh "g"
+       return (Just (VGoal (Goal (name, r))))
 
   mapFunApp as p@(PLeq (TApp (TMapFun f) y) (TApp (TMapFun f') z)) =
-    do force p f f'
-       fmap (VLeqLiftL f) <$> everything as (PLeq y z)
+    suppose (typesEqual f f') $
+      fmap (VLeqLiftL f) <$> defer (PLeq y z)
   mapFunApp as p@(PLeq (TRow []) (TApp (TMapFun f) z)) =
-    fmap (VLeqLiftL f) <$> everything as (PLeq (TRow []) z)
-  mapFunApp as p@(PLeq (TRow y) (TApp (TMapFun f) z))
-    | TLam v (Just k) (TVar i w) <- f  -- I think this case should actually have been normalized away....
-    , v == w
-    , Just (ls, ts) <- mapAndUnzipM splitLabel y =
-      fmap (VPredEq (VEqLeq (VEqMap `VEqTrans` VEqRow [ VEqSym VEqBeta | t <- ts]) VEqRefl) .
-            VLeqLiftL f) <$> everything as (PLeq (TRow y) z)
+    fmap (VLeqLiftL f) <$> defer (PLeq (TRow []) z)
   mapFunApp as p@(PLeq (TApp (TMapFun f) y) (TRow [])) =
-    fmap (VLeqLiftL f) <$> everything as (PLeq y (TRow []))
+    fmap (VLeqLiftL f) <$> defer (PLeq y (TRow []))
   mapFunApp as p@(PLeq (TApp (TMapFun f) y) (TRow z))
     | Just (ls, fs, es) <- funCallsFrom z =
-      do mapM_ (force p f) fs
-         fmap (VLeqLiftL f) <$> everything as (PLeq y (TRow (zipWith TLabeled ls es)))
-    | TLam v (Just k) (TVar i w) <- f
-    , v == w
-    , Just (ls, ts) <- mapAndUnzipM splitLabel z =
-      fmap (VPredEq (VEqLeq VEqRefl (VEqMap `VEqTrans` VEqRow [ VEqSym VEqBeta | t <- ts])) .
-            VLeqLiftL f) <$> everything as (PLeq y (TRow z))
-  mapFunApp as p@(PPlus (TApp (TMapFun f) x) (TApp (TMapFun g) y) (TApp (TMapFun h) z)) =
-    do force p f g
-       force p g h
-       fmap (VPlusLiftL f) <$> everything as (PPlus x y z)
+    suppose (allM (typesEqual f) fs) $
+      fmap (VLeqLiftL f) <$> defer (PLeq y (TRow (zipWith TLabeled ls es)))
+  mapFunApp as p@(PPlus x (TApp (TMapFun f) y) (TApp (TMapFun g) z)) =
+    suppose (typesEqual f g) $
+    do x' <- typeGoal' "x" =<< kindOf y
+       force p x (TApp (TMapFun f) x') -- I am very unsure about this
+       fmap (VPlusLiftL f) <$> defer (PPlus x' y z)
+  mapFunApp as p@(PPlus (TApp (TMapFun f) x) y (TApp (TMapFun g) z)) =
+    suppose (typesEqual f g) $
+    do y' <- typeGoal' "y" =<< kindOf x
+       force p y (TApp (TMapFun f) y') -- I am very unsure about this
+       fmap (VPlusLiftL f) <$> defer (PPlus x y' z)
+  mapFunApp as p@(PPlus (TApp (TMapFun f) x) (TApp (TMapFun g) y) z) =
+    suppose (typesEqual f g) $
+    do z' <- typeGoal' "z" =<< kindOf x
+       force p z (TApp (TMapFun f) z') -- I am very unsure about this
+       fmap (VPlusLiftL f) <$> defer (PPlus x y z')
   mapFunApp _ _ = return Nothing
 
 guess :: [Problem] -> CheckM (Maybe [Problem])
