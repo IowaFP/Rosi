@@ -94,8 +94,8 @@ solve (cin, p, r) =
                Nothing -> fundeps p q
                Just _  -> return ()) xs
 
-  matchLeqDirect, matchLeqMap, matchPlusDirect, matchEqDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
-  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q <|> matchEqDirect p q
+  matchLeqDirect, matchLeqMap, matchPlusDirect, matchPlusMap, matchEqDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
+  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q <|> matchPlusMap p q <|> matchEqDirect p q
 
   matchLeqDirect (PLeq y@(TRow es) z) (PLeq y'@(TRow es') z', v) =
     suppose (typesEqual z z') $
@@ -157,8 +157,51 @@ solve (cin, p, r) =
             do q <- unify [] t t'
                case q of
                  Nothing -> fundeps p q
-                 _       -> return (Just v) -- TODO: really?
+                 _       -> return (Just v)
   matchPlusDirect _ _ = return Nothing
+
+  {-
+
+  matchPlusMap handles the following case:
+    Given p@(PPlus x y z) q@(PPlus x' y' z') such that
+      - ONE of x, y, z should be a f* x', f* y', or f* z'
+      - ANOTHER of x, y, z should be a concrete row { l1 := t1, ... }
+      - the CORRESPONDING x', y', z' is a concrete row { l1 := t1', ...}
+    We solve the constraint requiring that:
+      - each of the ti' ~ f ti
+      - the REMAINING x, y, z is f* x', f* y', or f* z'
+
+  Now, this case can arise 6 different ways, so I've abstracted the meat to the
+  `align` case, in which the FIRST is `z` and the second is `x`. We then call
+  the `align` case for each permutation of the input rows.
+
+  -}
+
+  matchPlusMap p@(PPlus x y z) (q@(PPlus x' y' z'), v) =
+    align x y z x' y' z' v <|>
+    align y x z y' x' z' v <|>
+    align y z x y' z' x' v <|>
+    align z y x z' y' x' v <|>
+    align x z y x' z' y' v <|>
+    align z x y z' x' y' v
+    where align x y z x' y' z' v
+            | TApp (TMapFun zf) zr <- z =
+              suppose (typesEqual zr z') $
+              (case (x, x') of
+                (TRow xr, TRow xr')
+                   | Just xs <- mapM splitLabel xr, Just xs' <- mapM splitLabel xr', sameSet (map fst xs) (map fst xs') ->
+                       do forceAssocs xs (map (second (TApp zf)) xs')   -- Is this actually forced?
+                          forceFD y (TApp (TMapFun zf) y')
+                          return (Just (VPlusLiftL zf v))
+                _ -> return Nothing)
+            | otherwise = return Nothing
+
+          forceFD t t' =
+            do q <- unify [] t t'
+               case q of
+                 Nothing -> fundeps p q
+                 _       -> return (Just v)
+  matchPlusMap _ _ = return Nothing
 
   matchEqDirect p@(PEq x y) q@(PEq x' y', v) =
     suppose (typesEqual x x') $
