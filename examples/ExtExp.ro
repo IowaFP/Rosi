@@ -1,4 +1,4 @@
-import Ro.Base, Data.Functor, Data.Nat, Ro.Xr
+import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple
 
 -------------------------------------------------------------------------------
 -- Types
@@ -31,17 +31,17 @@ functorThree : Functor (\t. Triple t t t)
 functorThree = \f x. triple (f (sel x #'1)) (f (sel x #'2)) (f (sel x #'2))
 
 functorBool : Pi (Functor BoolF)
-functorBool = (#'Const := (/\ a b. functorConst [a] [b])) ++ (#'If := (/\ a b. functorThree [a] [b]))
+functorBool = (#'Const := functorConst) ++ (#'If := functorThree)
 
 functorArith : Pi (Functor ArithF)
-functorArith = (#'Const := (/\ a b. functorConst [a] [b])) ++ (#'Plus := (/\ a b. functorTwo [a] [b]))
+functorArith = (#'Const := functorConst) ++ (#'Plus := functorTwo)
 
 functorLam : Pi (Functor LamF)
-functorLam = (#'Var := (/\a b. functorConst [a] [b])) ++ (#'Lam := (/\ a b. functorId [a] [b]))
-           ++ (#'App := (/\ a b. functorTwo [a] [b]))
+functorLam = (#'Var := functorConst) ++ (#'Lam := functorId)
+           ++ (#'App := functorTwo)
 
 functorRec : Pi (Functor RecF)
-functorRec = #'Mu := (/\a b. functorId [a] [b])
+functorRec = #'Mu := functorId
 
 -------------------------------------------------------------------------------
 -- Shorthand
@@ -119,7 +119,7 @@ dpNot = cata (fmapS [AllF] functorAll) depthAll xpNot
 type RConst : * -> R[* -> *] -> *  -- kind polymorphism still not a thing...
 type RConst = \x y. x
 
--- Fun fact: not actually sure how to relabel a bounded algebra right now, sooooo
+-- Fun fact: not actually sure we can relabel bounded algebras sooooo....
 
 type BoolF0 : R[* -> *]
 type BoolF0 = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t) }
@@ -128,20 +128,20 @@ type ArithF0 : R[* -> *]
 type ArithF0 = { 'IConst := (\t. Nat), 'Plus := (\t. Pair t t) }
 
 depthBb : BAlg BoolF0 (RConst Nat)
-depthBb = case #'BConst (\u out rec. one)
-        ? case #'If (\t out rec. succ (max (rec (sel t #'1)) (max (rec (sel t #'2)) (rec (sel t #'3)))))
+depthBb = case #'BConst (\u rec. one)
+        ? case #'If (\t rec. succ (max (rec (sel t #'1)) (max (rec (sel t #'2)) (rec (sel t #'3)))))
 
 depthAb : BAlg ArithF0 (RConst Nat)
-depthAb = case #'IConst (\u out rec. one)
-        ? case #'Plus (\t out rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
+depthAb = case #'IConst (\u rec. one)
+        ? case #'Plus (\t rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
 
 depthLb : BAlg LamF (RConst Nat)
-depthLb = case #'Lam (\e out rec. succ (rec e))
-        ? case #'App (\t out rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
-        ? case #'Var (\t out rec. one)
+depthLb = case #'Lam (\e rec. succ (rec e))
+        ? case #'App (\t rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
+        ? case #'Var (\t rec. one)
 
 depthRb : BAlg RecF (RConst Nat)
-depthRb = case #'Mu (\e out rec. succ (rec e))
+depthRb = case #'Mu (\e rec. succ (rec e))
 
 -- Okay, the type annotations here are getting out of hand again... time to
 -- figure out what's going wrong in type inference.
@@ -172,3 +172,139 @@ dpConst0 = depthb xpConst
 
 dpNot0 : Nat
 dpNot0 = depthb xpNot
+
+-------------------------------------------------------------------------------
+-- Evaluation
+--
+-- The idea is that we'd write functions like:
+--
+--     evalA = case #'IConst (\n. n)
+--           ? case #'Plus (\p. add (evalA (sel p #'1)) (evalA (sel p #'2)))
+--
+-- and then put them together to make the eval function for the whole type. The
+-- challenges are:
+--
+--   1. Each sublanguage will have its own evaluation results: natural numbers,
+--      Booleans, or whatever.
+--   2. Therefore, the results of evaluation may not actually be the right type.
+--   3. The results of the function sublanguage *include* the original language,
+--      'cause closures.
+--
+-- Put those together, and we get something more like:
+
+
+as : forall l f z. { l := f } < z, { 'Err := (\w. Unit) } < z =>
+     #l -> Mu (Sigma z) -> (f (Mu (Sigma z)) -> Mu (Sigma z)) -> Mu (Sigma z)
+as = \l w f. (case l f ? const (rcon #'Err tt)) (out w)
+
+type Env : R[* -> *] -> *
+type Env = \z. List (Mu (Sigma z))
+
+-- type Env : R[*] -> *
+-- type Env = \z. List (Sigma z)
+
+evalA : forall valr.
+        { 'Nat := (\expr. \val. Nat), 'Err := (\expr. \val. Unit) } < valr =>
+          BAlg ArithF0 (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+evalA = \exp rec env.
+           ( case #'IConst (rcon #'Nat)
+           ? case #'Plus (\p.
+               as #'Nat (rec (sel p #'1) env) (\i.
+               as #'Nat (rec (sel p #'2) env) (\j.
+                 rcon #'Nat (add i j))))
+           ) exp
+
+evalB : forall valr.
+        { 'Bool := (\expr. \val. Bool), 'Err := (\expr. \val. Unit) } < valr =>
+        BAlg BoolF0 (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+evalB = \exp rec env.
+           ( case #'BConst (rcon #'Bool)
+           ? case #'If (\t.
+               as #'Bool (rec (sel t #'1) env)
+               ( case #'True (const (rec (sel t #'2) env))
+               ? case #'False (const (rec (sel t #'3) env))
+               ))
+           ) exp
+
+-- Okay, this is (obviously...) fucked... if values contain values, we need to
+-- let a Mu in somewhere.
+
+evalF : forall valr.
+        { 'Clos := (\expr. \val. Pair (List val) (Mu (Sigma expr))), 'Err := (\expr. \val. Unit) } < valr =>
+        BAlg LamF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+evalF = \exp rec env.
+           ( case #'Var (o (maybe (rcon #'Err tt) id) (nth env))
+           ? case #'Lam (\e. rcon #'Clos (pair env e))
+           ? case #'App (\p.
+               as #'Clos (rec (fst p) env) (\clos.
+                 (rec (snd clos)) (cons (rec (snd p) env) (fst clos))))
+           ) exp
+
+evalAB : forall valr.
+         { 'Nat := (\expr. \val. Nat), 'Bool := (\expr. \val. Bool), 'Err := (\expr. \val. Unit) } < valr =>
+         BAlg ABF0 (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+evalAB = evalA ? evalB
+
+xpThree : Mu (Sigma (ArithF0))
+xpThree = rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))
+
+evThree : Mu (Sigma { 'Nat := (\val. Nat), 'Err := (\val. Unit) })
+evThree = fix (\rec x. evalA (out x) rec) xpThree nil
+  -- histo [\w. Env ({ 'Nat := (\w. Nat), 'Err := (\w. Unit) } w) -> Sigma ({ 'Nat := (\w. Nat), 'Err := (\w. Unit) } w)]
+  --       [ArithF0]
+  --       evalA
+  --       xpThree
+  --       nil
+
+xpThreee : Mu (Sigma (ABF0))
+xpThreee = rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))
+
+evThreee : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool), 'Err := (\val. Unit) })
+evThreee = fix (\rec x. evalAB (out x) rec) xpThreee nil
+
+type ABLF0 : R[* -> *]
+type ABLF0 = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t)
+             , 'IConst := (\t. Nat), 'Plus := (\t. Pair t t)
+             , 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t) }
+
+evalABL : forall valr.
+        { 'Nat := (\expr. \val. Nat), 'Bool := (\expr. \val. Bool)
+        , 'Clos := (\expr. \val. Pair (List val) (Mu (Sigma expr)))
+        , 'Err := (\expr. \val. Unit) } < valr =>
+        BAlg ABLF0 (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+evalABL = evalAB ? evalF
+
+xpThreeee : Mu (Sigma ABLF0)
+xpThreeee = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
+                             (rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))))
+
+xpTrue : Mu (Sigma ABLF0)
+xpTrue = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
+                          (rcon #'BConst True))
+
+evThreeee : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
+                      , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
+                      , 'Err := (\val. Unit) })
+evThreeee = fix (\rec x. evalABL (out x) rec) xpThreeee nil
+
+evTrue : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
+                   , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
+                   , 'Err := (\val. Unit) })
+evTrue = fix (\rec x. evalABL (out x) rec) xpTrue nil
+
+xpIdd : Mu (Sigma ABLF0)
+xpIdd = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
+                         (rcon #'Lam (rcon #'Var zero)))
+
+evIdd : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
+                  , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
+                  , 'Err := (\val. Unit) })
+evIdd = fix (\rec x. evalABL (out x) rec) xpIdd nil
+
+xpBoom : Mu (Sigma ABLF0)
+xpBoom = rcon #'App (pair (rcon #'BConst True) (rcon #'BConst True))
+
+evBoom : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
+                   , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
+                   , 'Err := (\val. Unit) })
+evBoom = fix (\rec x. evalABL (out x) rec) xpBoom nil
