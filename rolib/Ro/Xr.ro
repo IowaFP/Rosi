@@ -24,11 +24,23 @@ rinj = \d. cata (fmapS d) (o in inj)
 -------------------------------------------------------------------------------
 -- Bounded algebras
 
+-- type BAlg : R[* -> *] -> (R[* -> *] -> *) -> *
+-- type BAlg = \ z f. forall w r. z < w => Sigma z r -> (r -> Sigma w r) -> (r -> f w) -> f w
+--
+-- histo : forall f z. BAlg z f -> Mu (Sigma z) -> f z
+-- histo = \ a. fix (\ rec x. a (out x) out rec)
+--
+-- brna : forall f x y z. x + y ~ z => BAlg x f -> BAlg y f -> BAlg z f
+-- brna = \ f g. f ? g
+--
+-- brnal : forall f x z. x < z => BAlg x f -> BAlg z f -> BAlg z f
+-- brnal = \ f g. brnl f g
+
 type BAlg : R[* -> *] -> (R[* -> *] -> *) -> *
-type BAlg = \ z f. forall w r. z < w => Sigma z r -> (r -> Sigma w r) -> (r -> f w) -> f w
+type BAlg = \z f. forall w. z < w => Sigma z (Mu (Sigma w)) -> (Mu (Sigma w) -> f w) -> f w
 
 histo : forall f z. BAlg z f -> Mu (Sigma z) -> f z
-histo = \ a. fix (\ rec x. a (out x) out rec)
+histo = \ a. fix (\ rec x. a (out x) rec)
 
 brna : forall f x y z. x + y ~ z => BAlg x f -> BAlg y f -> BAlg z f
 brna = \ f g. f ? g
