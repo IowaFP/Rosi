@@ -3,18 +3,6 @@ import Ro.Base, Data.Functor, Data.Nat, Ro.Xr
 -------------------------------------------------------------------------------
 -- Types
 
-type Pair : * -> * -> *
-type Pair = \ t u. Pi {'1 := t, '2 := u}
-
-pair : forall t u. t -> u -> Pair t u
-pair = \x y. (#'1 := x) ++ (#'2 := y)
-
-type Triple : * -> * -> * -> *
-type Triple = \ t u v. Pi {'1 := t, '2 := u, '3 := v}
-
-triple : forall t u v. t -> u -> v -> Triple t u v
-triple = \x y z. pair x y ++ (#'3 := z)
-
 type BoolF : R[* -> *]
 type BoolF = { 'Const := (\t. Bool), 'If := (\t. Triple t t t) }
 

@@ -1,0 +1,21 @@
+import Ro.Base
+
+type Pair : * -> * -> *
+type Pair = \ t u. Pi {'1 := t, '2 := u}
+
+pair : forall t u. t -> u -> Pair t u
+pair = \x y. (#'1 := x) ++ (#'2 := y)
+
+type Triple : * -> * -> * -> *
+type Triple = \ t u v. Pi {'1 := t, '2 := u, '3 := v}
+
+triple : forall t u v. t -> u -> v -> Triple t u v
+triple = \x y z. pair x y ++ (#'3 := z)
+
+fst = \x. sel x #'1
+snd = \x. sel x #'2
+thd = \x. sel x #'3
+
+first = \f x. (#'1 := f (fst x)) ++ prj x
+second = \f x. (#'2 := f (snd x)) ++ prj x
+third = \f x. (#'3 := f (thd x)) ++ prj x
