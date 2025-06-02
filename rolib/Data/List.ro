@@ -1,0 +1,34 @@
+import Ro.Base, Ro.Xr, Data.Functor, Data.Nat, Data.Tuple
+
+type ListF : * -> * -> *
+type ListF = \a. Sigma { 'Nil := Const Unit, 'Cons := (\l. Pair a l) }
+
+type List : * -> *
+type List = \a. Mu (ListF a)
+
+nil : forall a. List a
+nil = rcon #'Nil tt
+
+cons : forall a. a -> List a -> List a
+cons = \hd tl. rcon #'Cons (pair hd tl)
+
+head : forall a. List a -> Maybe a
+head = \l.
+       ( case #'Nil (const Nothing)
+       ? case #'Cons (o Just fst)
+       ) (out l)
+
+tail : forall a. List a -> List a
+tail = \l.
+       ( case #'Nil (const nil)
+       ? case #'Cons snd
+       ) (out l)
+
+nth : forall a. List a -> Nat -> Maybe a
+nth = fix (\f l n.
+        ( case #'Zero (const (head l))
+        ? case #'Succ (f (tail l))
+        ) (out n))
+
+listTest1 = nth (cons one (cons two (cons three nil))) two
+listTest2 = nth (cons one (cons two nil)) two
