@@ -101,12 +101,13 @@ solve (cin, p, r) =
     suppose (typesEqual z z') $
     cond (typesEqual y y')
       (return (Just v))
-      (case (mapM splitLabel es, mapM splitLabel es') of
-        (Just ps, Just ps') | all (`elem` map fst ps') (map fst ps) ->
-          do trace "9 subset"
-             forceAssocs ps (filter ((`elem` map fst ps) . fst) ps')
-             return (Just v)
-        _ -> return Nothing)
+      (case (mapM label es, mapM label es') of
+         (Just ed, Just ed')
+            | Just is <- sequence [elemIndex e ed' | e <- ed] ->
+               do mapM_ (\(i, TLabeled _ t) -> let TLabeled _ u = es' !! i in force p t u)
+                        (zip is es)
+                  return (Just (VLeqSimple is `VLeqTrans` v))
+         _ -> return Nothing)
   matchLeqDirect (PLeq y z) (PLeq y' z', v) =
     suppose (typesEqual y y') $
     suppose (typesEqual z z') $
