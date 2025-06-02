@@ -87,3 +87,20 @@ eqS = \ d v. ana (\ l y. (case l (\x. sel d l x y) ? (\x. False)) v)
 
 eqBool : Eq Bool
 eqBool = eqS (#'True := (\x y. True) ++ #'False := (\x y. True))
+
+-------------------------------------------------------------------------------
+
+type Maybe : * -> *
+type Maybe = \a. Sigma { 'Nothing := Unit, 'Just := a }
+
+Just : forall a. a -> Maybe a
+Just = \a. con #'Just a
+
+Nothing : forall a. Maybe a
+Nothing = con #'Nothing tt
+
+maybe : forall a b. b -> (a -> b) -> Maybe a -> b
+maybe = \z f.
+        ( case #'Nothing (const z)
+        ? case #'Just f
+        )
