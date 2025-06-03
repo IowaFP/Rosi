@@ -372,6 +372,16 @@ guess (pr@(tcin, PEq t u, v) : prs) =
           guessInstantiation t u
        (t@(TForall {}), u@(TInst (Unknown {}) _)) ->
           guessInstantiation t u
+       (t@(TApp (TUnif v) t'), u) ->
+          do x <- fresh "x"
+             k <- kindOf t'
+             writeRef (goalRef (uvGoal v)) (Just (TLam x (Just k) u))
+             return (Just (pr : prs))
+       (u, t@(TApp (TUnif v) t')) ->
+          do x <- fresh "x"
+             k <- kindOf t'
+             writeRef (goalRef (uvGoal v)) (Just (TLam x (Just k) u))
+             return (Just (pr : prs))
        _ -> fmap (pr :) <$> guess prs
 
   where -- There is a lot of similarity with the code in unifyInstantiating here...
