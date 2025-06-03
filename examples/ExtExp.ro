@@ -162,7 +162,7 @@ depthAllb = brna [RConst Nat] [ABF0] [LRF0] [AllF]
 -- Examples (again)
 
 depthb : Mu (Sigma AllF) -> Nat
-depthb = histo [RConst Nat] [AllF] depthAllb
+depthb = histo depthAllb
 
 dpId0 : Nat
 dpId0 = depthb xpId
@@ -199,9 +199,6 @@ as = \l w f. (case l f ? const (rcon #'Err tt)) (out w)
 
 type Env : R[* -> *] -> *
 type Env = \z. List (Mu (Sigma z))
-
--- type Env : R[*] -> *
--- type Env = \z. List (Sigma z)
 
 evalA : forall valr.
         { 'Nat := (\expr. \val. Nat), 'Err := (\expr. \val. Unit) } < valr =>
@@ -249,18 +246,13 @@ xpThree : Mu (Sigma (ArithF0))
 xpThree = rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))
 
 evThree : Mu (Sigma { 'Nat := (\val. Nat), 'Err := (\val. Unit) })
-evThree = fix (\rec x. evalA (out x) rec) xpThree nil
-  -- histo [\w. Env ({ 'Nat := (\w. Nat), 'Err := (\w. Unit) } w) -> Sigma ({ 'Nat := (\w. Nat), 'Err := (\w. Unit) } w)]
-  --       [ArithF0]
-  --       evalA
-  --       xpThree
-  --       nil
+evThree = histo evalA xpThree nil
 
 xpThreee : Mu (Sigma (ABF0))
 xpThreee = rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))
 
 evThreee : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool), 'Err := (\val. Unit) })
-evThreee = fix (\rec x. evalAB (out x) rec) xpThreee nil
+evThreee = histo evalAB xpThreee nil
 
 type ABLF0 : R[* -> *]
 type ABLF0 = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t)
@@ -278,19 +270,19 @@ xpThreeee : Mu (Sigma ABLF0)
 xpThreeee = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
                              (rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))))
 
+evThreeee : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
+                      , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
+                      , 'Err := (\val. Unit) })
+evThreeee = histo evalABL xpThreeee nil
+
 xpTrue : Mu (Sigma ABLF0)
 xpTrue = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
                           (rcon #'BConst True))
 
-evThreeee : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
-                      , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
-                      , 'Err := (\val. Unit) })
-evThreeee = fix (\rec x. evalABL (out x) rec) xpThreeee nil
-
 evTrue : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
                    , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
                    , 'Err := (\val. Unit) })
-evTrue = fix (\rec x. evalABL (out x) rec) xpTrue nil
+evTrue = histo evalABL xpTrue nil
 
 xpIdd : Mu (Sigma ABLF0)
 xpIdd = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
@@ -299,7 +291,7 @@ xpIdd = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
 evIdd : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
                   , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
                   , 'Err := (\val. Unit) })
-evIdd = fix (\rec x. evalABL (out x) rec) xpIdd nil
+evIdd = histo evalABL xpIdd nil
 
 xpBoom : Mu (Sigma ABLF0)
 xpBoom = rcon #'App (pair (rcon #'BConst True) (rcon #'BConst True))
@@ -307,4 +299,4 @@ xpBoom = rcon #'App (pair (rcon #'BConst True) (rcon #'BConst True))
 evBoom : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
                    , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF0)))
                    , 'Err := (\val. Unit) })
-evBoom = fix (\rec x. evalABL (out x) rec) xpBoom nil
+evBoom = histo evalABL xpBoom nil
