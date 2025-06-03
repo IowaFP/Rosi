@@ -21,6 +21,7 @@ import Printer
 import Syntax
 
 import GHC.Stack
+import qualified Debug.Trace as T
 
 data Update where
   U :: IORef a -> a -> Update
@@ -176,6 +177,9 @@ unify' actual expected =
 -- This function handles unification cases `t ~ u` where `u` starts with some
 -- instantiation variables. If `t` start with instantiation variables instead,
 -- pass it as `u` but pass `flip unify` as the third argument.
+--
+-- TODO: somewhere should check that provided instantiations have the expected
+-- kinds
 unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM (Maybe Evid)) -> UnifyM (Maybe Evid)
 unifyInstantiating t u unify =
   do t' <- flattenT t
@@ -198,7 +202,7 @@ unifyInstantiating t u unify =
              do trace $ "7 incoming unification failure: (" ++ show t ++ ") (" ++ show u ++ ")"
                 return Nothing
   where -- match needs its arguments **reversed** from their appearance in the type
-        match :: [Insts] -> [Quant] -> Maybe [Either (Ty, Kind) (Int, Goal Insts, [Quant])]
+        match :: [Insts] -> [Quant] -> Maybe [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])]
         match [] [] = return []
         match [Unknown n g] qs = return [Right (n, g, reverse qs)]
         match (Unknown n g : is@(Known _ : _)) qs = (Right (n, g, reverse thens) :) <$> match is rest where
@@ -210,13 +214,15 @@ unifyInstantiating t u unify =
           | otherwise = (Right (n, g, []) :) <$> match is qs
         match (Known is : is') qs =
           do (ms, qs') <- matchKnown is qs
-             (reverse ms ++) <$> match is' qs'
+             (ms ++) <$> match is' qs'
           where matchKnown [] qs = return ([], qs)
-                matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (t, k) :)) <$> matchKnown is qs
-                matchKnown (PrArg _ : _) _ = Nothing
-                matchKnown _ [] = Nothing
+                matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (Left (t, k)) :)) <$> matchKnown is qs
+                matchKnown (PrArg v : is) (QuThen p : qs) = first (Left (Right (v, p)) :) <$> matchKnown is qs
+                matchKnown _ [] = T.trace "3 ruh-roh" Nothing
                 matchKnown is qs = error $ "ruh-roh: " ++ show is ++ ", " ++ show qs
-        match is qs = Nothing -- error $ unlines ["ruh-roh: in ", renderString False (ppr t), " ~ ", renderString False (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
+        match is qs =
+          T.trace (unlines ["1 ruh-roh: in ", renderString False (ppr t), " ~ ", renderString False (ppr u), "misaligned " ++ show is ++ " and " ++ show qs])
+          Nothing -- error $ unlines ["ruh-roh: in ", renderString False (ppr t), " ~ ", renderString False (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
 
         -- Need to write function to apply list of instantiations derived from
         -- `match` above. Problem is (a) need to work outside in, but (b)
@@ -225,16 +231,20 @@ unifyInstantiating t u unify =
         --
         -- Approach: go back to original type, using list of insts to guide
         -- instantiation??
-        instantiates :: [Either (Ty, Kind) (Int, Goal Insts, [Quant])] -> Ty -> UnifyM Ty
+        instantiates :: [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])] -> Ty -> UnifyM Ty
         instantiates [] t = return t
-        instantiates (Left (u, _) : is) (TForall x k t) =
+        instantiates (Left (Left (u, _)) : is) (TForall x k t) =
             do t' <- subst 0 (shiftTN 0 1 u) t
                instantiates is (shiftTN 0 (-1) t')
+        instantiates (Left (Right _) : is) (TThen _ t) =
+          instantiates is t
         instantiates (Right (n, Goal (ivar, r), qs) : is) t =
           do (is', t') <- instantiate (length qs) n t
              trace $ "instantiating " ++ ivar ++ " to " ++ show is'
              writeRef r (Just (Known is'))
              instantiates is t'
+        instantiates is t =
+          error $ "4 ruh-roh: (" ++ show is ++ ") (" ++ show t ++ ")"
 
         instantiate :: Int -> Int -> Ty -> UnifyM ([Inst], Ty)
         instantiate 0 _ t = return ([], t)
