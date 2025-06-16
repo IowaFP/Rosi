@@ -51,7 +51,7 @@ instance Printable Value where
   ppr (VIn v) = "in" <+> at 3 (ppr v)
   ppr (VLabeled s v) = fillSep [ppre s <+> ":=", ppr v]
   ppr (VRecord ps) = hang 2 $ parens $ fillSep $ punctuate "," [fillSep [ppre s <+> ":=", ppr m] | (s, m) <- ps]
-  ppr (VBranch _ m n) = fillSep [at 2 (ppr m), "?" <+> ppr n]
+  ppr (VBranch _ m n) = fillSep [at 2 (ppr m), "|" <+> ppr n]
   ppr (VAna f m) = "ana" <+> brackets (ppr f) <+> parens (ppr m)
   ppr (VSyn f m) = "syn" <+> brackets (ppr f) <+> parens (ppr m)
 

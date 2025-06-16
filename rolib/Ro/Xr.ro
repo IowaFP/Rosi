@@ -31,7 +31,7 @@ rinj = \d. cata (fmapS d) (o in inj)
 -- histo = \ a. fix (\ rec x. a (out x) out rec)
 --
 -- brna : forall f x y z. x + y ~ z => BAlg x f -> BAlg y f -> BAlg z f
--- brna = \ f g. f ? g
+-- brna = \ f g. f | g
 --
 -- brnal : forall f x z. x < z => BAlg x f -> BAlg z f -> BAlg z f
 -- brnal = \ f g. brnl f g
@@ -44,7 +44,7 @@ histo : forall f r. (f (Mu f) -> (Mu f -> r) -> r) -> Mu f -> r
 histo = \ a. fix (\ rec x. a (out x) rec)
 
 brna : forall f x y z. x + y ~ z => BAlg x f -> BAlg y f -> BAlg z f
-brna = \ f g. f ? g
+brna = \ f g. f | g
 
 brnal : forall f x z. x < z => BAlg x f -> BAlg z f -> BAlg z f
 brnal = \ f g. brnl f g

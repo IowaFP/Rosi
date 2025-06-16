@@ -15,19 +15,19 @@ cons = \hd tl. rcon #'Cons (pair hd tl)
 head : forall a. List a -> Maybe a
 head = \l.
        ( case #'Nil (const Nothing)
-       ? case #'Cons (o Just fst)
+       | case #'Cons (o Just fst)
        ) (out l)
 
 tail : forall a. List a -> List a
 tail = \l.
        ( case #'Nil (const nil)
-       ? case #'Cons snd
+       | case #'Cons snd
        ) (out l)
 
 nth : forall a. List a -> Nat -> Maybe a
 nth = fix (\f l n.
         ( case #'Zero (const (head l))
-        ? case #'Succ (f (tail l))
+        | case #'Succ (f (tail l))
         ) (out n))
 
 listTest1 = nth (cons one (cons two (cons three nil))) two

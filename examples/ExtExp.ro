@@ -85,27 +85,27 @@ xpNot = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (r
 
 depthB : FAlg (Sigma BoolF) Nat    -- Sigma BoolF Nat -> Nat
 depthB = case #'BConst (\u. one)
-       ? case #'If (\t. succ (max (sel t #'1) (max (sel t #'2) (sel t #'3))))
+       | case #'If (\t. succ (max (sel t #'1) (max (sel t #'2) (sel t #'3))))
 
 depthA : FAlg (Sigma ArithF) Nat
 depthA = case #'IConst (\u. one)
-       ? case #'Plus (\t. succ (max (sel t #'1) (sel t #'2)))
+       | case #'Plus (\t. succ (max (sel t #'1) (sel t #'2)))
 
 depthL : FAlg (Sigma LamF) Nat
 depthL = case #'Lam succ
-       ? case #'App (\t. succ (max (sel t #'1) (sel t #'2)))
-       ? case #'Var (\t. one)
+       | case #'App (\t. succ (max (sel t #'1) (sel t #'2)))
+       | case #'Var (\t. one)
 
 depthR : FAlg (Sigma RecF) Nat
 depthR = case #'Fix succ
 
 depthLB : FAlg (Sigma LBF) Nat
-depthLB = depthL ? depthB
+depthLB = depthL | depthB
 
 depthAll : FAlg (Sigma AllF) Nat
 depthAll = depthLB
-         ? depthA
-         ? depthR
+         | depthA
+         | depthR
 
 -- Examples
 
@@ -125,16 +125,16 @@ type RConst = \x y. x
 
 depthBb : BAlg BoolF (RConst Nat)
 depthBb = case #'BConst (\u rec. one)
-        ? case #'If (\t rec. succ (max (rec (sel t #'1)) (max (rec (sel t #'2)) (rec (sel t #'3)))))
+        | case #'If (\t rec. succ (max (rec (sel t #'1)) (max (rec (sel t #'2)) (rec (sel t #'3)))))
 
 depthAb : BAlg ArithF (RConst Nat)
 depthAb = case #'IConst (\u rec. one)
-        ? case #'Plus (\t rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
+        | case #'Plus (\t rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
 
 depthLb : BAlg LamF (RConst Nat)
 depthLb = case #'Lam (\e rec. succ (rec e))
-        ? case #'App (\t rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
-        ? case #'Var (\t rec. one)
+        | case #'App (\t rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
+        | case #'Var (\t rec. one)
 
 depthRb : BAlg RecF (RConst Nat)
 depthRb = case #'Fix (\e rec. succ (rec e))
@@ -151,7 +151,7 @@ type LRF = { 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t)
            , 'Fix := (\t. t) }
 
 depthAllb : BAlg AllF (RConst Nat)
-depthAllb = (depthBb ? depthAb) ? (depthLb ? depthRb)
+depthAllb = (depthBb | depthAb) | (depthLb | depthRb)
 
 -- Examples (again)
 
@@ -173,7 +173,7 @@ dpNot0 = depthb xpNot
 -- The idea is that we'd write functions like:
 --
 --     evalA = case #'IConst (\n. n)
---           ? case #'Plus (\p. add (evalA (sel p #'1)) (evalA (sel p #'2)))
+--           | case #'Plus (\p. add (evalA (sel p #'1)) (evalA (sel p #'2)))
 --
 -- and then put them together to make the eval function for the whole type. The
 -- challenges are:
@@ -189,7 +189,7 @@ dpNot0 = depthb xpNot
 
 as : forall l f z. { l := f } < z, { 'Err := (\w. Unit) } < z =>
      #l -> Mu (Sigma z) -> (f (Mu (Sigma z)) -> Mu (Sigma z)) -> Mu (Sigma z)
-as = \l w f. (case l f ? const (rcon #'Err tt)) (out w)
+as = \l w f. (case l f | const (rcon #'Err tt)) (out w)
 
 type Env : R[* -> *] -> *
 type Env = \z. List (Mu (Sigma z))
@@ -199,7 +199,7 @@ evalA : forall valr.
           BAlg ArithF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalA = \exp rec env.
            ( case #'IConst (rcon #'Nat)
-           ? case #'Plus (\p.
+           | case #'Plus (\p.
                as #'Nat (rec (sel p #'1) env) (\i.
                as #'Nat (rec (sel p #'2) env) (\j.
                  rcon #'Nat (add i j))))
@@ -210,10 +210,10 @@ evalB : forall valr.
         BAlg BoolF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalB = \exp rec env.
            ( case #'BConst (rcon #'Bool)
-           ? case #'If (\t.
+           | case #'If (\t.
                as #'Bool (rec (sel t #'1) env)
                ( case #'True (const (rec (sel t #'2) env))
-               ? case #'False (const (rec (sel t #'3) env))
+               | case #'False (const (rec (sel t #'3) env))
                ))
            ) exp
 
@@ -224,8 +224,8 @@ evalF : forall valr.
              (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalF = \exp rec env.
            ( case #'Var (o (maybe (rcon #'Err tt) id) (nth env))
-           ? case #'Lam (\e. rcon #'Clos (pair env e))
-           ? case #'App (\p.
+           | case #'Lam (\e. rcon #'Clos (pair env e))
+           | case #'App (\p.
                as #'Clos (rec (fst p) env) (\clos.
                  (rec (snd clos)) (cons (rec (snd p) env) (fst clos))))
            ) exp
@@ -233,7 +233,7 @@ evalF = \exp rec env.
 evalAB : forall valr.
          { 'Nat := (\expr. \val. Nat), 'Bool := (\expr. \val. Bool), 'Err := (\expr. \val. Unit) } < valr =>
          BAlg ABF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
-evalAB = evalA ? evalB
+evalAB = evalA | evalB
 
 xpThree : Mu (Sigma (ArithF))
 xpThree = rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))
@@ -257,7 +257,7 @@ evalABL : forall valr.
         , 'Clos := (\expr. \val. Pair (List val) (Mu (Sigma expr)))
         , 'Err := (\expr. \val. Unit) } < valr =>
         BAlg ABLF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
-evalABL = evalAB ? evalF
+evalABL = evalAB | evalF
 
 xpThreeee : Mu (Sigma ABLF)
 xpThreeee = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
@@ -309,15 +309,15 @@ desugarB : forall z.
 desugarB = \exp rec.
             (case #'BConst
                ( case #'True (\u. rcon #'Lam (rcon #'Lam (rcon #'Var one)))
-               ? case #'False (\u. rcon #'Lam (rcon #'Lam (rcon #'Var zero)))
+               | case #'False (\u. rcon #'Lam (rcon #'Lam (rcon #'Var zero)))
                )
-            ? case #'If (\t. rcon #'App (pair (rcon #'App (pair (rec (fst t)) (rec (snd t)))) (rec (thd t))))
+            | case #'If (\t. rcon #'App (pair (rcon #'App (pair (rec (fst t)) (rec (snd t)))) (rec (thd t))))
             ) exp
 
 desugar : forall y z.
           BoolF < y, y - BoolF < z, LamF < z =>
           Pi (Functor (y - BoolF)) -> BAlg y (\w. Mu (Sigma z))
-desugar = \d. desugarB ? (\exp rec. in (inj (fmapS d rec exp)))
+desugar = \d. desugarB | (\exp rec. in (inj (fmapS d rec exp)))
 
 xpNott : Mu (Sigma LBF)
 xpNott = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (rcon #'BConst True)))

@@ -147,7 +147,7 @@ instance Printable Pred where
 
 -- Precedence table:
 --   lambda           0
---   ++, ?            1
+--   ++, |            1
 --   :=               2
 --   application      3
 
@@ -159,7 +159,7 @@ instance Printable Term where
   ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "++", ppr e2]
   ppr (EApp (EApp (EInst (EConst CBranch) _) e1) e2) =
-    with 1 $ fillSep [at 2 (ppr e1), "?", ppr e2]
+    with 1 $ fillSep [at 2 (ppr e1), "|", ppr e2]
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr (ETyLam x (Just k) m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
   ppr (ETyLam x Nothing m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <> ".", ppr m]
@@ -178,7 +178,7 @@ instance Printable Term where
     name CPrj = "prj"
     name CConcat = "(++)"
     name CInj = "inj"
-    name CBranch = "(?)"
+    name CBranch = "(|)"
     name CIn = "in"
     name COut = "out"
     name CFix = "fix"

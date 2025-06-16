@@ -67,4 +67,4 @@ wand5 = \ m n. prj (m ++ n) / #'l
 -- Let's dualize the above
 
 dnaw : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y -> u) -> t -> u
-dnaw = \ r s x. (r ? s) (inj (#'l := x))
+dnaw = \ r s x. (r | s) (inj (#'l := x))

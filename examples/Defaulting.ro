@@ -1,7 +1,7 @@
 import Ro.Base
 
 getDefault : forall l t z. {l := t} < z => #l -> t -> Sigma z -> t
-getDefault = \ l z. case l (\x. x) ? (\y. z)
+getDefault = \ l z. case l (\x. x) | (\y. z)
 
 -- For reference, although we're not using it...
 type T : *

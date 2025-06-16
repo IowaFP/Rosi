@@ -26,7 +26,7 @@ p : Pi {}
 p = (case #'x (\u. u)) (#'x := tt)
 
 q : Sigma { 'x := Pi {}, 'y := Pi {} } -> Sigma { 'x := Pi {}, 'y := Pi {} }
-q = case #'x (\u. inj (#'y := u)) ?
+q = case #'x (\u. inj (#'y := u)) |
     case #'y (\u. inj (#'x := u))
 
 w1 : Sigma { 'x := Pi {}, 'y := Pi {}}
@@ -37,7 +37,7 @@ w2 = q v2
 
 -- This breaks type checking :(
 -- q1 : forall l1 l2 t u z1 z2. {l1 := t} + {l2 := u} ~ z1, {l1 := u} + {l2 := t} ~ z2 => Sigma z1 -> Sigma z2
--- q1 = \l1 l2. case l1 (\x. inj (l2 := x)) ?
+-- q1 = \l1 l2. case l1 (\x. inj (l2 := x)) |
 --              case l2 (\x. inj (l1 := x))
 
 -- I think this is another example of needing specific entailment principles for concrete rows

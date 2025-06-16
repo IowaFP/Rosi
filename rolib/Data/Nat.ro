@@ -15,21 +15,21 @@ succ = \n. in (inj (#'Succ := n))
 --
 
 decr : Nat -> Nat
-decr = \n. (case #'Zero (\ u. in (con #'Zero u)) ? case #'Succ id) (out n)
+decr = \n. (case #'Zero (\ u. in (con #'Zero u)) | case #'Succ id) (out n)
 
 add : Nat -> Nat -> Nat
-add = \m. fix (\add n. (case #'Zero (\u. m) ? case #'Succ (\nn. succ (add nn))) (out n))
+add = \m. fix (\add n. (case #'Zero (\u. m) | case #'Succ (\nn. succ (add nn))) (out n))
 
 monus : Nat -> Nat -> Nat
-monus = fix (\ monus m n. (case #'Zero (\u. m) ? case #'Succ (\nn. monus (decr m) nn)) (out n))
+monus = fix (\ monus m n. (case #'Zero (\u. m) | case #'Succ (\nn. monus (decr m) nn)) (out n))
 
 max : Nat -> Nat -> Nat
 max = \ m n. fix (\max mm nn.
                     ( case #'Zero (\u. n)
-                    ? case #'Succ (\mm1.
+                    | case #'Succ (\mm1.
                         (
                           case #'Zero (\u. m)
-                        ? case #'Succ (\nn1. max mm1 nn1)
+                        | case #'Succ (\nn1. max mm1 nn1)
                         ) (out nn))
                     ) (out mm)
                  ) m n

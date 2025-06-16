@@ -29,11 +29,11 @@ case : forall l t u. #l -> (t -> u) -> Sigma { l := t } -> u
 case = \ l f x. f (x / l)
 
 brnl : forall x z t. x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
-brnl = \ f g. f ? (o g (\x. inj x))
+brnl = \ f g. f | (o g (\x. inj x))
 
 relabelS : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
            #l0 -> #l1 -> Sigma y0 -> Sigma y1
-relabelS = \ l0 l1. case l0 (con l1) ? (\x. inj x)
+relabelS = \ l0 l1. case l0 (con l1) | (\x. inj x)
 
 relabelInj : forall y1 y0 l0 l1 t x z.
              {l0 := t} + x ~ y0, {l1 := t} + x ~ y1, y1 < z =>
@@ -64,7 +64,7 @@ False = con #'False tt
 
 not : Bool -> Bool
 not = case #'True (con #'False)
-    ? case #'False (con #'True)
+    | case #'False (con #'True)
 
 -------------------------------------------------------------------------------
 -- Basic analysis / synthesis
@@ -79,7 +79,7 @@ type Eq : * -> *
 type Eq = \t. t -> t -> Bool
 
 eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
-eqS = \ d v. ana (\ l y. (case l (\x. sel d l x y) ? (\x. False)) v)
+eqS = \ d v. ana (\ l y. (case l (\x. sel d l x y) | (\x. False)) v)
 
 -- eqP requires `fold`, which I'm ignoring for the time being...
 
@@ -102,5 +102,5 @@ Nothing = con #'Nothing tt
 maybe : forall a b. b -> (a -> b) -> Maybe a -> b
 maybe = \z f.
         ( case #'Nothing (const z)
-        ? case #'Just f
+        | case #'Just f
         )

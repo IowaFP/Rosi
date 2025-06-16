@@ -263,7 +263,7 @@ term = prefixes typedTerm where
     do t <- branchTerm
        maybe t (ETyped t) <$> optional (symbol ":" >> ty)
 
-  branchTerm = chainl1 labTerm $ choice [op "++" (ebinary CConcat) , op "?" (ebinary CBranch)] where
+  branchTerm = chainl1 labTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)] where
     ebinary k = return (\e1 e2 -> EApp (EApp (EConst k) e1) e2)
 
   labTerm = chainl1 appTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
@@ -298,7 +298,7 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                    [("prj", CPrj),
                     ("inj", CInj),
                     ("(++)", CConcat),
-                    ("(?)", CBranch),
+                    ("(|)", CBranch),
                     ("in", CIn),
                     ("out", COut),
                     ("fix", CFix)]]
