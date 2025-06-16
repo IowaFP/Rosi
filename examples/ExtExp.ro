@@ -123,20 +123,20 @@ dpNot = cata (fmapS [AllF] functorAll) depthAll xpNot
 type RConst : * -> R[* -> *] -> *  -- kind polymorphism still not a thing...
 type RConst = \x y. x
 
-depthBb : BAlg BoolF (RConst Nat)
+depthBb : Xh BoolF (RConst Nat)
 depthBb = case #'BConst (\u rec. one)
         | case #'If (\t rec. succ (max (rec (sel t #'1)) (max (rec (sel t #'2)) (rec (sel t #'3)))))
 
-depthAb : BAlg ArithF (RConst Nat)
+depthAb : Xh ArithF (RConst Nat)
 depthAb = case #'IConst (\u rec. one)
         | case #'Plus (\t rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
 
-depthLb : BAlg LamF (RConst Nat)
+depthLb : Xh LamF (RConst Nat)
 depthLb = case #'Lam (\e rec. succ (rec e))
         | case #'App (\t rec. succ (max (rec (sel t #'1)) (rec (sel t #'2))))
         | case #'Var (\t rec. one)
 
-depthRb : BAlg RecF (RConst Nat)
+depthRb : Xh RecF (RConst Nat)
 depthRb = case #'Fix (\e rec. succ (rec e))
 
 -- Okay, the type annotations here are getting out of hand again... time to
@@ -150,7 +150,7 @@ type LRF : R[* -> *]
 type LRF = { 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t)
            , 'Fix := (\t. t) }
 
-depthAllb : BAlg AllF (RConst Nat)
+depthAllb : Xh AllF (RConst Nat)
 depthAllb = (depthBb | depthAb) | (depthLb | depthRb)
 
 -- Examples (again)
@@ -199,7 +199,7 @@ type Env = \z. List (Mu (Sigma z))
 
 evalA : forall valr.
         { 'Nat := (\expr. \val. Nat), 'Err := (\expr. \val. Unit) } < valr =>
-          BAlg ArithF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+          Xh ArithF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalA = \exp rec env.
            match exp
            ( case #'IConst (rcon #'Nat)
@@ -211,7 +211,7 @@ evalA = \exp rec env.
 
 evalB : forall valr.
         { 'Bool := (\expr. \val. Bool), 'Err := (\expr. \val. Unit) } < valr =>
-        BAlg BoolF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+        Xh BoolF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalB = \exp rec env.
            match exp
            ( case #'BConst (rcon #'Bool)
@@ -225,7 +225,7 @@ evalB = \exp rec env.
 evalF : forall valr.
         { 'Clos := (\expr. \val. Pair (List val) (Mu (Sigma expr)))
         , 'Err := (\expr. \val. Unit) } < valr =>
-        BAlg LamF
+        Xh LamF
              (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalF = \exp rec env.
            match exp
@@ -238,7 +238,7 @@ evalF = \exp rec env.
 
 evalAB : forall valr.
          { 'Nat := (\expr. \val. Nat), 'Bool := (\expr. \val. Bool), 'Err := (\expr. \val. Unit) } < valr =>
-         BAlg ABF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+         Xh ABF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalAB = evalA | evalB
 
 xpThree : Mu (Sigma (ArithF))
@@ -262,7 +262,7 @@ evalABL : forall valr.
         { 'Nat := (\expr. \val. Nat), 'Bool := (\expr. \val. Bool)
         , 'Clos := (\expr. \val. Pair (List val) (Mu (Sigma expr)))
         , 'Err := (\expr. \val. Unit) } < valr =>
-        BAlg ABLF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
+        Xh ABLF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalABL = evalAB | evalF
 
 xpThreeee : Mu (Sigma ABLF)
@@ -311,7 +311,7 @@ evBoom = histo evalABL xpBoom nil
 
 desugarB : forall z.
            LamF < z =>
-           BAlg BoolF (\w. Mu (Sigma z))
+           Xh BoolF (\w. Mu (Sigma z))
 desugarB = \exp rec.
             match exp
             (case #'BConst
@@ -323,7 +323,7 @@ desugarB = \exp rec.
 
 desugar : forall y z.
           BoolF < y, y - BoolF < z, LamF < z =>
-          Pi (Functor (y - BoolF)) -> BAlg y (\w. Mu (Sigma z))
+          Pi (Functor (y - BoolF)) -> Xh y (\w. Mu (Sigma z))
 desugar = \d. desugarB | (\exp rec. in (inj (fmapS d rec exp)))
 
 xpNott : Mu (Sigma LBF)
