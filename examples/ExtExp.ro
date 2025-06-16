@@ -189,7 +189,10 @@ dpNot0 = depthb xpNot
 
 as : forall l f z. { l := f } < z, { 'Err := (\w. Unit) } < z =>
      #l -> Mu (Sigma z) -> (f (Mu (Sigma z)) -> Mu (Sigma z)) -> Mu (Sigma z)
-as = \l w f. (case l f | const (rcon #'Err tt)) (out w)
+as = \l w f.
+      match (out w)
+      ( case l f
+      | const (rcon #'Err tt))
 
 type Env : R[* -> *] -> *
 type Env = \z. List (Mu (Sigma z))
@@ -198,24 +201,26 @@ evalA : forall valr.
         { 'Nat := (\expr. \val. Nat), 'Err := (\expr. \val. Unit) } < valr =>
           BAlg ArithF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalA = \exp rec env.
+           match exp
            ( case #'IConst (rcon #'Nat)
            | case #'Plus (\p.
                as #'Nat (rec (sel p #'1) env) (\i.
                as #'Nat (rec (sel p #'2) env) (\j.
                  rcon #'Nat (add i j))))
-           ) exp
+           )
 
 evalB : forall valr.
         { 'Bool := (\expr. \val. Bool), 'Err := (\expr. \val. Unit) } < valr =>
         BAlg BoolF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalB = \exp rec env.
+           match exp
            ( case #'BConst (rcon #'Bool)
            | case #'If (\t.
                as #'Bool (rec (sel t #'1) env)
                ( case #'True (const (rec (sel t #'2) env))
                | case #'False (const (rec (sel t #'3) env))
                ))
-           ) exp
+           )
 
 evalF : forall valr.
         { 'Clos := (\expr. \val. Pair (List val) (Mu (Sigma expr)))
@@ -223,12 +228,13 @@ evalF : forall valr.
         BAlg LamF
              (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalF = \exp rec env.
+           match exp
            ( case #'Var (o (maybe (rcon #'Err tt) id) (nth env))
            | case #'Lam (\e. rcon #'Clos (pair env e))
            | case #'App (\p.
                as #'Clos (rec (fst p) env) (\clos.
                  (rec (snd clos)) (cons (rec (snd p) env) (fst clos))))
-           ) exp
+           )
 
 evalAB : forall valr.
          { 'Nat := (\expr. \val. Nat), 'Bool := (\expr. \val. Bool), 'Err := (\expr. \val. Unit) } < valr =>
@@ -307,12 +313,13 @@ desugarB : forall z.
            LamF < z =>
            BAlg BoolF (\w. Mu (Sigma z))
 desugarB = \exp rec.
+            match exp
             (case #'BConst
                ( case #'True (\u. rcon #'Lam (rcon #'Lam (rcon #'Var one)))
                | case #'False (\u. rcon #'Lam (rcon #'Lam (rcon #'Var zero)))
                )
             | case #'If (\t. rcon #'App (pair (rcon #'App (pair (rec (fst t)) (rec (snd t)))) (rec (thd t))))
-            ) exp
+            )
 
 desugar : forall y z.
           BoolF < y, y - BoolF < z, LamF < z =>

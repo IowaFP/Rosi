@@ -13,22 +13,23 @@ cons : forall a. a -> List a -> List a
 cons = \hd tl. rcon #'Cons (pair hd tl)
 
 head : forall a. List a -> Maybe a
-head = \l.
-       ( case #'Nil (const Nothing)
-       | case #'Cons (o Just fst)
-       ) (out l)
+head = \l. match (out l)
+           ( case #'Nil (const Nothing)
+           | case #'Cons (o Just fst)
+           )
 
 tail : forall a. List a -> List a
-tail = \l.
-       ( case #'Nil (const nil)
-       | case #'Cons snd
-       ) (out l)
+tail = \l. match (out l)
+           ( case #'Nil (const nil)
+           | case #'Cons snd
+           )
 
 nth : forall a. List a -> Nat -> Maybe a
 nth = fix (\f l n.
-        ( case #'Zero (const (head l))
-        | case #'Succ (f (tail l))
-        ) (out n))
+            match (out n)
+            ( case #'Zero (const (head l))
+            | case #'Succ (f (tail l))
+            ))
 
 listTest1 = nth (cons one (cons two (cons three nil))) two
 listTest2 = nth (cons one (cons two nil)) two
