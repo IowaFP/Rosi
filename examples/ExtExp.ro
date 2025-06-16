@@ -17,7 +17,7 @@ type LamF = { 'Var := Const Nat
             , 'App := (\t. Pair t t) }
 
 type RecF : R[* -> *]
-type RecF = { 'Mu := (\t. t) }
+type RecF = { 'Fix := (\t. t) }
 
 -------------------------------------------------------------------------------
 -- Functors
@@ -293,3 +293,34 @@ evBoom : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool)
                    , 'Clos := (\val. Pair (List val) (Mu (Sigma ABLF)))
                    , 'Err := (\val. Unit) })
 evBoom = histo evalABL xpBoom nil
+
+-------------------------------------------------------------------------------
+-- Desugaring
+--
+-- Next challenge is to implement desugaring. The key point here is to highlight
+-- label-generic programming.
+--
+-- As an example, we'll implement Booleans as functions. We're relying on this
+-- being an untyped language, so we don't have to account for polymorphism.
+
+desugarB : forall z.
+           LamF < z =>
+           BAlg BoolF (\w. Mu (Sigma z))
+desugarB = \exp rec.
+            (case #'BConst
+               ( case #'True (\u. rcon #'Lam (rcon #'Lam (rcon #'Var one)))
+               ? case #'False (\u. rcon #'Lam (rcon #'Lam (rcon #'Var zero)))
+               )
+            ? case #'If (\t. rcon #'App (pair (rcon #'App (pair (rec (fst t)) (rec (snd t)))) (rec (thd t))))
+            ) exp
+
+desugar : forall y z.
+          BoolF < y, y - BoolF < z, LamF < z =>
+          Pi (Functor (y - BoolF)) -> BAlg y (\w. Mu (Sigma z))
+desugar = \d. desugarB ? (\exp rec. in (inj (fmapS d rec exp)))
+
+xpNott : Mu (Sigma LBF)
+xpNott = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (rcon #'BConst True)))
+
+desNott : Mu (Sigma LamF)
+desNott = histo (desugar functorLam) xpNott
