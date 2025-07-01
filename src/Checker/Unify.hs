@@ -656,10 +656,20 @@ normalize eqns (TRow ts) =
          return (TRow ts', VEqRow qs)
 normalize eqns (TSigma z) =
   do (z', q) <- normalize eqns z
-     return (TSigma z', VEqCon Sigma q)
+     k <- kindOf z'
+     case k of
+       KRow (KRow k') ->
+         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TSigma (TVar 0 "x")))) z')
+            return (z'', VEqTrans q q')
+       _ -> return (TSigma z', VEqCon Sigma q)
 normalize eqns (TPi z) =
   do (z', q) <- normalize eqns z
-     return (TPi z', VEqCon Pi q)
+     k <- kindOf z'
+     case k of
+       KRow (KRow k') ->
+         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TPi (TVar 0 "x")))) z')
+            return (z'', VEqTrans q q')
+       _ -> return (TPi z', VEqCon Pi q)
 normalize eqns (TMu z) =
   do (z', q) <- normalize eqns z
      return (TMu z', VEqCon Mu q)
