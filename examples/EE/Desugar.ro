@@ -1,0 +1,38 @@
+import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple, EE.Types
+
+-------------------------------------------------------------------------------
+-- Desugaring
+--
+-- Next challenge is to implement desugaring. The key point here is to highlight
+-- label-generic programming.
+--
+-- As an example, we'll implement Booleans as functions. We're relying on this
+-- being an untyped language, so we don't have to account for polymorphism.
+
+app : forall z. LamF < z => Mu (Sigma z) -> Mu (Sigma z) -> Mu (Sigma z)
+app = \f e. rcon #'App (pair f e)
+
+desugarB : forall z.
+           LamF < z =>
+           Xh BoolF (\w. Mu (Sigma z))
+desugarB = \exp rec.
+            match exp
+            (case #'BConst
+               ( case #'True (\u. rcon #'Lam (rcon #'Lam (rcon #'Var one)))
+               | case #'False (\u. rcon #'Lam (rcon #'Lam (rcon #'Var zero)))
+               )
+            | case #'If (\t. app (app (rec (fst t)) (rec (snd t))) (rec (thd t)))
+            )
+
+ext : forall z : R[* -> *]. Pi (Functor z) -> Xh z (\ w. (Mu (Sigma z)))
+ext = \ d v rec. in (fmapS d rec v)
+
+desugar : forall y. BoolF < y, LamF < y - BoolF =>
+          Pi (Functor (y - BoolF)) -> Xh y (\ w. (Mu (Sigma (y - BoolF))))
+desugar = \d. desugarB | ext d
+
+xpNott : Mu (Sigma LBF)
+xpNott = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (rcon #'BConst True)))
+
+desNott : Mu (Sigma LamF)
+desNott = histo (desugar functorLam) xpNott

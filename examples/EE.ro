@@ -1,0 +1,4 @@
+import EE.Types, EE.Size, EE.BigStep, EE.Desugar
+
+-- Current master list of examples:
+-- szId,szConst,szNot,szId0,szConst0,szNot0,evThree,evThreee,evThreeee,evTrue,evIdd,evBoom,desNott

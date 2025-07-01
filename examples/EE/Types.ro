@@ -1,0 +1,81 @@
+import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple
+
+-------------------------------------------------------------------------------
+-- Types
+
+type BoolF : R[* -> *]
+type BoolF = { 'BConst := (\t. Bool)
+             , 'If := (\t. Triple t t t) }
+
+type ArithF : R[* -> *]
+type ArithF = { 'IConst := (\t. Nat)
+              , 'Plus := (\t. Pair t t) }
+
+type LamF : R[* -> *]
+type LamF = { 'Var := Const Nat
+            , 'Lam := Id
+            , 'App := (\t. Pair t t) }
+
+type RecF : R[* -> *]
+type RecF = { 'Fix := (\t. t) }
+
+-------------------------------------------------------------------------------
+-- Functors
+
+functorId : Functor Id
+functorId = id
+
+functorConst : forall t. Functor (Const t)
+functorConst = \f. id
+
+functorTwo : Functor (\t. Pair t t)
+functorTwo = \f x. pair (f (sel x #'1)) (f (sel x #'2))
+
+functorThree : Functor (\t. Triple t t t)
+functorThree = \f x. triple (f (sel x #'1)) (f (sel x #'2)) (f (sel x #'3))
+
+functorBool : Pi (Functor BoolF)
+functorBool = (#'BConst := functorConst) ++ (#'If := functorThree)
+
+functorArith : Pi (Functor ArithF)
+functorArith = (#'IConst := functorConst) ++ (#'Plus := functorTwo)
+
+functorLam : Pi (Functor LamF)
+functorLam = (#'Var := functorConst) ++ (#'Lam := functorId)
+           ++ (#'App := functorTwo)
+
+functorRec : Pi (Functor RecF)
+functorRec = #'Fix := functorId
+
+-------------------------------------------------------------------------------
+-- Shorthand
+
+type LBF : R [* -> *]
+type LBF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
+             'BConst := (\t. Bool), 'If := (\t. Triple t t t) }
+
+type AllF : R [* -> *]
+type AllF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
+              'BConst := (\t. Bool), 'If := (\t. Triple t t t),
+              'IConst := (\t. Nat), 'Plus := (\t. Pair t t),
+              'Fix := (\t. t) }
+
+functorLBF : Pi (Functor LBF)
+functorLBF = functorBool ++ functorLam
+
+functorAll : Pi (Functor AllF)
+functorAll = functorArith
+          ++ functorLBF
+          ++ functorRec
+
+-------------------------------------------------------------------------------
+-- Some expressions
+
+xpId : Mu (Sigma AllF)
+xpId = rcon #'Lam (rcon #'Var zero)
+
+xpConst : Mu (Sigma AllF)
+xpConst = rcon #'Lam (rcon #'Lam (rcon #'Var one))
+
+xpNot : Mu (Sigma AllF)
+xpNot = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (rcon #'BConst True)))
