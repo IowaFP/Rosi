@@ -28,7 +28,6 @@ type Xh : R[* -> *] -> (R[* -> *] -> *) -> *
 type Xh = \z f. forall w. z < w => Sigma z (Mu (Sigma w)) -> (Mu (Sigma w) -> f w) -> f w
 
 histo : forall f r. (f (Mu f) -> (Mu f -> r) -> r) -> Mu f -> r
--- histo : forall f z. Xh z f -> Mu (Sigma z) -> f z
 histo = \ a. fix (\ rec x. a (out x) rec)
 
 brna : forall f x y z. x + y ~ z => Xh x f -> Xh y f -> Xh z f

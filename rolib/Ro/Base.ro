@@ -19,10 +19,10 @@ const = \ x y. x
 -------------------------------------------------------------------------------
 -- Convenience functions for records and variants
 
-sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
+sel : forall l t z. {l := t} < z => Pi z -> #l -> t
 sel = \ r l. prj r / l
 
-con : forall l : L, t : *, z : R[*]. {l := t} < z => #l -> t -> Sigma z
+con : forall l t z. {l := t} < z => #l -> t -> Sigma z
 con = \l x. inj (l := x)
 
 match : forall a b. a -> (a -> b) -> b
@@ -84,7 +84,7 @@ type Eq = \t. t -> t -> Bool
 eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
 eqS = \ d v. ana (\ l y. match v
                          ( case l (\x. sel d l x y)
-                         | (\x. False)))
+                         | const False))
 
 -- eqP requires `fold`, which I'm ignoring for the time being...
 
@@ -109,3 +109,6 @@ maybe = \z f.
         ( case #'Nothing (const z)
         | case #'Just f
         )
+
+fromMaybe : forall a. a -> Maybe a -> a
+fromMaybe = \z. maybe z id
