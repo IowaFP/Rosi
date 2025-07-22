@@ -68,3 +68,6 @@ wand5 = \ m n. prj (m ++ n) / #'l
 
 dnaw : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y -> u) -> t -> u
 dnaw = \ r s x. (r | s) (inj (#'l := x))
+
+dnawHO : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x u -> u) -> (Sigma y u -> u) -> t u -> u
+dnawHO = \ f g x. (f | g) (inj (#'l := x))
