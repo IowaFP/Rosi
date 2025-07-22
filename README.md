@@ -34,18 +34,16 @@ Rosi typechecks and evaluates Rose programs; it does not (yet) have a REPL or ot
 By default, Rosi only checks types. (This probably says something about the focus of the implementors...) For example, to typecheck the extensible expression examples, I use:
 
 ```shell
-> cabal run Rosi -- -i rolib -i examples ExtExp
-ok
+> cabal run Rosi -- -i rolib -i examples EE
 >
 ```
 
 Top-level definitions can be evaluated by providing the `-e` option. For example:
 
 ```shell
-> cabal run Rosi -- -i rolib -i examples ExtExp -e dpId,dpId0
-dpId = in Succ := in Succ := in Zero := ()
-dpId0 = in Succ := in Succ := in Zero := ()
-ok
+> cabal run Rosi -- -i rolib -i examples EE -e szId,szId0
+szId = in (<0, in (<0, in (<1, ()>)>)>)
+szId0 = in (<0, in (<0, in (<1, ()>)>)>)
 >
 ```
 
@@ -121,12 +119,12 @@ dnaw : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y 
 The claim is that, if we know that `{'l := t}` is somewhere in the combination of `x` and `y`, then given an *eliminator* for variants built from row `x` to type `u` and eliminator for variants built from row `y` to type `u`, we can get from a `t` to a `u`.  The term inhabiting this type is:
 
 ```
-dnaw = \r s x. (r ? s) (inj (#'l := x))
+dnaw = \r s x. (r | s) (inj (#'l := x))
 ```
 
 This term also demonstrates three operators:
 
-* Branching `_ ? _`: we combine the eliminators for `Sigma x` and `Sigma y` to get an eliminator for `Sigma z`
+* Branching `_ | _`: we combine the eliminators for `Sigma x` and `Sigma y` to get an eliminator for `Sigma z`
 * Injection `inj _`: dual to projection, injects arbitrary subvariants into a variant type.
 * Labeling `_ := _`: in this case, we construct an element of the singleton variant type to inject.
 
@@ -143,13 +141,13 @@ We could write the inversion function as:
 ```
 not : Bool -> Bool
 not = (\b. con #'False (b / #'True))
-    ? (\b. con #'True (b / #'False))
+    | (\b. con #'True (b / #'False))
 ```
 On the first line, `b` must be of the singleton variant type `Sigma { 'True := Unit }` (because we unlabel it with `#'True`), and on the second line `b` must be of the singleton variant type `Sigma { 'False := Unit }`, for a similar reason. This pattern is abstracted by the `case` function:
 ```
 not : Bool -> Bool
 not = case #'True (con #'False)
-    ? case #'False (con #'True)
+    | case #'False (con #'True)
 ```
 where we have η-contracted the case branches, to be cool.
 
@@ -162,7 +160,7 @@ To compare two Boolean values for equality, we could use a term like
 ```
 eqBool : Bool -> Bool -> Bool
 eqBool = case #'True id
-       ? case #'False not
+       | case #'False not
 ```
 
 In writing this term, we needed to know the constructors of `Bool`, and that any two values of `Unit` type are identical. Consider the more general case, in which we have two values of an arbitrary variant type `Sigma z`. Intuitively, to compare them for equality, all we have to know is how to compare each type in the range of `z` for equality. The rest of the comparison would be the same for any instantiation of `z`.
@@ -186,7 +184,7 @@ Finally, we need a label-generic way to deconstruct a variant. The Rose operator
 ```
 eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
 eqS = \ d v w. ana (\ l y. ( case l (\x. sel d l x y)
-                           ? (\x. False)) v) w
+                           | (\x. False)) v) w
 ```
 We perform analysis on variable `w`, of type `Sigma z`. The "body" of analysis—that is to say, its first argument—must be polymorphic over *any* entry in row `z`. Its type must be
 ```
