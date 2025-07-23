@@ -18,6 +18,8 @@ import Syntax
 
 import GHC.Stack
 
+import qualified Debug.Trace as T
+
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
@@ -61,6 +63,7 @@ solve (cin, p, r) =
        trace ("Solved " ++ show p ++ " by " ++ show v)
        return v
 
+  -- TODO: this shouldn't be necessary any longer, as labels are stored in sorted order??
   sameSet :: Eq a => [a] -> [a] -> Bool
   sameSet xs ys = all (`elem` ys) xs && all (`elem` xs) ys
 
@@ -131,7 +134,7 @@ solve (cin, p, r) =
   matchLeqMap _ _ = return Nothing
 
   matchPlusDirect p@(PPlus x y z) (q@(PPlus x' y' z'), v) =
-    (trace $ "mpd" ++ show p ++ ", " ++ show q) >>
+    (trace $ "mpd " ++ show p ++ ", " ++ show q) >>
     suppose (typesEqual z z')
       (suppose (typesEqual x x') (forceFD y y') <|>
        suppose (typesEqual y y') (forceFD x x') <|>
@@ -178,12 +181,13 @@ solve (cin, p, r) =
   -}
 
   matchPlusMap p@(PPlus x y z) (q@(PPlus x' y' z'), v) =
-    align x y z x' y' z' v <|>
-    align y x z y' x' z' v <|>
-    align y z x y' z' x' v <|>
-    align z y x z' y' x' v <|>
-    align x z y x' z' y' v <|>
-    align z x y z' x' y' v
+    trace ("mpm " ++ show p ++ ", " ++ show q) >>
+    (align x y z x' y' z' v <|>
+     align y x z y' x' z' v <|>
+     align y z x y' z' x' v <|>
+     align z y x z' y' x' v <|>
+     align x z y x' z' y' v <|>
+     align z x y z' x' y' v)
     where align x y z x' y' z' v
             | TApp (TMapFun zf) zr <- z =
               suppose (typesEqual zr z') $
@@ -193,6 +197,8 @@ solve (cin, p, r) =
                        do forceAssocs xs (map (second (TApp zf)) xs')   -- Is this actually forced?
                           forceFD y (TApp (TMapFun zf) y')
                           return (Just (VPlusLiftL zf v))
+                   | otherwise -> trace ("mpm failed: " ++ show xr ++ ", " ++ show xr') >>
+                                  return Nothing
                 _ -> return Nothing)
             | otherwise = return Nothing
 
@@ -221,9 +227,19 @@ solve (cin, p, r) =
          (PEq y (TCompl z x), VEqPlusComplR v)]
     | otherwise =
         []
-  expand1 (PLeq x y, v)
-    | not (isComplement x) = [(PLeq (TCompl y x) y, VComplLeq v), (PPlus x (TCompl y x) y, VPlusComplR v), (PPlus (TCompl y x) x y, VPlusComplL v)]
-    | otherwise            = []
+  expand1 (PLeq x y, v) = compls ++ subrows
+    where compls
+            | not (isComplement x) = [(PLeq (TCompl y x) y, VComplLeq v), (PPlus x (TCompl y x) y, VPlusComplR v), (PPlus (TCompl y x) x y, VPlusComplL v)]
+            | otherwise            = []
+          subrows
+            | TRow fs <- x, length fs > 1, not (isLiteralRow y) =
+              let is = [0..length fs - 1]
+                  subsets = [filter (i /=) is | i <- is]
+                  evids = [(PLeq (TRow (map (fs !!) is)) y, VLeqTrans (VLeqSimple is) v) | is <- subsets, not (null is)]
+              in evids
+            | otherwise = []
+          isLiteralRow (TRow {}) = True
+          isLiteralRow _         = False
   expand1 (PEq x y, VEqSym {}) = []
   expand1 (PEq x y, v) = [(PEq y x, VEqSym v)]
 
@@ -239,8 +255,10 @@ solve (cin, p, r) =
   expandAll :: [(Pred, Evid)] -> [(Pred, Evid)]
   expandAll = go [] where
     go qs [] = reverse qs
-    go qs (p : ps) = go (p : qs) (ps' ++ ps) where
-      ps' = expand1 p ++ concatMap (expand2 p) qs
+    go qs (p : ps) =
+      go (p : qs) (ps' ++ ps) where
+      seen = map fst (qs ++ ps)
+      ps' = filter ((`notElem` seen) . fst) (expand1 p ++ concatMap (expand2 p) qs)
 
   byAssump [] p = return Nothing
   byAssump (a : as) p = match p a <|> byAssump as p
