@@ -24,8 +24,14 @@ desugarB = \exp rec.
             | case #'If (\t. app (app (rec (fst t)) (rec (snd t))) (rec (thd t)))
             )
 
+-------------------------------------------------------------------------------
+-- Identity traversal
+
 ext : forall z : R[* -> *]. Pi (Functor z) -> Xh z (\ w. (Mu (Sigma z)))
 ext = \ d v rec. in (fmapS d rec v)
+
+-- TODO: Why is the result in terms of z, not w? The latter would require an
+-- inj, but seems like the more correct thing to do...?
 
 desugar : forall y. BoolF < y, LamF < y - BoolF =>
           Pi (Functor (y - BoolF)) -> Xh y (\ w. (Mu (Sigma (y - BoolF))))

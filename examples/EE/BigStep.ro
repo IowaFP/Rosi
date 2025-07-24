@@ -90,11 +90,6 @@ xpThreee = rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))
 evThreee : Mu (Sigma { 'Nat := (\val. Nat), 'Bool := (\val. Bool), 'Err := (\val. Unit) })
 evThreee = histo evalAB xpThreee nil
 
-type ABLF : R[* -> *]
-type ABLF = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t)
-            , 'IConst := (\t. Nat), 'Plus := (\t. Pair t t)
-            , 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t) }
-
 evalABL : forall valr.
         ValA < valr, ValB < valr, ValF < valr =>
         Xh ABLF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))

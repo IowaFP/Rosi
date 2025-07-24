@@ -54,6 +54,11 @@ type LBF : R [* -> *]
 type LBF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
              'BConst := (\t. Bool), 'If := (\t. Triple t t t) }
 
+type ABLF : R[* -> *]
+type ABLF = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t)
+            , 'IConst := (\t. Nat), 'Plus := (\t. Pair t t)
+            , 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t) }
+
 type AllF : R [* -> *]
 type AllF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
               'BConst := (\t. Bool), 'If := (\t. Triple t t t),
@@ -62,6 +67,9 @@ type AllF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
 
 functorLBF : Pi (Functor LBF)
 functorLBF = functorBool ++ functorLam
+
+functorABLF : Pi (Functor ABLF)
+functorABLF = functorArith ++ functorLBF
 
 functorAll : Pi (Functor AllF)
 functorAll = functorArith
