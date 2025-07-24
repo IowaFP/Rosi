@@ -631,8 +631,10 @@ normalize eqns (TApp (TMapArg (TRow es)) t)
     do (t, q) <- normalize eqns (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
        return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TMapArg z) =
-    do KRow (KFun k1 k2) <- kindOf z
-       return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y") (TVar 1 "X")))) (shiftTN 0 1 z)), VEqDefn)
+    do k <- kindOf z
+       case k of
+         KRow (KFun k1 k2) -> return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y") (TVar 1 "X")))) (shiftTN 0 1 z)), VEqDefn)
+         _ -> fail ("normalize: ill-kinded " ++ show (TMapArg z))
 normalize eqns (TApp t1 t2) =
   do (t1', q1) <- normalize eqns t1
      q1' <- flattenV q1

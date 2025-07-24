@@ -13,9 +13,11 @@ kindOf (TForall _ (Just k) t) = bindTy k $ kindOf t
 kindOf (TForall _ Nothing t) = error "kindOf: unkinded forall"
 kindOf (TLam x (Just k) t) = KFun k <$> (bindTy k $ kindOf t)
 kindOf (TLam x Nothing t) = error "kindOf: unkinded lambda"
-kindOf (TApp f _) =
-  do KFun _ k <- kindOf f
-     return k
+kindOf t@(TApp f _) =
+  do k' <- kindOf f
+     case k' of
+       KFun _ k -> return k
+       _ -> fail ("kindOf: ill-kinded " ++ show t)
 kindOf (TLab _) = return KLabel
 kindOf (TSing _) = return KType
 kindOf (TLabeled _ t) = kindOf t
@@ -25,7 +27,7 @@ kindOf (TPi r) =
   do KRow k <- kindOf r
      return k
 kindOf (TSigma r) =
-  do KRow k <- kindOf r
+  do KRow k <- kindOf r  -- TODO: what if pattern matching fails?
      return k
 kindOf (TMu f)=
   do KFun k _ <- kindOf f
