@@ -34,6 +34,18 @@ max = \ m n. fix (\max mm nn.
                     ) (out mm)
                  ) m n
 
+isZero : Nat -> Bool
+isZero = \n. match (out n) (case #'Zero (const True) | otherwise False)
+
+equal : Nat -> Nat -> Bool
+equal = fix (\equal m n.
+              match (out m)
+              ( case #'Zero (const (isZero n))
+              | case #'Succ (\mm.
+                match (out n)
+                ( case #'Zero (const False)
+                | case #'Succ (\nn. equal mm nn)))))
+
 --
 
 one : Nat
