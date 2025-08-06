@@ -1,0 +1,109 @@
+import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple, EE.Types
+
+-------------------------------------------------------------------------------
+-- Substitution
+
+substF : Xh LamF (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
+substF = \ exp rec i m.
+  match exp
+  ( case #'Var (\j. match (equal i j)
+                    ( case #'True (const m)
+                    | otherwise (rcon #'Var j)))
+  | case #'Lam (\e. rcon #'Lam (rec e (succ i) m))
+  | case #'App (\p. rcon #'App (pair (rec (fst p) i m) (rec (snd p) i m))))
+
+extS : forall z : R[* -> *]. Pi (Functor z) -> Xh z (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
+extS = \d exp rec i m. in (inj (fmapS d (\x. rec x i m) exp))
+
+subst : forall z. LamF < z =>
+        Pi (Functor (z - LamF)) ->
+        Xh z (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
+subst = \d. substF | extS d
+
+-------------------------------------------------------------------------------
+-- Small-step evaluation
+
+type Step : R[* -> *] -> *
+type Step = \y : R[* -> *]. Pi (Functor y) -> Maybe (Mu (Sigma y))
+
+stepA : Xh ArithF Step
+stepA = \ exp rec d.
+  match exp
+  ( case #'IConst (const Nothing)
+  | case #'Plus (\ p .
+    match (out (fst p))
+    ( ( case #'IConst (\i.
+        match (out (snd p))
+        ( case #'IConst (\j. Just (rcon #'IConst (add i j)))
+        | otherwise (
+          match (rec (snd p) d)
+          ( case #'Just (\sndd. Just (rcon #'Plus (pair (rcon #'IConst i) sndd)))
+          | otherwise Nothing)))))
+    | otherwise (
+      match (rec (fst p) d)
+      ( case #'Just (\fstt. Just (rcon #'Plus (pair fstt (snd p))))
+      | otherwise (
+        match (rec (snd p) d)
+        ( case #'Just (\sndd. Just (rcon #'Plus (pair (fst p) sndd)))
+        | otherwise Nothing )))))))
+
+
+stepB : Xh BoolF Step
+stepB = \ exp rec d.
+  match exp
+  ( case #'BConst (const Nothing)
+  | case #'If (\ t.
+    match (out (fst t))
+    ( case #'BConst
+      ( case #'True (const (Just (snd t)))
+      | case #'False (const (Just (thd t))) )
+    | otherwise
+      ( match (rec (fst t) d)
+        ( case #'Just (\fstt. Just (rcon #'If (triple fstt (snd t) (thd t))))
+        | otherwise (
+          match (rec (snd t) d)
+          ( case #'Just (\sndd. Just (rcon #'If (triple (fst t) sndd (thd t))))
+          | otherwise (
+            match (rec (thd t) d)
+            ( case #'Just (\thdd. Just (rcon #'If (triple (fst t) (snd t) thdd)))
+            | otherwise Nothing )))))))))
+
+stepF : Xh LamF Step
+stepF = \ exp rec d.
+  match exp
+  ( case #'Var (const Nothing)
+  | case #'Lam (const Nothing)
+  | case #'App (\ p.
+    match (out (fst p))
+    ( case #'Lam (\e. Just (histo (subst (prj d)) e zero (snd p)))
+    | otherwise (
+      match (rec (fst p) d)
+      ( case #'Just (\fstt. Just (rcon #'App (pair fstt (snd p))))
+      | otherwise (
+        match (rec (snd p) d)
+        ( case #'Just  (\sndd. Just (rcon #'App (pair (fst p) sndd)))
+        | otherwise Nothing )))))))
+
+step : Xh ABLF Step
+step = stepA | stepB | stepF
+
+-------------------------------------------------------------------------------
+
+steps : forall z. (Mu (Sigma z) -> Maybe (Mu (Sigma z))) -> Mu (Sigma z) -> Mu (Sigma z)
+steps = \step. fix (\steps z. match (step z) (case #'Nothing (const z) | case #'Just steps))
+
+aexp : Mu (Sigma ABLF)
+aexp = rcon #'Plus (pair (rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst one))) (rcon #'IConst one))
+
+astep : Maybe (Mu (Sigma ABLF))
+astep = histo step aexp functorABLF
+
+asteps : Mu (Sigma ABLF)
+asteps = steps (\x. histo step x functorABLF) aexp
+
+exp : Mu (Sigma ABLF)
+exp = rcon #'App (pair (rcon #'Lam (rcon #'Plus (pair (rcon #'Var zero) (rcon #'Var zero))))
+                       (rcon #'IConst one))
+
+esteps : Mu (Sigma ABLF)
+esteps = steps (\x. histo step x functorABLF) exp
