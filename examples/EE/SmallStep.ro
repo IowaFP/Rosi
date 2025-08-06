@@ -3,20 +3,22 @@ import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple, EE.Types
 -------------------------------------------------------------------------------
 -- Substitution
 
-substF : Xh LamF (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
+type BindF : R[* -> *]
+type BindF = { 'Var := Const Nat, 'Lam := Id }
+
+substF : Xh BindF (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
 substF = \ exp rec i m.
   match exp
   ( case #'Var (\j. match (equal i j)
                     ( case #'True (const m)
                     | otherwise (rcon #'Var j)))
-  | case #'Lam (\e. rcon #'Lam (rec e (succ i) m))
-  | case #'App (\p. rcon #'App (pair (rec (fst p) i m) (rec (snd p) i m))))
+  | case #'Lam (\e. rcon #'Lam (rec e (succ i) m)))
 
 extS : forall z : R[* -> *]. Pi (Functor z) -> Xh z (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
 extS = \d exp rec i m. in (inj (fmapS d (\x. rec x i m) exp))
 
-subst : forall z. LamF < z =>
-        Pi (Functor (z - LamF)) ->
+subst : forall z. BindF < z =>
+        Pi (Functor (z - BindF)) ->
         Xh z (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
 subst = \d. substF | extS d
 
