@@ -105,6 +105,7 @@ main = do nowArgs <- getArgs
                (flags, [], []) -> return (interpretFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   exitFailure
+          writeIORef traceKindInference (doTraceKindInference flags)
           writeIORef traceTypeInference (doTraceInference flags)
           writeIORef N.traceEvaluation (doTraceEvaluation flags)
           writeIORef E.traceEvaluation (doTraceEvaluation flags)
