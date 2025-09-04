@@ -18,9 +18,9 @@ extS : forall z : R[* -> *]. Pi (Functor z) -> Xh z (\y. Nat -> Mu (Sigma y) -> 
 extS = \d exp rec i m. in (inj (fmapS d (\x. rec x i m) exp))
 
 subst : forall z. BindF < z =>
-        Pi (Functor (z - BindF)) ->
-        Xh z (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
-subst = \d. substF | extS d
+        Pi (Functor z) ->
+        Mu (Sigma z) -> Nat -> Mu (Sigma z) -> Mu (Sigma z)
+subst = \d. histo (substF | extS (prj d))
 
 -------------------------------------------------------------------------------
 -- Small-step evaluation
@@ -34,13 +34,13 @@ stepA = \ exp rec d.
   ( case #'IConst (const Nothing)
   | case #'Plus (\ p .
     match (out (fst p))
-    ( ( case #'IConst (\i.
-        match (out (snd p))
-        ( case #'IConst (\j. Just (rcon #'IConst (add i j)))
-        | otherwise (
-          match (rec (snd p) d)
-          ( case #'Just (\sndd. Just (rcon #'Plus (pair (rcon #'IConst i) sndd)))
-          | otherwise Nothing)))))
+    ( case #'IConst (\i.
+      match (out (snd p))
+      ( case #'IConst (\j. Just (rcon #'IConst (add i j)))
+      | otherwise (
+        match (rec (snd p) d)
+        ( case #'Just (\sndd. Just (rcon #'Plus (pair (rcon #'IConst i) sndd)))
+        | otherwise Nothing))))
     | otherwise (
       match (rec (fst p) d)
       ( case #'Just (\fstt. Just (rcon #'Plus (pair fstt (snd p))))
@@ -48,7 +48,6 @@ stepA = \ exp rec d.
         match (rec (snd p) d)
         ( case #'Just (\sndd. Just (rcon #'Plus (pair (fst p) sndd)))
         | otherwise Nothing )))))))
-
 
 stepB : Xh BoolF Step
 stepB = \ exp rec d.
@@ -73,18 +72,17 @@ stepB = \ exp rec d.
 stepF : Xh LamF Step
 stepF = \ exp rec d.
   match exp
-  ( case #'Var (const Nothing)
-  | case #'Lam (const Nothing)
-  | case #'App (\ p.
+  ( case #'App (\ p.
     match (out (fst p))
-    ( case #'Lam (\e. Just (histo (subst (prj d)) e zero (snd p)))
+    ( case #'Lam (\e. Just (subst d e zero (snd p)))
     | otherwise (
       match (rec (fst p) d)
       ( case #'Just (\fstt. Just (rcon #'App (pair fstt (snd p))))
       | otherwise (
         match (rec (snd p) d)
-        ( case #'Just  (\sndd. Just (rcon #'App (pair (fst p) sndd)))
-        | otherwise Nothing )))))))
+        ( case #'Just (\sndd. Just (rcon #'App (pair (fst p) sndd)))
+        | otherwise Nothing ))))))
+  | otherwise Nothing )
 
 step : Xh ABLF Step
 step = stepA | stepB | stepF
