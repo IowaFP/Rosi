@@ -72,6 +72,10 @@ not : Bool -> Bool
 not = case #'True (con #'False)
     | case #'False (con #'True)
 
+impossible : forall a. Sigma {} -> a
+impossible = fix (\x. x)
+
+
 -------------------------------------------------------------------------------
 -- Basic analysis / synthesis
 
