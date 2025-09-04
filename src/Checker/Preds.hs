@@ -393,12 +393,14 @@ guess (pr@(tcin, PEq t u, v) : prs) =
        (t@(TApp (TUnif v) t'), u) ->
           do x <- fresh "x"
              k <- kindOf t'
-             writeRef (goalRef (uvGoal v)) (Just (TLam x (Just k) u))
+             trace $ "guessing " ++ show v ++ " := " ++ show (Just (TLam x (Just k) (shiftTN 0 1 u)))
+             writeRef (goalRef (uvGoal v)) (Just (TLam x (Just k) (shiftTN 0 1 u)))
              return (Just (pr : prs))
        (u, t@(TApp (TUnif v) t')) ->
           do x <- fresh "x"
              k <- kindOf t'
-             writeRef (goalRef (uvGoal v)) (Just (TLam x (Just k) u))
+             trace $ "guessing " ++ show v ++ " := " ++ show (Just (TLam x (Just k) (shiftTN 0 1 u)))
+             writeRef (goalRef (uvGoal v)) (Just (TLam x (Just k) (shiftTN 0 1 u)))
              return (Just (pr : prs))
        _ -> fmap (pr :) <$> guess prs
 
