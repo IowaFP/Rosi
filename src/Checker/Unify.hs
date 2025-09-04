@@ -59,6 +59,7 @@ instance MonadCheck UnifyM where
   bind t m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> bind t (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
   assume g m = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> assume g (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns))
   require p r = tell ([], [(p, r)])
+  errorContext f m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> errorContext f (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
   fresh = UM . lift . lift . lift . fresh
   atLevel l m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> atLevel l (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
   theLevel = UM $ lift $ lift $ lift theLevel

@@ -428,8 +428,8 @@ flattenV v = return v
 -- Probably ought to live somewhere else
 --------------------------------------------------------------------------------
 
-data Error = ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
-           | ErrTypeMismatch Term Ty Ty | ErrTypeMismatchFD Pred (Maybe Evid) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Ty Kind Kind
+data Error = ErrContextDefn String Error | ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
+           | ErrTypeMismatch Ty Ty | ErrTypeMismatchFD Pred (Maybe Evid) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Kind Kind
            | ErrNotEntailed [(Pred, [Pred])]
            | ErrUnboundVar String | ErrUnboundTyVar String
            | ErrOther String

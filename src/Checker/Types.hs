@@ -94,10 +94,10 @@ kindMismatch :: MonadCheck m => Ty -> Kind -> Kind -> m a
 kindMismatch t actual expected =
   do actual' <- flattenK actual
      expected' <- flattenK expected
-     throwError (ErrKindMismatch t actual' expected')
+     throwError (ErrContextType t (ErrKindMismatch actual' expected'))
 
 checkTy' :: Term -> Ty -> Kind -> CheckM Ty
-checkTy' e t k = withError (ErrContextTerm e . ErrContextType t) $ checkTy t k
+checkTy' e t k = errorContext (ErrContextTerm e . ErrContextType t) $ checkTy t k
 
 checkTy :: Ty -> Kind -> CheckM Ty
 checkTy t k =
@@ -194,12 +194,12 @@ checkTy0 t@(TCompl r0 r1) expected =
 
 checkPred :: Pred -> CheckM Pred
 checkPred p@(PLeq y z) =
-  withError (ErrContextPred p)  $
+  errorContext (ErrContextPred p)  $
   do kelem <- kindGoal "e"
      PLeq <$> checkTy y (KRow kelem)
           <*> checkTy z (KRow kelem)
 checkPred p@(PPlus x y z) =
-  withError (ErrContextPred p) $
+  errorContext (ErrContextPred p) $
   do kelem <- kindGoal "e"
      PPlus <$> checkTy x (KRow kelem)
            <*> checkTy y (KRow kelem)

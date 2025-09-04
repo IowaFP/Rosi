@@ -204,6 +204,7 @@ pprTyping (x, ty, e) =
 pprTypeError :: Error -> RDoc ann
 pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
   where d <:> (ds, te) = (d : ds, te)
+        contexts (ErrContextDefn d te) = ("Whilst checking the definition of" <+> fromString d) <:> contexts te
         contexts (ErrContextType ty te) = ("Whilst checking the type" <+> ppr ty) <:> contexts te
         contexts (ErrContextPred pr te) = ("Whilst checking the predicate" <+> ppr pr) <:> contexts te
         contexts (ErrContextTerm t te) = ("While checking the term" <+> ppr t) <:> contexts te
@@ -212,10 +213,10 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
 
         (ctxts, te') = contexts te
 
-        pprErr (ErrTypeMismatch m actual expected) = vsep ["The term" <+> ppr m, "has type" <+> ppr actual, "but expected" <+> ppr expected]
+        pprErr (ErrTypeMismatch actual expected) = vsep ["Actual type" <+> ppr actual, "was expected to be" <+> ppr expected]
         pprErr (ErrTypeMismatchFD p _) = "Type mismatch in functional dependencies for" <+> ppr p
         pprErr (ErrTypeMismatchPred p t u) = vsep ["Type mismatch in functional dependencies for" <+> ppr p, "type" <+> ppr t, "was expected to be" <+> ppr u]
-        pprErr (ErrKindMismatch t k k') = vsep ["The type" <+> ppr t, "has kind" <+> ppr k, "but expected" <+> ppr k']
+        pprErr (ErrKindMismatch k k') = vsep ["Actual kind" <+> ppr k, "was expected to be" <+> ppr k']
         pprErr (ErrNotEntailed errs) = vsep (map pprOne errs)
           where pprOne (p, qs) = vsep ["The predicate" <+> ppr p, hang 2 ("is not entailed by" <+> fillSep (punctuate "," (map ppr qs)))]
         pprErr (ErrUnboundTyVar v) = "Unbound type variable" <+> ppre v

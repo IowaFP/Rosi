@@ -57,15 +57,28 @@ shiftE :: TCtxt -> TCtxt
 shiftE = map (shiftTN 0 1)
 
 newtype TCSt = TCSt { next :: Int }
+
+emptyTCSt :: TCSt
 emptyTCSt = TCSt 0
-data TCIn = TCIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt, level :: Int }
-emptyTCIn = TCIn [] [] [] 0
+
+data TCIn = TCIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt, level :: Int, ectxt :: Error -> Error }
+
+emptyTCIn :: TCIn
+emptyTCIn = TCIn [] [] [] 0 id
+
 type Problem = (TCIn, Pred, IORef (Maybe Evid))
 newtype TCOut = TCOut { goals :: [Problem] }
   deriving (Semigroup, Monoid)
 
 newtype CheckM a = CM (WriterT TCOut (ReaderT TCIn (StateT TCSt (ExceptT Error IO))) a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader TCIn, MonadState TCSt, MonadWriter TCOut, MonadError Error)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader TCIn, MonadState TCSt, MonadWriter TCOut)
+
+instance MonadError Error CheckM where
+  throwError e = do f <- asks ectxt
+                    CM (throwError (f e))
+
+  catchError e k = CM (catchError (unCM e) (\e -> unCM (k e)))
+    where unCM (CM m) = m
 
 instance MonadFail CheckM where
   fail s = throwError (ErrOther s)
@@ -83,6 +96,8 @@ class (Monad m, MonadFail m, MonadError Error m, MonadRef m, MonadIO m, MonadRea
   assume :: Pred -> m a -> m a
   require :: Pred -> IORef (Maybe Evid) -> m ()
 
+  errorContext :: (Error -> Error) -> m a -> m a
+
   fresh :: String -> m String
   atLevel :: Int -> m t -> m t
   theLevel :: m Int
@@ -97,6 +112,7 @@ instance MonadCheck CheckM where
        p' <- flattenP p
        trace ("requiring " ++ show p')
        tell (TCOut [(cin, p, r)])
+  errorContext f = local (\env -> env { ectxt = ectxt env . f})
   fresh x = do i <- gets next
                modify (\st -> st { next = i + 1 })
                return ((takeWhile ('#' /=) x) ++ '#' : show i)
