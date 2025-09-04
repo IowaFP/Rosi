@@ -208,6 +208,7 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         contexts (ErrContextType ty te) = ("Whilst checking the type" <+> ppr ty) <:> contexts te
         contexts (ErrContextPred pr te) = ("Whilst checking the predicate" <+> ppr pr) <:> contexts te
         contexts (ErrContextTerm t te) = ("While checking the term" <+> ppr t) <:> contexts te
+        contexts (ErrContextTyEq t u te) = ("While comparing the types" <+> ppr t <+> "and" <+> ppr u) <:> contexts te
         contexts (ErrContextOther s te) = ppre s <:> contexts te
         contexts te = ([], te)
 

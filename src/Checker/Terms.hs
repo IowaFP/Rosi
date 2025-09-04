@@ -20,7 +20,7 @@ import Printer
 expectT :: Term -> Ty -> Ty -> CheckM Evid
 expectT m actual expected =
   do trace ("expect (" ++ renderString False (ppr actual) ++ ") (" ++ renderString False (ppr expected) ++ ")")
-     b <- errorContext (ErrContextTerm m) $ unify [] actual expected
+     b <- errorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify [] actual expected
      case b of
        Nothing -> typeMismatch m actual expected
        Just q  -> flattenV q
