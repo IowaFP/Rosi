@@ -119,3 +119,8 @@ maybe = \z f.
 
 fromMaybe : forall a. a -> Maybe a -> a
 fromMaybe = \z. maybe z id
+
+-------------------------------------------------------------------------------
+
+sorry : forall a. a
+sorry = fix (\x. x)
