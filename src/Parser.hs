@@ -118,7 +118,7 @@ whitespace = P.space space1 (P.skipLineComment "--") (P.skipBlockCommentNested "
 lexeme p    = guardIndent p <* whitespace
 
 symbol      = lexeme . string
-identifier  = lexeme ((:) <$> letterChar <*> many alphaNumChar)
+identifier  = lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '\''))
 parens      = between (symbol "(") (symbol ")")
 angles      = between (symbol "<") (symbol ">")
 brackets    = between (symbol "[") (symbol "]")

@@ -68,11 +68,11 @@ three1 = max three one0
 
 --
 
-onee : Nat
-onee = 1
+one' : Nat
+one' = 1
 
-threee : Nat
-threee = add onee 2
+three' : Nat
+three' = add one' 2
 
-threee1 : Nat
-threee1 = max threee 1
+three'1 : Nat
+three'1 = max three' 1
