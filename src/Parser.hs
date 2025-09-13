@@ -132,6 +132,8 @@ semiSep1    = flip sepBy1 semi
 commaSep    = flip sepBy comma
 commaSep1   = flip sepBy1 comma
 
+number      = lexeme P.decimal
+
 ---------------------------------------------------------------------------------
 -- Parser
 
@@ -292,6 +294,7 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
   aterm = choice [ EConst <$> const
                  , EVar (-1) <$> identifier
                  , ESing <$> (char '#' >> atype)
+                 , buildNumber <$> number
                  , parens term ]
 
   const = choice [symbol s >> return k | (s, k) <-
@@ -302,6 +305,9 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                     ("in", CIn),
                     ("out", COut),
                     ("fix", CFix)]]
+
+  buildNumber 0 = EVar (-1) "zero"
+  buildNumber n = EApp (EVar (-1) "succ") (buildNumber (n - 1))
 
 data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String]
   deriving (Data, Eq, Show, Typeable)

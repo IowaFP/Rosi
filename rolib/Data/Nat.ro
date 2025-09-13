@@ -65,3 +65,14 @@ three0 = max one0 three
 
 three1 : Nat
 three1 = max three one0
+
+--
+
+onee : Nat
+onee = 1
+
+threee : Nat
+threee = add onee 2
+
+threee1 : Nat
+threee1 = max threee 1
