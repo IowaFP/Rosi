@@ -46,7 +46,7 @@ checkTerm m t =
   do g <- asks tctxt
      l <- theLevel
      trace $ "checkTerm@" ++ show l ++ " (" ++ renderString False (ppr m) ++ ") (" ++ renderString False (ppr t) ++ ") in (" ++ intercalate "," (map (renderString False . ppr) g) ++ ")"
-     checkTerm0 m t
+     errorContext (ErrContextTerm m) $ checkTerm0 m t
 
 elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
 elimForm expected k =
@@ -57,7 +57,7 @@ elimForm expected k =
 checkTerm0 :: Term -> Ty -> CheckM Term
 checkTerm0 (ETyLam v Nothing e) expected =
   do k <- kindGoal "d"
-     checkTerm0 (ETyLam v (Just k) e) expected
+     checkTerm (ETyLam v (Just k) e) expected
 checkTerm0 e0@(ETyLam v (Just k) e) expected =
   do tcod <- typeGoal "cod"
      q <- expectT e0 (TForall v (Just k) tcod) expected

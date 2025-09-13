@@ -427,12 +427,21 @@ unify0 t@(TApp {}) (u@(TApp {}))
   where (ft, ts) = spine t
         (fu, us) = spine u
 
-        unifySpines =
+        unifySpines  = unifySpines' ft' ts' fu' us'
+          where m = length ts
+                n = length us
+                (ts0, ts') = splitAt (m - n) ts
+                ft' = foldl TApp ft ts0
+                (us0, us') = splitAt (n - m) us
+                fu' = foldl TApp fu us0
+
+        unifySpines' ft ts fu us =
           do mq <- unify' ft fu
              mqs <- zipWithM unify' ts us
              case sequence (mq : mqs) of
                Nothing -> return Nothing
                Just (q : qs) -> return (Just (foldl VEqApp q qs))
+
 unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
   do KFun kdom kcod <- kindOf fa
      gs <- replicateM (length xs) (typeGoal' "t" kdom)

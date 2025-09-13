@@ -102,7 +102,7 @@ checkTy' e t k = errorContext (ErrContextTerm e . ErrContextType t) $ checkTy t 
 checkTy :: Ty -> Kind -> CheckM Ty
 checkTy t k =
   do trace $ "checkTy " ++ renderString False (ppr t) ++ " : " ++ renderString False (ppr k)
-     checkTy0 t k
+     errorContext (ErrContextType t) (checkTy0 t k)
 
 checkTy0 (TVar (-1) x) expected =
   throwError (ErrOther $ "scoping error: " ++ x ++ " not resolved")
