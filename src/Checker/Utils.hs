@@ -40,3 +40,4 @@ kindOf (TMapArg f) =
   do KRow (KFun kd kc) <- kindOf f
      return $ KFun kd (KRow kc)
 kindOf (TCompl r _) = kindOf r
+kindOf TString = return KType

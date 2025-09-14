@@ -182,10 +182,14 @@ checkTerm0 e@(EConst c) expected =
           do let f = TVar 0 "f"
              return (TForall "f" (Just (KType `KFun` KType)) $
                        TMu f `funTy` f `TApp` TMu f) where
+
         constType CFix =
           do let a = TVar 0 "a"
              return (TForall "a" (Just KType) $
                       (a `funTy` a) `funTy` a) where
+
+        constType CStringCat =
+          return (TString `funTy` TString `funTy` TString)
 
 checkTerm0 e0@(EAna phi e) expected =
   do k <- kindGoal "k"
@@ -223,6 +227,9 @@ checkTerm0 e0@(ELet x e f) expected =
   do (e', t) <- generalize e
      f' <- bind t (elimForm expected (checkTerm0 f))
      return (ELet x e' f')
+checkTerm0 e0@(EStringLit _) expected =
+  do expectT e0 TString expected
+     return e0
 
 generalize :: Term -> CheckM (Term, Ty)
 generalize e =

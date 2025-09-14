@@ -191,6 +191,8 @@ checkTy0 t@(TCompl r0 r1) expected =
      v <- newRef Nothing
      require (PLeq r1' r0') v
      return (TCompl r0' r1')
+checkTy0 TString expected =
+  expectK TString KType expected
 
 checkPred :: Pred -> CheckM Pred
 checkPred p@(PLeq y z) =

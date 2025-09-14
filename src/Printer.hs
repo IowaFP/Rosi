@@ -128,6 +128,7 @@ instance Printable Ty where
   ppr (TMu t) = with 3 $ "Mu" <+> at 4 (ppr t)
   ppr (TMapFun t) = ppr t
   ppr (TMapArg t) = ppr t
+  ppr TString = "String"
   ppr (TInst (Unknown n (Goal (s, r))) t) =
     do minst <- liftIO $ readIORef r
        case minst of
@@ -160,6 +161,8 @@ instance Printable Term where
     with 1 $ fillSep [at 2 (ppr e1), "++", ppr e2]
   ppr (EApp (EApp (EInst (EConst CBranch) _) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "|", ppr e2]
+  ppr (EApp (EApp (EConst CStringCat) e1) e2) =
+    with 1 $ fillSep [at 2 (ppr e1), "^", ppr e2]
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr (ETyLam x (Just k) m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
   ppr (ETyLam x Nothing m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <> ".", ppr m]
@@ -182,6 +185,7 @@ instance Printable Term where
     name CIn = "in"
     name COut = "out"
     name CFix = "fix"
+    name CStringCat = "(^)"
   ppr (ESyn f m) = with 4 (fillSep ["syn", brackets (ppr f), at 5 (ppr m)])
   ppr (EAna f m) = with 4 (fillSep ["ana", brackets (ppr f), at 5 (ppr m)])
   ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> ";", ppr n]
@@ -191,6 +195,7 @@ instance Printable Term where
   ppr (EPrLam _ m) = ppr m
   ppr (ECast m VEqRefl) = ppr m
   ppr (ECast m q) = parens (fillSep [ppr m <+> "<|", fromString (show q)])
+  ppr (EStringLit s) = "\"" <> ppre s <> "\""
 
 instance Printable Evid where
   ppr _ = "<evid>"

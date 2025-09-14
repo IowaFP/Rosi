@@ -59,6 +59,7 @@ instance HasVars Ty where
   scope (TMapFun t) = TMapFun <$> scope t
   scope (TMapArg t) = TMapArg <$> scope t
   scope (TCompl r0 r1) = TCompl <$> scope r0 <*> scope r1
+  scope TString = return TString
 
 instance HasVars Pred where
   scope (PLeq y z) = PLeq <$> scope y <*> scope z
@@ -85,6 +86,7 @@ instance HasVars Term where
     scopeI (TyArg t) = TyArg <$> scope t
     scopeI (PrArg v) = return (PrArg v)
   scope (EInst m (Unknown n g)) = EInst <$> scope m <*> return (Unknown n g) -- how is this case actually possible?
+  scope (EStringLit s) = return (EStringLit s)
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
   scope ECast{} = error "scope: ETyEqu"

@@ -322,6 +322,7 @@ promoteN v n (TRow ts) = liftM TRow . sequence <$> mapM (promoteN v n) ts
 promoteN v n (TPi t) = liftM TPi <$> promoteN v n t
 promoteN v n (TSigma t) = liftM TSigma <$> promoteN v n t
 promoteN v n (TMu t) = liftM TMu <$> promoteN v n t
+promoteN v n TString = return (Just TString)
 promoteN v n (TMapFun t) = liftM TMapFun <$> promoteN v n t
 promoteN v n (TCompl y z) = liftM2 TCompl <$> promoteN v n y <*> promoteN v n z
 promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promoteN v n t
@@ -508,6 +509,8 @@ unify0 t (TSigma r)
   | TLabeled tl tt <- t = liftM (`VEqTrans` VEqSym (VEqTyConSing Sigma)) <$> unify' (TRow [t]) r
 unify0 (TMu f) (TMu g) =
   liftM (VEqCon Mu) <$> unify' f g
+unify0 TString TString =
+  return (Just VEqRefl)
 unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
   do q <- unify' f g
      case q of

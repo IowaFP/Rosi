@@ -77,8 +77,9 @@ data Ty =
     -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
-  | TMu Ty | TMapFun Ty
-  | TCompl Ty Ty
+  | TMu Ty
+  | TMapFun Ty | TCompl Ty Ty
+  | TString
   -- Internals
   | TInst Insts Ty | TMapArg Ty
   deriving (Data, Eq, Show, Typeable)
@@ -179,6 +180,8 @@ flattenT (TInst is t) =
   TInst <$> flattenIs is <*> flattenT t
 flattenT (TMapArg t) =
   TMapArg <$> flattenT t
+flattenT TString =
+  return TString
 
 flattenP :: MonadIO m => Pred -> m Pred
 flattenP (PLeq z y) =
@@ -250,7 +253,7 @@ shiftT j = shiftTN j 1
 --------------------------------------------------------------------------------
 
 data Const =
-    CPrj | CConcat | CInj | CBranch | CIn | COut | CFix
+    CPrj | CConcat | CInj | CBranch | CIn | COut | CFix | CStringCat
     deriving (Data, Eq, Show, Typeable)
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?
@@ -262,6 +265,7 @@ data Term =
   | EConst Const
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
+  | EStringLit String
   deriving (Data, Eq, Show, Typeable)
 
 shiftENV :: [UVar] -> Int -> Int -> Term -> Term

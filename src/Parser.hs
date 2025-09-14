@@ -133,6 +133,7 @@ commaSep    = flip sepBy comma
 commaSep1   = flip sepBy1 comma
 
 number      = lexeme P.decimal
+stringLit   = lexeme (char '"' >> manyTill P.charLiteral (char '"'))
 
 ---------------------------------------------------------------------------------
 -- Parser
@@ -213,6 +214,7 @@ atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
                , TPi <$> (symbol "Pi" >> atype)
                , TMu <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
+               , const TString <$> symbol "String"
                , (\x -> TVar (-1) x) <$> identifier
                , parens ty ]
 
@@ -265,10 +267,13 @@ term = prefixes typedTerm where
     do t <- branchTerm
        maybe t (ETyped t) <$> optional (symbol ":" >> ty)
 
-  branchTerm = chainl1 labTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)] where
-    ebinary k = return (\e1 e2 -> EApp (EApp (EConst k) e1) e2)
+  ebinary k = return (\e1 e2 -> EApp (EApp (EConst k) e1) e2)
 
-  labTerm = chainl1 appTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
+  branchTerm = chainl1 labTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
+
+  labTerm = chainl1 catTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
+
+  catTerm = chainl1 appTerm $ op "^" (ebinary CStringCat)
 
 data AppTerm = BuiltIn String | Type Ty | Term Term
 
@@ -295,6 +300,7 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                  , EVar (-1) <$> identifier
                  , ESing <$> (char '#' >> atype)
                  , buildNumber <$> number
+                 , EStringLit <$> stringLit
                  , parens term ]
 
   const = choice [symbol s >> return k | (s, k) <-
@@ -304,7 +310,8 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                     ("(|)", CBranch),
                     ("in", CIn),
                     ("out", COut),
-                    ("fix", CFix)]]
+                    ("fix", CFix),
+                    ("(^)", CStringCat)]]
 
   buildNumber 0 = EVar (-1) "zero"
   buildNumber n = EApp (EVar (-1) "succ") (buildNumber (n - 1))

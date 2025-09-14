@@ -28,6 +28,7 @@ instance Show Body where
 
 data Value = VPrLam Env Body | VLam Env Body
            | VIn Value | VSing | VVariant Int Value | VRecord [Value] | VSyn (Int -> Value)
+           | VString String
 
 instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
@@ -37,7 +38,7 @@ instance Show Value where
   show (VVariant k w) = "<" ++ show k ++ ", " ++ show w ++ ">"
   show (VRecord vs) = "(" ++ intercalate ", " (map show vs) ++ ")"
   show (VSyn t) = "<<syn>>"
-
+  show (VString s) = "\"" ++ s ++ "\""
 
 data EValue = VLeq [Int] | VPlus [Either Int Int] | VEq
   deriving Show
@@ -132,7 +133,7 @@ eval' h (EConst CConcat) = -- VPrLam h (Value (VLam h (Value (VLam h (Const CCon
 eval' h (EConst CBranch) = -- VPrLam h (Value (VLam h (Value (VLam h (Value (VLam h (Const CBranch)))))))
   VPrLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
-  VLam h $ Prim $ \ h ->
+  VLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
     case h of
       (VPlus is : _, v : g : f : _) ->
@@ -155,6 +156,13 @@ eval' h (EConst CFix) = -- VLam h (Const CFix)
   eval h (ELam "f" Nothing (EApp (EVar 0 "f") (EApp (EConst CFix) (EVar 0 "f"))))
 --   VLam h $ Prim $ \ (_, VLam (hp, he) (Term e) : _) ->
 --     eval (hp, eval h (EApp (EConst CFix) (ELam "x" Nothing e)) : he) e
+eval' h (EConst CStringCat) =
+  VLam h $ Prim $ \h ->
+  VLam h $ Prim $ \h ->
+    case h of
+      (_, VString s1 : VString s0 : _) ->
+         VString (s0 ++ s1)
+      _ -> error $ "bad environment for (^): " ++ show h
 eval' h (ESyn _ e) = VSyn (\i -> app h (prapp h f (VLeq [i])) VSing)
   where f = eval h e
 eval' h (EAna _ e) =
@@ -173,6 +181,7 @@ eval' h (ECast e (VEqSym (VEqTyConSing Sigma))) =
   VVariant 0 (eval h e)
 eval' h (ECast e q) = eval h e
 eval' h (ETyped e _) = eval h e
+eval' h (EStringLit s) = VString s
 
 evalV :: Env -> Evid -> EValue
 evalV (hp, he) (VVar i)    = hp !! i
