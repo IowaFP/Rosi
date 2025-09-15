@@ -63,12 +63,12 @@ sizeRb = case #'Fix (\e rec. succ (rec e))
 -- figure out what's going wrong in type inference.
 
 type ABF : R[* -> *]
-type ABF = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t)
-           , 'IConst := (\t. Nat), 'Plus := (\t. Pair t t) }
+type ABF = { 'BConst := \t. Bool, 'If := \t. Triple t t t
+           , 'IConst := \t. Nat, 'Plus := \t. Pair t t }
 
 type LRF : R[* -> *]
-type LRF = { 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t)
-           , 'Fix := (\t. t) }
+type LRF = { 'Var := Const Nat, 'Lam := Id, 'App := \t. Pair t t
+           , 'Fix := \t. t }
 
 sizeAllb : Xh AllF (RConst Nat)
 sizeAllb = (sizeBb | sizeAb) | (sizeLb | sizeRb)

@@ -4,20 +4,20 @@ import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple
 -- Types
 
 type BoolF : R[* -> *]
-type BoolF = { 'BConst := (\t. Bool)
-             , 'If := (\t. Triple t t t) }
+type BoolF = { 'BConst := \t. Bool
+             , 'If := \t. Triple t t t }
 
 type ArithF : R[* -> *]
-type ArithF = { 'IConst := (\t. Nat)
-              , 'Plus := (\t. Pair t t) }
+type ArithF = { 'IConst := \t. Nat
+              , 'Plus := \t. Pair t t }
 
 type LamF : R[* -> *]
 type LamF = { 'Var := Const Nat
             , 'Lam := Id
-            , 'App := (\t. Pair t t) }
+            , 'App := \t. Pair t t }
 
 type RecF : R[* -> *]
-type RecF = { 'Fix := (\t. t) }
+type RecF = { 'Fix := \t. t }
 
 -------------------------------------------------------------------------------
 -- Functors
@@ -51,19 +51,19 @@ functorRec = #'Fix := functorId
 -- Shorthand
 
 type LBF : R [* -> *]
-type LBF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
-             'BConst := (\t. Bool), 'If := (\t. Triple t t t) }
+type LBF = { 'Var := \t. Nat, 'Lam := Id, 'App := \t. Pair t t,
+             'BConst := \t. Bool, 'If := \t. Triple t t t }
 
 type ABLF : R[* -> *]
-type ABLF = { 'BConst := (\t. Bool), 'If := (\t. Triple t t t)
-            , 'IConst := (\t. Nat), 'Plus := (\t. Pair t t)
-            , 'Var := Const Nat, 'Lam := Id, 'App := (\t. Pair t t) }
+type ABLF = { 'BConst := \t. Bool, 'If := \t. Triple t t t
+            , 'IConst := \t. Nat, 'Plus := \t. Pair t t
+            , 'Var := Const Nat, 'Lam := Id, 'App := \t. Pair t t }
 
 type AllF : R [* -> *]
-type AllF = { 'Var := (\t. Nat), 'Lam := Id, 'App := (\t. Pair t t),
-              'BConst := (\t. Bool), 'If := (\t. Triple t t t),
-              'IConst := (\t. Nat), 'Plus := (\t. Pair t t),
-              'Fix := (\t. t) }
+type AllF = { 'Var := \t. Nat, 'Lam := Id, 'App := \t. Pair t t,
+              'BConst := \t. Bool, 'If := \t. Triple t t t,
+              'IConst := \t. Nat, 'Plus := \t. Pair t t,
+              'Fix := \t. t }
 
 functorLBF : Pi (Functor LBF)
 functorLBF = functorBool ++ functorLam

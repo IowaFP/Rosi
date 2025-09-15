@@ -57,7 +57,7 @@ type Unit : *
 type Unit = Pi {}
 
 tt : Unit
-tt = prj (#'x := (/\ a. \x. x))
+tt = prj (#'x := /\ a. \x. x)
 
 type Bool : *
 type Bool = Sigma { 'True := Unit, 'False := Unit }
@@ -98,7 +98,7 @@ eqS = \ d v. ana (\ l y. match v
 -------------------------------------------------------------------------------
 
 eqBool : Eq Bool
-eqBool = eqS (#'True := (\x y. True) ++ #'False := (\x y. True))
+eqBool = eqS ((#'True := \x y. True) ++ (#'False := \x y. True))
 
 -------------------------------------------------------------------------------
 

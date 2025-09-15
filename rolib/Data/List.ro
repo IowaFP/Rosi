@@ -1,7 +1,7 @@
 import Ro.Base, Ro.Xr, Data.Functor, Data.Nat, Data.Tuple
 
 type ListF : * -> * -> *
-type ListF = \a. Sigma { 'Nil := Const Unit, 'Cons := (\l. Pair a l) }
+type ListF = \a. Sigma { 'Nil := Const Unit, 'Cons := \l. Pair a l }
 
 type List : * -> *
 type List = \a. Mu (ListF a)

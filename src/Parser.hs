@@ -183,10 +183,18 @@ tyOrP :: Parser (Either [Pred] Ty)
 tyOrP = Left <$> try (commaSep1 pr) <|> Right <$> arrTy
 
 arrTy :: Parser Ty
-arrTy = chainr1 appTy (symbol "->" >> return (\t u -> TApp (TApp TFun t) u))
+arrTy = chainr1 labTy (symbol "->" >> return (\t u -> TApp (TApp TFun t) u))
 
-appTy :: Parser Ty
-appTy = chainr1 minusTy (symbol ":=" *> return TLabeled)
+labTy :: Parser Ty
+labTy =
+  do t <- minusTy
+     choice
+       [ do symbol ":="
+            TLabeled t <$> ty
+       , return t ]
+
+
+  -- chainr1 minusTy (symbol ":=" *> return TLabeled)
 
 minusTy :: Parser Ty
 minusTy = chainl1 (apps <$> some atype) (lexeme (try (string "-" <* notFollowedBy (char '>'))) *> return (\t u -> TCompl t u))
@@ -194,7 +202,7 @@ minusTy = chainl1 (apps <$> some atype) (lexeme (try (string "-" <* notFollowedB
 apps :: [Ty] -> Ty
 apps = foldl1 TApp
 
--- appTy = do t <- atype
+-- labTy = do t <- atype
 --            choice
 --              [ do symbol ":="
 --                   (u : us) <- some atype
@@ -202,7 +210,7 @@ apps = foldl1 TApp
 --              , do us <- many atype
 --                   return (foldl TApp t us) ]
 labeledTy =
-  do t <- appTy
+  do t <- labTy
      case t of
        TLabeled _ _ -> return t
        _ -> unexpected (Label $ fromList "unlabeled type")
@@ -271,7 +279,16 @@ term = prefixes typedTerm where
 
   branchTerm = chainl1 labTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
 
-  labTerm = chainl1 catTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
+  labTerm =
+    do t <- catTerm
+       choice
+         [ do symbol ":="
+              ELabel t <$> term
+         , do symbol "/"
+              EUnlabel t <$> catTerm
+         , return t ]
+
+    -- chainl1 catTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
 
   catTerm = chainl1 appTerm $ op "^" (ebinary CStringCat)
 

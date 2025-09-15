@@ -31,8 +31,8 @@ fmapP = \ d. /\ a b. \ f.
 
 type Applicative : (* -> *) -> *
 type Applicative = \f. Pi { 'Functor := Functor f,
-                            'pure := (forall a. a -> f a),
-                            'ap := (forall a b. f (a -> b) -> f a -> f b) }
+                            'pure := forall a. a -> f a,
+                            'ap := forall a b. f (a -> b) -> f a -> f b }
 
 applicativeFunctor : forall z : R[* -> *]. Pi (Applicative z) -> Pi (Functor z)
 applicativeFunctor = mapP [Applicative] [Functor] (\l d. sel d #'Functor)
@@ -58,7 +58,7 @@ applicativeMaybe = (#'Functor := mapMaybe) ++
 
 type Traversable : (* -> *) -> *
 type Traversable = \t. Pi { 'Functor := Functor t,
-                            'sequence := (forall f a. Applicative f -> t (f a) -> f (t a)) }
+                            'sequence := forall f a. Applicative f -> t (f a) -> f (t a) }
 
 traversableFunctor : forall z : R[* -> *]. Pi (Traversable z) -> Pi (Functor z)
 traversableFunctor = mapP [Traversable] [Functor] (\l d. sel d #'Functor)
