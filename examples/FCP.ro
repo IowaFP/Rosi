@@ -4,18 +4,18 @@ sel = \ r l. prj r / l
 -- Why would we want syntactic sugar for pairs?!
 
 f1 : Pi {'1 := Pi {}, '2 := Sigma {}} -> Pi {'1 := Sigma {}, '2 := Pi {}}
-f1 = \ p. (#'1 := sel p #'2) ++ (#'2 := sel p #'1)
+f1 = \ p. (#'1 := sel p #'2, #'2 := sel p #'1)
 
 -- First-class polymorphism... with type annotations...
 
 f2 : Pi {'1 := Pi {}, '2 := Sigma {}} -> Pi {'1 := Sigma {}, '2 := Pi {}}
-f2 = (\ f : forall t. t -> t, p. (#'1 := f (sel p #'2)) ++ (#'2 :=f (sel p #'1)))
+f2 = (\ f : forall t. t -> t, p. (#'1 := f (sel p #'2), #'2 :=f (sel p #'1)))
      (\ x. x)
 
 -- But it wouldn't work without type annotations:
 
 -- f3 : Pi {'1 := Pi {}, '2 := Sigma {}} -> Pi {'1 := Sigma {}, '2 := Pi {}}
--- f3 = (\ f p. (#'1 := f (sel p #'2)) ++ (#'2 :=f (sel p #'1)))
+-- f3 = (\ f p. (#'1 := f (sel p #'2), #'2 :=f (sel p #'1)))
 --      (\ x. x)
 
 id1 : forall a. a -> a

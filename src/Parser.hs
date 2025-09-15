@@ -318,7 +318,16 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                  , ESing <$> (char '#' >> atype)
                  , buildNumber <$> number
                  , EStringLit <$> stringLit
-                 , parens term ]
+                 , parens
+                   (do ts <- commaSep1 term
+                       case (ts, mapM labeledTerm ts) of
+                          ([t], _) -> return t
+                          (_, Just (t : ts)) -> return (foldl (\t1 t2 -> EApp (EApp (EConst CConcat) t1) t2) t ts)
+                          (_, Nothing) -> unexpected $ Label (fromList "unlabeled term"))
+                 ]
+
+  labeledTerm t@(ELabel _ _) = Just t
+  labeledTerm _              = Nothing
 
   const = choice [symbol s >> return k | (s, k) <-
                    [("prj", CPrj),

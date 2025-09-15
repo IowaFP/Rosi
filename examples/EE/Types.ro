@@ -35,14 +35,13 @@ functorThree : Functor (\t. Triple t t t)
 functorThree = \f x. triple (f (sel x #'1)) (f (sel x #'2)) (f (sel x #'3))
 
 functorBool : Pi (Functor BoolF)
-functorBool = (#'BConst := functorConst) ++ (#'If := functorThree)
+functorBool = (#'BConst := functorConst, #'If := functorThree)
 
 functorArith : Pi (Functor ArithF)
-functorArith = (#'IConst := functorConst) ++ (#'Plus := functorTwo)
+functorArith = (#'IConst := functorConst, #'Plus := functorTwo)
 
 functorLam : Pi (Functor LamF)
-functorLam = (#'Var := functorConst) ++ (#'Lam := functorId)
-           ++ (#'App := functorTwo)
+functorLam = (#'Var := functorConst, #'Lam := functorId, #'App := functorTwo)
 
 functorRec : Pi (Functor RecF)
 functorRec = #'Fix := functorId

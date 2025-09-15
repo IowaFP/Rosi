@@ -1,7 +1,7 @@
 import Ro.Base
 
 m : Pi { 'x := forall a. a -> a, 'y := forall b. b -> b }
-m = (#'x := /\ a. \x. x) ++ (#'y := /\ b. \x. x)
+m = (#'x := /\ a. \x. x, #'y := /\ b. \x. x)
 
 n1 : Pi { 'x := forall a. a -> a }
 n1 = prj m
