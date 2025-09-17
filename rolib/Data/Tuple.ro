@@ -19,3 +19,9 @@ thd = \x. sel x #'3
 first = \f x. (#'1 := f (fst x)) ++ prj x
 second = \f x. (#'2 := f (snd x)) ++ prj x
 third = \f x. (#'3 := f (thd x)) ++ prj x
+
+curry : forall a b c. (Pair a b -> c) -> a -> b -> c
+curry = \f x y. f (pair x y)
+
+uncurry : forall a b c. (a -> b -> c) -> Pair a b -> c
+uncurry = \f p. f (fst p) (snd p)
