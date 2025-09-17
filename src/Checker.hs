@@ -6,6 +6,7 @@ import Control.Monad.State
 import Control.Monad.Writer
 
 import Checker.Monad
+import Checker.Normalize
 import Checker.Preds
 import Checker.Terms
 import Checker.Types

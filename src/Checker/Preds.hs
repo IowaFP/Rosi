@@ -11,6 +11,9 @@ import Data.List
 import Data.Maybe (isNothing)
 
 import Checker.Monad
+import Checker.Normalize
+import Checker.Promote
+import Checker.Types (checkPred)
 import Checker.Unify
 import Checker.Utils
 import Printer
@@ -23,7 +26,7 @@ import qualified Debug.Trace as T
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
-  do trace $ "Solving: " ++ show p
+  do trace $ "Solving: " ++ show p ++ "\nin " ++ show (kctxt cin)
      as' <- mapM (normalizeP [] <=< flattenP) (pctxt cin)
      when (not (null as')) $ trace ("Expanding " ++ show as')
      let as'' = expandAll (zip as' [VVar i | i <- [0..]])
@@ -375,6 +378,7 @@ solve (cin, p, r) =
 
 guess :: [Problem] -> CheckM (Maybe [Problem])
 guess (pr@(tcin, PEq t u, v) : prs) =
+  local (const tcin) $
   do t' <- fst <$> normalize [] t
      u' <- fst <$> normalize [] u
      case (t', u') of
@@ -393,14 +397,20 @@ guess (pr@(tcin, PEq t u, v) : prs) =
        (t@(TApp (TUnif v) t'), u) ->
           do x <- fresh "x"
              k <- kindOf t'
-             trace $ "guessing " ++ show v ++ " := " ++ show (Just (TLam x (Just k) (shiftTN 0 1 u)))
-             writeRef (goalRef (uvGoal v)) (Just (TLam x (Just k) (shiftTN 0 1 u)))
+             u' <- TLam x (Just k) <$> walk (TVar 0 x) t' 0 u
+             trace $
+               "solving " ++ show (PEq t u) ++ ":\n" ++
+               "by guessing " ++ show v ++ " := " ++ show u'
+             solveUV v u'
              return (Just (pr : prs))
        (u, t@(TApp (TUnif v) t')) ->
           do x <- fresh "x"
              k <- kindOf t'
-             trace $ "guessing " ++ show v ++ " := " ++ show (Just (TLam x (Just k) (shiftTN 0 1 u)))
-             writeRef (goalRef (uvGoal v)) (Just (TLam x (Just k) (shiftTN 0 1 u)))
+             u' <- TLam x (Just k) <$> walk (TVar 0 x) t' 0 u
+             trace $
+               "solving " ++ show (PEq t u) ++ ":\n" ++
+               "by guessing " ++ show v ++ " := " ++ show u'
+             solveUV v u'
              return (Just (pr : prs))
        _ -> fmap (pr :) <$> guess prs
 
@@ -429,6 +439,66 @@ guess (pr@(tcin, PEq t u, v) : prs) =
                 instantiate (TForall _ _ t) (u : us) =
                   do t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
                      instantiate t' us
+
+
+        -- `walk x u m t` builds the body of a function that, applied to `u`,
+        -- returns `t`. There are a couple of pieces:
+        --
+        --  * If we find `u` inside `t`, we want to use the variable, not the
+        --    constant type `t`. (Of course both are valid... we are guessing!)
+        --    The parameter `x` carries the type variable to use in this case
+        --
+        --  * Otherwise, we need to shift (because this will be the body of a
+        --    new function). Because we are shifting, we need to carry around a
+        --    minimum index.
+        --
+        --  * We might as well flatten uvars as we go.
+        --
+        --  * Oops, when we shift, we also need to shift the type `u` that we're
+        --    looking for.
+        --
+        -- I think that's all the concerns for now.
+        walk :: Ty -> Ty -> Int -> Ty -> CheckM Ty
+        walk x u m t
+          | u == t = return x
+        walk x u m (TVar n s)
+          | n < m = return (TVar n s)
+          | otherwise = return (TVar (n + 1) s)
+        walk x u m (TUnif v) =
+          do mt <- readRef (goalRef (uvGoal v))
+             case mt of
+               Nothing -> return (TUnif v { uvShift = uvShift v + 1 })
+               Just t  -> walk x u m (shiftTN 0 (uvShift v) t)
+        walk _ _ _ TFun = return TFun
+        walk x u m (TThen p t) = TThen <$> walkP x u m p <*> walk x u m t
+        walk x u m (TForall s mk t) = TForall s mk <$> walk (shiftTN 0 1 x) (shiftTN 0 1 u) (m + 1) t
+        walk x u m (TLam s mk t) = TLam s mk <$> walk (shiftTN 0 1 x) (shiftTN 0 1 u) (m + 1) t
+        walk x u m (TApp t t') = TApp <$> walk x u m t <*> walk x u m t'
+        walk x u m t@(TLab _) = return t
+        walk x u m (TSing t) = TSing <$> walk x u m t
+        walk x u m (TLabeled l t) = TLabeled <$> walk x u m l <*> walk x u m t
+        walk x u m (TRow ts) = TRow <$> mapM (walk x u m) ts
+        walk x u m (TPi t) = TPi <$> walk x u m t
+        walk x u m (TSigma t) = TSigma <$> walk x u m t
+        walk x u m (TMu t) = TMu <$> walk x u m t
+        walk x u m (TMapFun f) = TMapFun <$> walk x u m t
+        walk x u m (TCompl t t') = TCompl <$> walk x u m t <*> walk x u m t'
+        walk x u m (TMapArg r) = TMapArg <$> walk x u m r
+        walk x u m (TInst is t) = TInst <$> walkIs is <*> walk x u m t where
+          walkIs (Known is) = Known <$> mapM walkI is
+          walkIs (Unknown n g) =
+            do mis <- readRef (goalRef g)
+               case mis of
+                 Nothing -> return (Unknown n g)
+                 Just is' -> walkIs (shiftIsV [] 0 n is')
+          walkI (TyArg t) = TyArg <$> walk x u m t
+          walkI (PrArg v) = return (PrArg v)
+
+        walkP :: Ty -> Ty -> Int -> Pred -> CheckM Pred
+        walkP v u m (PLeq x y)    = PLeq <$> walk v u m x <*> walk v u m y
+        walkP v u m (PEq t t')    = PEq <$> walk v u m t <*> walk v u m t'
+        walkP v u m (PPlus x y z) = PPlus <$> walk v u m x <*> walk v u m y <*> walk v u m z
+
 
 guess (pr : prs) = fmap (pr :) <$> guess prs
 guess [] = return Nothing

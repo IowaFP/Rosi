@@ -11,10 +11,11 @@ import Data.List (intercalate)
 
 import Checker.Types hiding (trace)
 import Checker.Unify
+import Checker.Normalize
 import Checker.Monad
-import Syntax
 import Checker.Preds
 import Printer
+import Syntax
 
 
 expectT :: Term -> Ty -> Ty -> CheckM Evid

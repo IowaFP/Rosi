@@ -9,7 +9,7 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Data
+import Data.Dynamic
 import Data.IORef
 import Data.List (elemIndex, nub)
 import GHC.Stack
@@ -125,3 +125,60 @@ collect m = censor (const (TCOut [])) $ listen m
 
 upLevel m = do l <- theLevel
                atLevel (l + 1) m
+
+--
+
+
+data Update where
+  U :: IORef a -> a -> Update
+
+perform :: MonadIO m => Update -> m ()
+perform (U ref val) = liftIO $ writeIORef ref val
+
+type Eqn = (Ty, (Ty, Evid))
+
+type UR = [Eqn]
+type US = Maybe [Dynamic]
+type UW = ([Update], [(TCIn, Pred, IORef (Maybe Evid))])
+newtype UnifyM a = UM { runUnifyM :: StateT US (WriterT UW (ReaderT UR CheckM)) a }
+  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadError Error, MonadIO, MonadState US)
+
+instance MonadRef UnifyM where
+  newRef v = UM $ StateT $ \checking -> WriterT (body checking) where
+    body Nothing = do r <- liftIO (newIORef v)
+                      return ((r, Nothing), ([], []))
+    body (Just rs) = do r <- liftIO (newIORef v)
+                        return ((r, Just (toDyn r : rs)), ([], []))
+  readRef = liftIO . readIORef
+  writeRef r v =
+    do v' <- readRef r
+       tell ([U r v'], [])
+       liftIO (writeIORef r v)
+
+instance MonadReader TCIn UnifyM where
+  ask = UM (lift (lift (lift ask)))
+  local f r = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> local f (runReaderT (runWriterT (runStateT (runUnifyM r) checking)) eqns))
+
+instance MonadCheck UnifyM where
+  bindTy k m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> bindTy k (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  defineTy k t m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> defineTy k t (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  bind t m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> bind t (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  assume g m = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> assume g (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns))
+  require p r =
+    do cin <- ask
+       tell ([], [(cin, p, r)])
+  errorContext f m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> errorContext f (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  fresh = UM . lift . lift . lift . fresh
+  atLevel l m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> atLevel l (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
+  theLevel = UM $ lift $ lift $ lift theLevel
+
+canUpdate :: Typeable a => IORef a -> UnifyM Bool
+canUpdate r = UM (StateT $ \checking -> WriterT (body checking)) where
+  body Nothing = return ((True, Nothing), ([], []))
+  body (Just rs) = return ((any ok rs, Just rs), ([], []))
+  ok dr = case fromDynamic dr of
+            Just r' -> r == r'
+            Nothing -> False
+
+theEqns :: UnifyM [Eqn]
+theEqns = UM ask

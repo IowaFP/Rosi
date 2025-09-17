@@ -55,7 +55,7 @@ executable Rosi
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules: Checker, Checker.Monad, Checker.Preds, Checker.Terms, Checker.Types, Checker.Utils, Checker.Unify, Interp.Erased, Interp.Naive, Parser, Printer, Scope, Syntax
+    other-modules: Checker, Checker.Monad, Checker.Normalize, Checker.Preds, Checker.Promote, Checker.Terms, Checker.Types, Checker.Utils, Checker.Unify, Interp.Erased, Parser, Printer, Scope, Syntax
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
