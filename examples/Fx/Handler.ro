@@ -1,0 +1,71 @@
+import Ro.Base, Ro.Xr, Data.Functor, Control.Monad, Control.Monad.St, Data.Nat, Data.Tuple, Fx.Free
+
+-- Handlers
+
+-- The one case I understand
+
+-- Okay, let's think a little more carefully. The extension/recursion is a little indirect: we have
+--
+--    Free (g + h) a
+--
+-- We want to define a handler in terms of
+--
+--    I + g
+--    I + h
+--
+-- Boo.  Let's start by just focusing on the `h` and `g`.
+
+type Xhd : R[* -> *] -> R[* -> *] -> (* -> *) -> *
+type Xhd = \f g k. forall ff gg a. f < ff, g < gg =>
+       Sigma f (Free ff a) ->
+       (Free ff a -> k (Free gg a)) ->
+       k (Free gg a)
+
+handle : forall f g k a.
+       Xhd f g k ->
+       (forall a. a -> k a) ->
+       Free f a ->
+       k (Free g a)
+handle = \h k. fix (\rec m. match (out m)
+         ( case #'Ret (\i. k (rcon #'Ret i))
+         | case #'Con (\m. (h m rec))
+         ))
+
+foo : forall f g h k. g < h => Xhd f g k -> Xhd f h k
+foo = \h. h
+
+-- xt : forall f : R[* -> *], k. Pi (Functor f) -> Functor k -> Xhd f f k
+-- xt = \d map m rec. ana (\l n. sorry (sel d l rec n)) m
+
+-- what the fuck am I trying to do? The idea is that
+
+
+
+{-
+
+xth : forall f g h fh gh k.
+        f + h ~ fh,
+        g + h ~ gh =>
+        Xhd f g k -> Xhd fh gh k
+xth = \h = h | (\m rec. ) -- want:
+
+
+
+hx : forall f g h fh gh k a.
+       f + h ~ fh,
+       g + h ~ gh =>
+       Pi (Functor gh) ->
+       Functor k ->
+       Xhd f g k ->
+       (forall a. a -> k a) ->
+       Free fh a ->
+       k (Free gh a)
+hx = \d fmap h k. fix (\rec m. match (out m)
+     ( case #'Ret (\i. k (rcon #'Ret i))
+     | case #'Con
+       ( (\m. h m rec)
+       | (\m. sorry) )  -- m : h (Free ff a)
+     ))
+
+-}
+

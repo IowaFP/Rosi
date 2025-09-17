@@ -8,6 +8,11 @@ type FreeF = Sigma { 'Ret := \g a v. a, 'Con := \g a v. Sigma g v }
 type Free : R[* -> *] -> * -> *
 type Free = \g a. Mu (FreeF g a)
 
+runFree : forall a. Free {} a -> a
+runFree = \m. match (out m)
+              ( case #'Ret id
+              | case #'Con impossible)
+
 --
 
 functorFree : forall g : R[* -> *]. Pi (Functor g) -> Functor (Free g)
@@ -20,169 +25,25 @@ functorFree = \d f. (fix (\rec x.
 
 --
 
-
-
-returnFree : forall g a. a -> Free g a
-returnFree = rcon #'Ret
+pureFree : forall g a. a -> Free g a
+pureFree = rcon #'Ret
 
 bindFree : forall g : R[* -> *]. Pi (Functor g) -> (forall a b. Free g a -> (a -> Free g b) -> Free g b)
 bindFree = \d. fix (\rec m k. match (out m)
                               ( case #'Ret k
                               | case #'Con (\f. in (con #'Con (fmapS d (\m. rec m k) f)))))
 
+apFree : forall g : R[* -> *]. Pi (Functor g) -> (forall a b. Free g (a -> b) -> Free g a -> Free g b)
+apFree = \d mf mx. bindFree d mf (\f. bindFree d mx (\x. pureFree (f x)))
+
+applicativeFree : forall g : R[* -> *]. Pi (Functor g) -> Applicative (Free g)
+applicativeFree = \d. ( #'Functor := functorFree d
+                      , #'pure := pureFree
+                      , #'ap := apFree d)
+
 monadFree : forall g : R[* -> *]. Pi (Functor g) -> Monad (Free g)
-monadFree = \d. (#'Functor := functorFree d,
-                 #'return := returnFree,
-                 #'bind := bindFree d)
-
--- data State s x = Get (s -> x) | Put s (() -> x)
-
-type Get : * -> R[* -> *]
-type Get = \s. {'Get := \v. s -> v}
-
-fmapGet : forall s. Functor (\v. s -> v)
-fmapGet = \f g. o f g
-
-type Put : * -> R[* -> *]
-type Put = \s. {'Put := \v. Pair s (Unit -> v)}
-
-fmapPut : forall s. Functor (\v. Pair s (Unit -> v))
-fmapPut = \f p. pair (fst p) (o f (snd p))
-
-type St : * -> R[* -> *]
-type St = \s. {'Get := \v. s -> v, 'Put := \v. Pair s (Unit -> v)}
-
-fmapSt : forall s. Pi (Functor (St s))
-fmapSt = (#'Get := fmapGet,
-          #'Put := fmapPut)
-
-comp : Free (St Nat) Nat
-comp = rcon #'Con (con #'Get (\i.
-       rcon #'Con (con #'Put (pair (add 2 i) (\u.
-       rcon #'Ret i)))))
-
-bind : forall s a b. Free (St s) a -> (a -> Free (St s) b) -> Free (St s) b
-bind = bindFree fmapSt
-
-ret : forall s a. a -> Free (St s) a
-ret = rcon #'Ret
-
-get : forall s. Free (St s) s
-get = rcon #'Con (con #'Get (rcon #'Ret))
-
-put : forall s. s -> Free (St s) Unit
-put = \x. rcon #'Con (con #'Put (pair x (rcon #'Ret)))
-
-comp' : Free (St Nat) Nat
-comp' = bind get (\i.
-        bind (put (add 2 i)) (\u.
-        ret i))
-
--- Handlers
-
--- The one case I understand
-
-run : forall a. Free {} a -> a
-run = \m. match (out m)
-          ( case #'Ret id
-          | case #'Con impossible)
-
--- Okay, let's think a little more carefully. The extension/recursion is a little indirect: we have
---
---    Free (g + h) a
---
--- We want to define a handler in terms of
---
---    I + g
---    I + h
---
--- Boo.  Let's start by just focusing on the `h` and `g`.
-
-type Xhd : R[* -> *] -> R[* -> *] -> (* -> *) -> *
-type Xhd = \f g k. forall ff gg a. f < ff, g < gg =>
-       Sigma f (Free ff a) ->
-       (Free ff a -> k (Free gg a)) ->
-       k (Free gg a)
-
-handle : forall f g k a.
-       Xhd f g k ->
-       (forall a. a -> k a) ->
-       Free f a ->
-       k (Free g a)
-handle = \h k. fix (\rec m. match (out m)
-         ( case #'Ret (\i. k (rcon #'Ret i))
-         | case #'Con (\m. (h m rec))
-         ))
-
-foo : forall f g h k. g < h => Xhd f g k -> Xhd f h k
-foo = \h. h
-
--- xt : forall f : R[* -> *], k. Pi (Functor f) -> Functor k -> Xhd f f k
--- xt = \d map m rec. ana (\l n. sorry (sel d l rec n)) m
-
--- what the fuck am I trying to do? The idea is that
+monadFree = \d. ( #'Applicative := applicativeFree d
+                , #'bind := bindFree d)
 
 
 
-{-
-
-xth : forall f g h fh gh k.
-        f + h ~ fh,
-        g + h ~ gh =>
-        Xhd f g k -> Xhd fh gh k
-xth = \h = h | (\m rec. ) -- want:
-
-
-
-hx : forall f g h fh gh k a.
-       f + h ~ fh,
-       g + h ~ gh =>
-       Pi (Functor gh) ->
-       Functor k ->
-       Xhd f g k ->
-       (forall a. a -> k a) ->
-       Free fh a ->
-       k (Free gh a)
-hx = \d fmap h k. fix (\rec m. match (out m)
-     ( case #'Ret (\i. k (rcon #'Ret i))
-     | case #'Con
-       ( (\m. h m rec)
-       | (\m. sorry) )  -- m : h (Free ff a)
-     ))
-
--}
-
--- Can I actually do an example?
-
-getH : forall s. Xhd (Get s) {} (StM s)
-getH = \m rec i. match m (case #'Get (\n. rec (n i) i))
-
-setH : forall s. Xhd (Put s) {} (StM s)
-setH = \m rec i. match m (case #'Put (\p. rec (snd p tt) (fst p)))
-
-stH : forall s. Xhd (St s) {} (StM s)
-stH = getH | setH
-
--- Can I do a reduction of one effect to another?
-
-type Acc : R[* -> *]
-type Acc = { 'Inc := \v. v, 'Dec := \v. v }
-
-type Id : * -> *
-type Id = \x. x
-
-inck : forall a z. St Nat < z => Free z a -> Free z a
-inck = \k.
-  rcon #'Con (con #'Get (\i.
-  rcon #'Con (con #'Put (pair (succ i) (\u. k)))))
-
-deck : forall a z. St Nat < z => Free z a -> Free z a
-deck = \k.
-  rcon #'Con (con #'Get (\i.
-  rcon #'Con (con #'Put (pair (decr i) (\u. k)))))
-
-accH : Xhd Acc (St Nat) Id
-accH = \m rec. match m
-       ( case #'Inc (\k. inck (rec k))
-       | case #'Dec (\k. deck (rec k))
-       )

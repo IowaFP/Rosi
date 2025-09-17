@@ -1,4 +1,4 @@
-import Data.Functor, Data.Tuple, Control.Monad
+import Data.Functor, Data.Tuple, Control.Monad, Data.Traversable
 
 type StM : * -> * -> *
 type StM = \s v. s -> Pair v s
@@ -6,13 +6,20 @@ type StM = \s v. s -> Pair v s
 functorStM : forall s. Functor (StM s)
 functorStM = \f m s. first f (m s)
 
-returnStM : forall s a. a -> StM s a
-returnStM = pair
+pureStM : forall s a. a -> StM s a
+pureStM = pair
+
+apStM : forall s a b. StM s (a -> b) -> StM s a -> StM s b
+apStM = \f m s. let x = f s; first (fst x) (m (snd x))
+
+applicativeStM : forall s. Applicative (StM s)
+applicativeStM = ( #'Functor := functorStM
+                 , #'pure := pureStM
+                 , #'ap := apStM )
 
 bindStM : forall s a b. StM s a -> (a -> StM s b) -> StM s b
 bindStM = \m k s. uncurry k (m s)
 
 monadStM : forall s. Monad (StM s)
-monadStM = ( #'Functor := functorStM
-           , #'return := returnStM
+monadStM = ( #'Applicative := applicativeStM
            , #'bind := bindStM )
