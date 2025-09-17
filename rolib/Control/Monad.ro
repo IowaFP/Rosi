@@ -1,6 +1,16 @@
-import Data.Functor
+import Data.Functor, Control.Applicative
 
 type Monad : (* -> *) -> *
-type Monad = \t. Pi { 'Functor := Functor t,
-                      'return := forall a. a -> t a,
+type Monad = \t. Pi { 'Applicative := Applicative t,
                       'bind := forall a b. t a -> (a -> t b) -> t b }
+
+--
+
+bindMaybe : forall a b. Maybe a -> (a -> Maybe b) -> Maybe b
+bindMaybe =
+    case #'Nothing (\u k. Nothing)
+  | case #'Just (\x k. k x)
+
+monadMaybe : Monad Maybe
+monadMaybe = ( #'Applicative := applicativeMaybe
+             , #'bind := bindMaybe )

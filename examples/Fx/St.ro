@@ -1,0 +1,57 @@
+import Ro.Base, Ro.Xr, Data.Functor, Control.Monad, Control.Monad.St, Data.Nat, Data.Tuple, Fx.Free, Fx.Handler
+
+
+-- data State s x = Get (s -> x) | Put s (() -> x)
+
+type Get : * -> R[* -> *]
+type Get = \s. {'Get := \v. s -> v}
+
+fmapGet : forall s. Functor (\v. s -> v)
+fmapGet = \f g. o f g
+
+type Put : * -> R[* -> *]
+type Put = \s. {'Put := \v. Pair s (Unit -> v)}
+
+fmapPut : forall s. Functor (\v. Pair s (Unit -> v))
+fmapPut = \f p. pair (fst p) (o f (snd p))
+
+type St : * -> R[* -> *]
+type St = \s. {'Get := \v. s -> v, 'Put := \v. Pair s (Unit -> v)}
+
+fmapSt : forall s. Pi (Functor (St s))
+fmapSt = (#'Get := fmapGet,
+          #'Put := fmapPut)
+
+comp : Free (St Nat) Nat
+comp = rcon #'Con (con #'Get (\i.
+       rcon #'Con (con #'Put (pair (add 2 i) (\u.
+       rcon #'Ret i)))))
+
+bind : forall s a b. Free (St s) a -> (a -> Free (St s) b) -> Free (St s) b
+bind = bindFree fmapSt
+
+ret : forall s a. a -> Free (St s) a
+ret = rcon #'Ret
+
+get : forall s. Free (St s) s
+get = rcon #'Con (con #'Get (rcon #'Ret))
+
+put : forall s. s -> Free (St s) Unit
+put = \x. rcon #'Con (con #'Put (pair x (rcon #'Ret)))
+
+comp' : Free (St Nat) Nat
+comp' = bind get (\i.
+        bind (put (add 2 i)) (\u.
+        ret i))
+
+-- Can I actually do an example?
+
+getH : forall s. Xhd (Get s) {} (StM s)
+getH = \m rec i. match m (case #'Get (\n. rec (n i) i))
+
+setH : forall s. Xhd (Put s) {} (StM s)
+setH = \m rec i. match m (case #'Put (\p. rec (snd p tt) (fst p)))
+
+stH : forall s. Xhd (St s) {} (StM s)
+stH = getH | setH
+

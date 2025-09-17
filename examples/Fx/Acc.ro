@@ -1,0 +1,24 @@
+import Ro.Base, Ro.Xr, Data.Functor, Control.Monad, Control.Monad.St, Data.Nat, Data.Tuple, Fx.Free, Fx.Handler, Fx.St-- Can I do a reduction of one effect to another?
+
+type Acc : R[* -> *]
+type Acc = { 'Inc := \v. v, 'Dec := \v. v, 'Rec := \v. Nat -> v }
+
+type Id : * -> *
+type Id = \x. x
+
+inck : forall a z. St Nat < z => Free z a -> Free z a
+inck = \k.
+  rcon #'Con (con #'Get (\i.
+  rcon #'Con (con #'Put (pair (succ i) (\u. k)))))
+
+deck : forall a z. St Nat < z => Free z a -> Free z a
+deck = \k.
+  rcon #'Con (con #'Get (\i.
+  rcon #'Con (con #'Put (pair (decr i) (\u. k)))))
+
+accH : Xhd Acc (St Nat) Id
+accH = \m rec. match m
+       ( case #'Inc (\k. inck (rec k))
+       | case #'Dec (\k. deck (rec k))
+       | case #'Rec (\k. rcon #'Con (con #'Get (\i. rec (k i))))
+       )
