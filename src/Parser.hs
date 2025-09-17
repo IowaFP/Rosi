@@ -118,6 +118,8 @@ whitespace = P.space space1 (P.skipLineComment "--") (P.skipBlockCommentNested "
 lexeme p    = guardIndent p <* whitespace
 
 symbol      = lexeme . string
+reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'')))
+
 identifier  = lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '\''))
 parens      = between (symbol "(") (symbol ")")
 angles      = between (symbol "<") (symbol ">")
@@ -311,7 +313,7 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
 
   -- builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)", "in", "out", "fix"]) where
   builtIns = choice (map builtIn ["ana", "syn"]) where
-    builtIn s = symbol s >> return s
+    builtIn s = reserved s >> return s
 
   aterm = choice [ EConst <$> const
                  , EVar (-1) <$> identifier
@@ -329,7 +331,7 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
   labeledTerm t@(ELabel _ _) = Just t
   labeledTerm _              = Nothing
 
-  const = choice [symbol s >> return k | (s, k) <-
+  const = choice [reserved s >> return k | (s, k) <-
                    [("prj", CPrj),
                     ("inj", CInj),
                     ("(++)", CConcat),
@@ -349,7 +351,7 @@ data LHS = TypeLHS String | TermLHS String | ImportLHS
 
 topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
-  lhs = symbol "import" *> return ImportLHS <|>
+  lhs = reserved "import" *> return ImportLHS <|>
         TypeLHS <$> lexeme typeIdentifier <|>
         TermLHS <$> identifier
   -- You would imagine that I could write `symbol "type" *> identifier` here.
@@ -359,7 +361,7 @@ topLevel = item lhs body where
   --
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
-  typeIdentifier = symbol "type" *> ((:) <$> letterChar <*> many alphaNumChar)
+  typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many alphaNumChar)
   body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
   body (TypeLHS x) = colon *> ((x,) . KindSig <$> kind) <|>
                      symbol "=" *> ((x,) . TypeDef <$> ty)
