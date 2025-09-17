@@ -1,0 +1,18 @@
+import Data.Functor, Data.Tuple, Control.Monad
+
+type StM : * -> * -> *
+type StM = \s v. s -> Pair v s
+
+functorStM : forall s. Functor (StM s)
+functorStM = \f m s. first f (m s)
+
+returnStM : forall s a. a -> StM s a
+returnStM = pair
+
+bindStM : forall s a b. StM s a -> (a -> StM s b) -> StM s b
+bindStM = \m k s. uncurry k (m s)
+
+monadStM : forall s. Monad (StM s)
+monadStM = ( #'Functor := functorStM
+           , #'return := returnStM
+           , #'bind := bindStM )

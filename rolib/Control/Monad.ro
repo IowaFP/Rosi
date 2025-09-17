@@ -1,0 +1,6 @@
+import Data.Functor
+
+type Monad : (* -> *) -> *
+type Monad = \t. Pi { 'Functor := Functor t,
+                      'return := forall a. a -> t a,
+                      'bind := forall a b. t a -> (a -> t b) -> t b }
