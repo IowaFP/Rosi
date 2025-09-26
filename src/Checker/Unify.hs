@@ -256,8 +256,8 @@ unify0 TFun TFun = return (Just VEqRefl)
 unify0 (TThen pa ta) (TThen px tx) =
   liftM2 VEqThen <$> unifyP pa px <*> unify' ta tx
 unify0 t@(TApp {}) (u@(TApp {}))
-  | TUnif {} <- ft = unifySpines
-  | TUnif {} <- fu = unifySpines
+  | TUnif {} <- ft = refine $ requireEq t u -- unifySpines
+  | TUnif {} <- fu = refine $ requireEq t u -- unifySpines
   | otherwise      =
       do mq <- checking $ unify' ft fu
          case mq of
