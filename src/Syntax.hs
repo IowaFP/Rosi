@@ -392,7 +392,7 @@ flattenV (VEqTrans v1 v2) =
      return $ case (v1', v2') of
        (VEqRefl, _) -> v2'
        (_, VEqRefl) -> v1'
-       _          -> VLeqTrans v1' v2'
+       _          -> VEqTrans v1' v2'
 flattenV (VLeqLiftL t v) = foldUnary (VLeqLiftL t) <$> flattenV v
 flattenV (VLeqLiftR v t) = foldUnary (`VLeqLiftR` t) <$> flattenV v
 flattenV (VPlusLeqL v) = VPlusLeqL <$> flattenV v
