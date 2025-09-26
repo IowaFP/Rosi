@@ -19,8 +19,7 @@ functorFree : forall g : R[* -> *]. Pi (Functor g) -> Functor (Free g)
 functorFree = \d f. (fix (\rec x.
               match (out x)
               ( case #'Ret (\a. rcon #'Ret (f a))
-              | case #'Con (\x. in (con #'Con  -- what the hell
-                                        (fmapS d rec x)))
+              | case #'Con (\x. rcon #'Con (fmapS d rec x))
               )))
 
 --
