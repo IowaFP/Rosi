@@ -285,6 +285,11 @@ unify0 t@(TApp {}) (u@(TApp {}))
                Nothing -> return Nothing
                Just (q : qs) -> return (Just (foldl VEqApp q qs))
 
+unify0 (TApp (TMapFun fa) ra) (TRow []) =
+  do mq <- unify' ra (TRow [])
+     case mq of
+       Just q -> return (Just VEqMap)
+       Nothing -> return Nothing
 unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
   do KFun kdom kcod <- kindOf fa
      gs <- replicateM (length xs) (typeGoal' "t" kdom)
@@ -294,6 +299,11 @@ unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
      case (mq, sequence mqs) of
        (Just q, Just qs) -> return (Just VEqMap)  -- wrong
        _            -> return Nothing
+unify0 (TRow []) (TApp (TMapFun fa) ra) =
+  do mq <- unify' (TRow []) ra
+     case mq of
+       Just q -> return (Just VEqMap)
+       Nothing -> return Nothing
 unify0 (TRow xs@(tx:_)) (TApp (TMapFun fa) ra) =
   do KFun kdom kcod <- kindOf fa
      gs <- replicateM (length xs) (typeGoal' "t" kdom)
