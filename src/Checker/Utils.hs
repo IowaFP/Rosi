@@ -1,7 +1,9 @@
 module Checker.Utils where
 
 import Control.Monad.Reader.Class
+
 import Checker.Monad
+import Checker.Types
 import Syntax
 
 kindOf :: MonadCheck m => Ty -> m Kind
@@ -21,7 +23,9 @@ kindOf t@(TApp f _) =
 kindOf (TLab _) = return KLabel
 kindOf (TSing _) = return KType
 kindOf (TLabeled _ t) = kindOf t
-kindOf (TRow []) = return $ KRow KType -- probably wrong
+kindOf (TRow []) =
+  do k <- kindGoal "e"
+     return $ KRow k
 kindOf (TRow (t : _)) = KRow <$> kindOf t
 kindOf (TPi r) =
   do KRow k <- kindOf r

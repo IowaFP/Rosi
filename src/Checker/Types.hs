@@ -35,7 +35,7 @@ bindRef (Goal (s, r)) (Just k) =
                              Just k'' -> check k''
                              Nothing -> return True
 
-kindGoal :: String -> CheckM Kind
+kindGoal :: MonadCheck m => String -> m Kind
 kindGoal s =
   do s' <- fresh s
      kr <- newRef Nothing
