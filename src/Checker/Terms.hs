@@ -121,18 +121,20 @@ checkTerm0 e0@(ESing t) expected =
   do t' <- checkTy' e0 t =<< kindGoal "k"
      q <- expectT e0 (TSing t') expected
      return (wrap q (ESing t'))
-checkTerm0 e0@(ELabel el e) expected =
-  do tl <- typeGoal' "l" KLabel
+checkTerm0 e0@(ELabel Nothing el e) expected =
+  do k <- ctorGoal "k"
+     tl <- typeGoal' "l" KLabel
      t <- typeGoal "t"
-     q <- expectT e0 (TLabeled tl t) expected
+     q <- expectT e0 (TConApp k (TRow [TLabeled tl t])) expected
      wrap q <$>
-       (ELabel <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
-checkTerm0 e0@(EUnlabel e el) expected =
-  do tl <- typeGoal' "l" KLabel
+       (ELabel (Just k) <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
+checkTerm0 e0@(EUnlabel Nothing e el) expected =
+  do k <- ctorGoal "k"
+     tl <- typeGoal' "l" KLabel
      el' <- checkTerm el (TSing tl)
      elimForm expected $ \expected ->
-       do e' <- checkTerm' e (TLabeled tl expected)
-          return (EUnlabel e' el')
+       do e' <- checkTerm' e (TConApp k (TRow [TLabeled tl expected]))
+          return (EUnlabel (Just k) e' el')
 checkTerm0 e@(EConst c) expected =
   do ir <- newRef Nothing
      t <- constType c
@@ -147,14 +149,14 @@ checkTerm0 e@(EConst c) expected =
                  tvar 0 = TVar 0 "z"
              return (TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PLeq (tvar 1) (tvar 0) `TThen`
-                         TPi (tvar 0) `funTy` TPi (tvar 1))
+                         TConApp Pi (tvar 0) `funTy` TConApp Pi (tvar 1))
         constType CInj =
           do k <- kindGoal "r"
              let tvar 1 = TVar 1 "y"
                  tvar 0 = TVar 0 "z"
              return (TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PLeq (tvar 1) (tvar 0) `TThen`
-                         TSigma (tvar 1) `funTy` TSigma (tvar 0))
+                         TConApp Sigma (tvar 1) `funTy` TConApp Sigma (tvar 0))
         constType CConcat =
           do k <- kindGoal "r"
              let tvar 2 = TVar 2 "x"
@@ -162,7 +164,7 @@ checkTerm0 e@(EConst c) expected =
                  tvar 0 = TVar 0 "z"
              return (TForall "x" (Just (KRow k)) $ TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PPlus (tvar 2) (tvar 1) (tvar 0) `TThen`
-                         TPi (tvar 2) `funTy` TPi (tvar 1) `funTy` TPi (tvar 0))
+                         TConApp Pi (tvar 2) `funTy` TConApp Pi (tvar 1) `funTy` TConApp Pi (tvar 0))
         constType CBranch =
           do k <- kindGoal "r"
              let tvar 3 = TVar 3 "x"
@@ -171,18 +173,18 @@ checkTerm0 e@(EConst c) expected =
                  tvar 0 = TVar 0 "t"
              return (TForall "x" (Just (KRow k)) $ TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "t" (Just KType) $
                        PPlus (tvar 3) (tvar 2) (tvar 1) `TThen`
-                         (TSigma (tvar 3) `funTy` tvar 0) `funTy`
-                         (TSigma (tvar 2) `funTy` tvar 0) `funTy`
-                         (TSigma (tvar 1) `funTy` tvar 0))
+                         (TConApp Sigma (tvar 3) `funTy` tvar 0) `funTy`
+                         (TConApp Sigma (tvar 2) `funTy` tvar 0) `funTy`
+                         (TConApp Sigma (tvar 1) `funTy` tvar 0))
         constType CIn =
           do let f = TVar 0 "f"
              return (TForall "f" (Just (KType `KFun` KType)) $
-                       f `TApp` TMu f `funTy` TMu f) where
+                       f `TApp` TConApp Mu f `funTy` TConApp Mu f) where
 
         constType COut =
           do let f = TVar 0 "f"
              return (TForall "f" (Just (KType `KFun` KType)) $
-                       TMu f `funTy` f `TApp` TMu f) where
+                       TConApp Mu f `funTy` f `TApp` TConApp Mu f) where
 
         constType CFix =
           do let a = TVar 0 "a"
@@ -198,7 +200,7 @@ checkTerm0 e0@(EAna phi e) expected =
      r <- typeGoal' "r" (KRow k)
      t <- typeGoal "t"
      elimForm expected $ \expected ->
-       do q <- expectT e0 (TSigma (TApp (TMapFun phi') r) `funTy` t) expected
+       do q <- expectT e0 (TConApp Sigma (TApp (TMapFun phi') r) `funTy` t) expected
           let tvar 0 = TVar 0 "u"
               tvar 1 = TVar 1 "l"
           EAna phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
@@ -208,7 +210,7 @@ checkTerm0 e0@(ESyn phi e) expected =
   do k <- kindGoal "k"
      phi' <- checkTy' e0 phi (KFun k KType)
      r <- typeGoal' "r" (KRow k)
-     q <- expectT e0 (TPi (TApp (TMapFun phi') r)) expected
+     q <- expectT e0 (TConApp Pi (TApp (TMapFun phi') r)) expected
      let tvar 0 = TVar 0 "u"
          tvar 1 = TVar 1 "l"
      ESyn phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
@@ -276,9 +278,7 @@ generalize e =
         uvars level (TSing t) = uvars level t
         uvars level (TLabeled l t) = cat <$> uvars level t <*> uvars level t
         uvars level (TRow ts) = foldl cat [] <$> mapM (uvars level) ts
-        uvars level (TPi t) = uvars level t
-        uvars level (TSigma t) = uvars level t
-        uvars level (TMu t) = uvars level t
+        uvars level (TConApp k t) = uvars level t
         uvars level (TMapFun t) = uvars level t
         uvars level (TInst is t) = cat <$> isuvars is <*> uvars level t where
           isuvars (Unknown {}) = return []

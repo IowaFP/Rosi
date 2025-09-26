@@ -47,12 +47,12 @@ evalB :: Env -> Body -> Value
 evalB h (Term e) = eval h e
 evalB h (Prim f) = f h
 
-app :: Env -> Value -> Value -> Value
-app _ (VLam (hp, he) f') v = evalB (hp, v : he) f'
-app h v w = error $ "don't know how to apply " ++ show v ++ " to " ++ show w
+app :: Value -> Value -> Value
+app (VLam (hp, he) f') v = evalB (hp, v : he) f'
+app v w = error $ "don't know how to apply " ++ show v ++ " to " ++ show w
 
-prapp :: Env -> Value -> EValue -> Value
-prapp _ f@(VPrLam (hp, he) f') v =
+prapp :: Value -> EValue -> Value
+prapp f@(VPrLam (hp, he) f') v =
   evalB (v : hp, he) f'
 
 recordFrom :: HasCallStack => Value -> Int -> Value
@@ -70,28 +70,33 @@ variantFrom (VVariant k v) = (k, v)
 variantFrom v              = (0, v)
 
 eval, eval' :: HasCallStack => Env -> Term -> Value
-eval h e = trace ("Eval: " ++ renderString False (ppr e)) $
+eval h e = -- trace ("Eval: " ++ renderString False (ppr e)) $
            eval' h e
 
 eval' (_, he) (EVar i _)
   | i < length he = he !! i
   | otherwise = error $ "environment too small for variable " ++ show i ++ ": " ++ show he
 eval' h (ELam _ _ e) = VLam h (Term e)
-eval' h (EApp f e) = app h (eval h f) (eval h e)
+eval' h (EApp f e) = app (eval h f) (eval h e)
+eval' h (ELet x e f) = eval h (EApp (ELam x Nothing f) e)
 eval' h (ETyLam _ _ e) = eval h e
 eval' h (EPrLam _ e) = VPrLam h (Term e)
 eval' h (EInst t (Known is)) = inst (eval h t) is where
   inst v []             = v
   inst v (TyArg _ : is) = inst v is
-  inst v (PrArg q : is) = inst (prapp h v (evalV h q)) is
+  inst v (PrArg q : is) = inst (prapp v (evalV h q)) is
 eval' h (ESing _) = VSing
-eval' h (ELabel l e) = eval h e
-eval' h (EUnlabel e l) =
-  case eval h e of
-    VRecord [v] -> v
-    VVariant 0 v -> v
-    VSyn f -> f 0
-    v -> v
+eval' h (ELabel (Just k) l e) =
+  case k of
+    Pi -> VRecord [v]
+    Sigma -> VVariant 0 v
+  where v = eval h e
+eval' h e0@(EUnlabel (Just k) e l) = -- eval h e
+  case (k, v) of
+    (Sigma, VVariant _ v) -> v
+    (Pi, VRecord [v]) -> v
+    (Pi, VSyn f) -> f 0
+  where v = eval h e
 eval' h (EConst CPrj) = -- VPrLam h (Value (VLam h (Const CPrj)))
   VPrLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
@@ -142,8 +147,8 @@ eval' h (EConst CBranch) = -- VPrLam h (Value (VLam h (Value (VLam h (Value (VLa
                " and evidence is " ++ show is ++ " so calling " ++
                (case is !! k of Left _ -> show f; Right _ -> show g)) $
         case is !! k of
-          Left i  -> app h f (VVariant i w)
-          Right i -> app h g (VVariant i w)
+          Left i  -> app f (VVariant i w)
+          Right i -> app g (VVariant i w)
       _ -> error $ "bad environment for branch: " ++ show h
 eval' h (EConst CIn) = -- VLam h (Const CIn)
   VLam h $ Prim $ \ (_, v : _) -> VIn v
@@ -163,25 +168,18 @@ eval' h (EConst CStringCat) =
       (_, VString s1 : VString s0 : _) ->
          VString (s0 ++ s1)
       _ -> error $ "bad environment for (^): " ++ show h
-eval' h (ESyn _ e) = VSyn (\i -> app h (prapp h f (VLeq [i])) VSing)
+eval' h (ESyn _ e) = VSyn (\i -> app (prapp f (VLeq [i])) VSing)
   where f = eval h e
 eval' h (EAna _ e) =
-  VLam h $ Prim $ \ (_, VVariant k w : _) ->
-    app h (app h (prapp h f (VLeq [k])) VSing) w
+  VLam h $ Prim $ \ h ->
+    case h of
+      (_, VVariant k w : _) -> app (app (prapp f (VLeq [k])) VSing) w
+      _ -> error $ "bad environment for (ana " ++ show e ++ "): " ++ show (head (snd h))
   where f = eval h e
-eval' h (ECast e (VEqTyConSing Pi)) =
-  case eval h e of
-    VRecord [v] -> v
-    VSyn f      -> f 0
-eval' h (ECast e (VEqSym (VEqTyConSing Pi))) =
-  VRecord [eval h e]
-eval' h (ECast e (VEqTyConSing Sigma)) = v
-  where VVariant 0 v = eval h e
-eval' h (ECast e (VEqSym (VEqTyConSing Sigma))) =
-  VVariant 0 (eval h e)
-eval' h (ECast e q) = eval h e
+eval' h (ECast e q) = q `seq` eval h e
 eval' h (ETyped e _) = eval h e
 eval' h (EStringLit s) = VString s
+eval' h e = error $ "eval' missing " ++ show e
 
 evalV :: Env -> Evid -> EValue
 evalV (hp, he) (VVar i)    = hp !! i

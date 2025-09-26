@@ -37,9 +37,7 @@ instance HasTyVars Ty where
   subst v t (TSing u) = TSing <$> subst v t u
   subst v t (TLabeled l u) = TLabeled <$> subst v t l <*> subst v t u
   subst v t (TRow us) = TRow <$> mapM (subst v t) us
-  subst v t (TPi u) = TPi <$> subst v t u
-  subst v t (TSigma u) = TSigma <$> subst v t u
-  subst v t (TMu u) = TMu <$> subst v t u
+  subst v t (TConApp k u) = TConApp k <$> subst v t u
   subst v t (TCompl y x) = TCompl <$> subst v t y <*> subst v t x
   subst v t (TInst (Known is) u) = TInst <$> (Known <$> mapM substI is) <*> subst v t u where
     substI (TyArg u) = TyArg <$> subst v t u
@@ -82,11 +80,11 @@ normalize eqns t0@(TApp (TLam x (Just k) t) u) =
   do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
      (t2, q) <- normalize eqns t1
      return (t2, VEqTrans VEqBeta q)
-normalize eqns (TApp (TPi r) t) =
-  do (t1, q) <- normalize eqns (TPi (TApp (TMapArg r) t))  -- To do: check kinding
+normalize eqns (TApp (TConApp Pi r) t) =
+  do (t1, q) <- normalize eqns (TConApp Pi (TApp (TMapArg r) t))  -- To do: check kinding
      return (t1, VEqTrans (VEqLiftTyCon Pi) q)
-normalize eqns (TApp (TSigma r) t) =
-  do (t1, q) <- normalize eqns (TSigma (TApp (TMapArg r) t))
+normalize eqns (TApp (TConApp Sigma r) t) =
+  do (t1, q) <- normalize eqns (TConApp Sigma (TApp (TMapArg r) t))
      return (t1, VEqTrans (VEqLiftTyCon Sigma) q)
 normalize eqns (TApp (TMapFun f) (TRow es))
   | Just ls <- mapM label es, Just ts <- mapM labeled es =
@@ -142,25 +140,25 @@ normalize eqns (TRow ts) =
          return (TRow (map (uncurry (TLabeled . TLab)) (map fst ps')), VEqRowPermute is `VEqTrans` VEqRow (map snd ps'))
        Nothing ->
          return (TRow ts', VEqRow qs)
-normalize eqns (TSigma z) =
+normalize eqns (TConApp Sigma z) =
   do (z', q) <- normalize eqns z
      k <- kindOf z'
      case k of
        KRow (KRow k') ->
-         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TSigma (TVar 0 "x")))) z')
+         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Sigma (TVar 0 "x")))) z')
             return (z'', VEqTrans q q')
-       _ -> return (TSigma z', VEqCon Sigma q)
-normalize eqns (TPi z) =
+       _ -> return (TConApp Sigma z', VEqCon Sigma q)
+normalize eqns (TConApp Pi z) =
   do (z', q) <- normalize eqns z
      k <- kindOf z'
      case k of
        KRow (KRow k') ->
-         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TPi (TVar 0 "x")))) z')
+         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Pi (TVar 0 "x")))) z')
             return (z'', VEqTrans q q')
-       _ -> return (TPi z', VEqCon Pi q)
-normalize eqns (TMu z) =
+       _ -> return (TConApp Pi z', VEqCon Pi q)
+normalize eqns (TConApp Mu z) =
   do (z', q) <- normalize eqns z
-     return (TMu z', VEqCon Mu q)
+     return (TConApp Mu z', VEqCon Mu q)
 normalize eqns (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize eqns t)
      return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)

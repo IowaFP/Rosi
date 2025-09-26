@@ -346,24 +346,32 @@ unify0 (TRow ra) (TRow rx)
 --           | Just is <- sequence [elemIndex y xs | y <- ys], all (`elem` ys) xs =
 --               Just is
 --           | otherwise = Nothing
-unify0 (TPi ra) (TPi rx) =
+unify0 (TConApp Pi ra) (TConApp Pi rx) =
   liftM (VEqCon Pi) <$> unify' ra rx
-unify0 (TPi r) u
-  | TRow [t] <- r = liftM (VEqTrans (VEqTyConSing Pi)) <$> unify' t u
-  | TLabeled tl tt <- u = liftM (`VEqTrans` VEqTyConSing Pi) <$> unify' r (TRow [u])
-unify0 t (TPi r)
-  | TRow [u] <- r = liftM (`VEqTrans` VEqSym (VEqTyConSing Pi)) <$> unify' t u
-  | TLabeled tl tt <- t = liftM (`VEqTrans` VEqSym (VEqTyConSing Pi)) <$> unify' (TRow [t]) r
-unify0 (TSigma ra) (TSigma rx) =
+unify0 (TConApp Sigma ra) (TConApp Sigma rx) =
   liftM (VEqCon Sigma) <$> unify' ra rx
-unify0 (TSigma r) u
-  | TRow [t] <- r = liftM (VEqTrans (VEqTyConSing Sigma)) <$> unify' t u
-  | TLabeled tl tt <- u = liftM (`VEqTrans` VEqTyConSing Sigma) <$> unify' r (TRow [u])
-unify0 t (TSigma r)
-  | TRow [u] <- r = liftM (`VEqTrans` VEqSym (VEqTyConSing Sigma)) <$> unify' t u
-  | TLabeled tl tt <- t = liftM (`VEqTrans` VEqSym (VEqTyConSing Sigma)) <$> unify' (TRow [t]) r
-unify0 (TMu f) (TMu g) =
+unify0 (TConApp Mu f) (TConApp Mu g) =
   liftM (VEqCon Mu) <$> unify' f g
+unify0 t0@(TConApp (TCUnif g) t) u =
+  do mk <- readRef (goalRef g)
+     case mk of
+       Just k -> unify0 (TConApp k t) u
+       Nothing -> case u of
+                    TConApp k u' ->
+                       do writeRef (goalRef g) (Just k)
+                          liftM (VEqCon k) <$> unify0 t u'
+                    _ -> do trace $ "7 incoming unification failure: " ++ show t0 ++ " ~/~ " ++ show u
+                            return Nothing
+unify0 t u0@(TConApp (TCUnif g) u) =
+  do mk <- readRef (goalRef g)
+     case mk of
+       Just k -> unify0 t (TConApp k u)
+       Nothing -> case t of
+                    TConApp k t' ->
+                       do writeRef (goalRef g) (Just k)
+                          liftM (VEqCon k) <$> unify0 t' u
+                    _ -> do trace $ "7 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u0
+                            return Nothing
 unify0 TString TString =
   return (Just VEqRefl)
 unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
@@ -408,3 +416,8 @@ typeGoal' s k =
   do s' <- fresh s
      l  <- theLevel
      TUnif . (flip (UV 0 l) k) . Goal . (s',) <$> newRef Nothing
+
+ctorGoal :: MonadCheck m => String -> m TyCon
+ctorGoal s =
+  do s' <- fresh s
+     TCUnif . Goal . (s',) <$> newRef Nothing

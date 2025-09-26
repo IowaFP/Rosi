@@ -27,15 +27,20 @@ kindOf (TRow []) =
   do k <- kindGoal "e"
      return $ KRow k
 kindOf (TRow (t : _)) = KRow <$> kindOf t
-kindOf (TPi r) =
+kindOf (TConApp Pi r) =
   do KRow k <- kindOf r
      return k
-kindOf (TSigma r) =
+kindOf (TConApp Sigma r) =
   do KRow k <- kindOf r  -- TODO: what if pattern matching fails?
      return k
-kindOf (TMu f)=
+kindOf (TConApp Mu f)=
   do KFun k _ <- kindOf f
      return k
+kindOf (TConApp (TCUnif g) t) =
+  do mk <- readRef (goalRef g)
+     case mk of
+       Just k -> kindOf (TConApp k t)
+       Nothing -> fail "kindOf: unknown constructor"
 kindOf (TInst _ t) = kindOf t
 kindOf (TMapFun f) =
   do KFun kd kc <- kindOf f

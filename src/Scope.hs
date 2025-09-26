@@ -53,9 +53,7 @@ instance HasVars Ty where
   scope (TSing t) = TSing <$> scope t
   scope (TLabeled l t) = TLabeled <$> scope l <*> scope t
   scope (TRow ts) = TRow <$> scope ts
-  scope (TPi t) = TPi <$> scope t
-  scope (TSigma t) = TSigma <$> scope t
-  scope (TMu t) = TMu <$> scope t
+  scope (TConApp k t) = TConApp k <$> scope t
   scope (TMapFun t) = TMapFun <$> scope t
   scope (TMapArg t) = TMapArg <$> scope t
   scope (TCompl r0 r1) = TCompl <$> scope r0 <*> scope r1
@@ -75,8 +73,8 @@ instance HasVars Term where
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
   scope (ESing t) = ESing <$> scope t
-  scope (ELabel l m) = ELabel <$> scope l <*> scope m
-  scope (EUnlabel m l) = EUnlabel <$> scope m <*> scope l
+  scope (ELabel k l m) = ELabel k <$> scope l <*> scope m
+  scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l
   scope (ESyn t m) = ESyn <$> scope t <*> scope m
   scope (EAna t m) = EAna <$> scope t <*> scope m
   scope (EFold m n1 n2 n3) = EFold <$> scope m <*> scope n1 <*> scope n2 <*> scope n3

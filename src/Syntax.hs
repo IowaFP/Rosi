@@ -71,13 +71,15 @@ data UVar = UV { uvShift :: Int, uvLevel :: Int, uvGoal :: Goal Ty, uvKind :: Ki
 instance Eq UVar where
   v == v' = uvShift v == uvShift v' && goalRef (uvGoal v) == goalRef (uvGoal v')
 
+data TyCon = Pi | Sigma | Mu | TCUnif (Goal TyCon)
+  deriving (Data, Eq, Show, Typeable)
+
 data Ty =
     TVar Int String
   | TUnif UVar
     -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
-  | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TPi Ty | TSigma Ty
-  | TMu Ty
+  | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TConApp TyCon Ty
   | TMapFun Ty | TCompl Ty Ty
   | TString
   -- Internals
@@ -140,6 +142,14 @@ spine (TApp f t) = (f', ts ++ [t])
   where (f', ts) = spine f
 spine t = (t, [])
 
+flattenTC :: MonadIO m => TyCon -> m TyCon
+flattenTC k@(TCUnif g) =
+  do mk <- liftIO $ readIORef (goalRef g)
+     case mk of
+       Just k' -> flattenTC k'
+       Nothing -> return k
+flattenTC k = return k
+
 -- I really need to learn SYB
 flattenT :: MonadIO m => Ty -> m Ty
 flattenT t@(TVar {}) = return t
@@ -165,12 +175,7 @@ flattenT (TLabeled l t) =
   TLabeled <$> flattenT l <*> flattenT t
 flattenT (TRow ts) =
   TRow <$> mapM flattenT ts
-flattenT (TPi t) =
-  TPi <$> flattenT t
-flattenT (TSigma t) =
-  TSigma <$> flattenT t
-flattenT (TMu t) =
-  TMu <$> flattenT t
+flattenT (TConApp k t) = TConApp <$> flattenTC k <*> flattenT t
 flattenT (TMapFun t) =
   TMapFun <$> flattenT t
 flattenT (TCompl r0 r1) =
@@ -221,9 +226,7 @@ shiftTNV vs j n (TLabeled l t) = TLabeled (shiftTNV vs j n l) (shiftTNV vs j n t
 shiftTNV vs j n (TRow ts) = TRow (shiftTNV vs j n <$> ts)
 shiftTNV vs _ _ t@TFun = t
 shiftTNV vs _ _ t@(TLab s) = t
-shiftTNV vs j n (TPi t) = TPi (shiftTNV vs j n t)
-shiftTNV vs j n (TSigma t) = TSigma (shiftTNV vs j n t)
-shiftTNV vs j n (TMu t) = TMu (shiftTNV vs j n t)
+shiftTNV vs j n (TConApp k t) = TConApp k (shiftTNV vs j n t)
 shiftTNV vs j n (TMapFun t) = TMapFun (shiftTNV vs j n t)
 shiftTNV vs j n (TMapArg t) = TMapArg (shiftTNV vs j n t)
 shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t) where
@@ -261,7 +264,7 @@ data Const =
 data Term =
     EVar Int String | ELam String (Maybe Ty) Term | EApp Term Term
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
-  | ESing Ty | ELabel Term Term | EUnlabel Term Term
+  | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const
   | ESyn Ty Term | EAna Ty Term | EFold Term Term Term Term
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
@@ -276,8 +279,8 @@ shiftENV vs j n (ETyLam x mk e) = ETyLam x mk (shiftENV vs (j + 1) n e)
 shiftENV vs j n (EPrLam p e) = EPrLam (shiftPNV vs j n p) e
 shiftENV vs j n (EInst e is) = EInst (shiftENV vs j n e) (shiftIsV [] j n is)
 shiftENV vs j n (ESing t) = ESing (shiftTNV vs j n t)
-shiftENV vs j n (ELabel l e) = ELabel (shiftENV vs j n l) (shiftENV vs j n e)
-shiftENV vs j n (EUnlabel e l) = EUnlabel (shiftENV vs j n e) (shiftENV vs j n l)
+shiftENV vs j n (ELabel k l e) = ELabel k (shiftENV vs j n l) (shiftENV vs j n e)
+shiftENV vs j n (EUnlabel k e l) = EUnlabel k (shiftENV vs j n e) (shiftENV vs j n l)
 shiftENV _ _ _ e@(EConst {}) = e
 shiftENV vs j n (ESyn t e) = ESyn (shiftTNV vs j n t) e
 shiftENV vs j n (EAna t e) = EAna (shiftTNV vs j n t) e
@@ -291,7 +294,7 @@ shiftEN = shiftENV []
 
 
 flattenE :: MonadIO m => Term -> m Term
-flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) where
+flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) <=< everywhereM (mkM flattenTC) where
   (f <=< g) x = g x >>= f
   flattenInsts (EInst m is) = EInst m <$> flattenIs is
   flattenInsts m = return m
@@ -334,7 +337,6 @@ data Evid =
   | VEqDefn                         -- Inlining definitions
   --
   | VEqLiftTyCon TyCon                -- (K r) t ~ K (r^ t), where r^ t = ^(\x. x t) r
-  | VEqTyConSing TyCon                -- {l := t} ~ K {l := t}
   | VEqPlusComplL Evid                -- x + y ~ z  ==>  x ~ (z - y)
   | VEqPlusComplR Evid                -- x + y ~ z  ==>  y ~ (z - x)
   -- Functor laws for map
@@ -345,9 +347,6 @@ data Evid =
   | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid | VEqCon TyCon Evid
   | VEqMapCong Evid | VEqComplCong Evid Evid
   | VEqLeq Evid Evid | VEqPlus Evid Evid Evid
-  deriving (Data, Eq, Show, Typeable)
-
-data TyCon = Pi | Sigma | Mu
   deriving (Data, Eq, Show, Typeable)
 
 isRefl :: Evid -> Bool

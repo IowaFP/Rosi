@@ -123,9 +123,14 @@ instance Printable Ty where
   ppr (TSing t) = "#" <> at 5 (ppr t)
   ppr (TLabeled l t) = fillSep [ppr l <+> ":=", ppr t]
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
-  ppr (TPi t) = with 3 $ "Pi" <+> at 4 (ppr t)
-  ppr (TSigma t) = with 3 $ "Sigma" <+> at 4 (ppr t)
-  ppr (TMu t) = with 3 $ "Mu" <+> at 4 (ppr t)
+  ppr (TConApp Pi t) = with 3 $ "Pi" <+> at 4 (ppr t)
+  ppr (TConApp Sigma t) = with 3 $ "Sigma" <+> at 4 (ppr t)
+  ppr (TConApp Mu t) = with 3 $ "Mu" <+> at 4 (ppr t)
+  ppr (TConApp (TCUnif g) t) =
+    do mk <- liftIO (readIORef (goalRef g))
+       case mk of
+         Just k -> ppr (TConApp k t)
+         Nothing -> with 3 $ ppre (goalName g) <+> at 4 (ppr t)
   ppr (TMapFun t) = ppr t
   ppr (TMapArg t) = ppr t
   ppr TString = "String"
@@ -153,6 +158,17 @@ instance Printable Pred where
 --   application      3
 
 
+instance Printable TyCon where
+  ppr Pi = "P"
+  ppr Sigma = "S"
+  ppr Mu = "M"
+  ppr (TCUnif g) =
+    do mk <- liftIO $ readIORef (goalRef g)
+       case mk of
+         Nothing -> "?"
+         Just k  -> ppr k
+
+
 instance Printable Term where
   ppr (EVar _ s) = ppre s
   ppr (ELam x (Just t) m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
@@ -175,8 +191,10 @@ instance Printable Term where
          Nothing -> with 4 (fillSep [ppr m, brackets (ppre s)])
          Just is -> ppr (EInst m is)
   ppr (ESing t) = "#" <> at 4 (ppr t)
-  ppr (ELabel l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)])
-  ppr (EUnlabel m l) = with 3 (fillSep [ppr m <+> "/", at 3 (ppr l)])
+  ppr (ELabel Nothing l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)])
+  ppr (ELabel (Just k) l m) = with 3 (fillSep [ppr l <+> ":=" <> ppr k, at 3 (ppr m)])
+  ppr (EUnlabel Nothing m l) = with 3 (fillSep [ppr m <+> "/", at 3 (ppr l)])
+  ppr (EUnlabel (Just k) m l) = with 3 (fillSep [ppr m <+> "/" <> ppr k, at 3 (ppr l)])
   ppr (EConst c) = name c where
     name CPrj = "prj"
     name CConcat = "(++)"

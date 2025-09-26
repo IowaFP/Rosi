@@ -168,9 +168,14 @@ checkTy0 t@(TRow ts) expected =
      TRow <$> mapM (\(TLabeled l u) -> TLabeled l <$> checkTy u kelem) ts
   where label (TLabeled (TLab s) _) = Just s
         label _                     = Nothing
-checkTy0 (TPi r) expected = TPi <$> checkTy r (KRow expected)
-checkTy0 (TSigma r) expected = TSigma <$> checkTy r (KRow expected)
-checkTy0 (TMu f) expected = TMu <$> checkTy f (KFun expected expected)
+checkTy0 (TConApp Pi r) expected = TConApp Pi <$> checkTy r (KRow expected)
+checkTy0 (TConApp Sigma r) expected = TConApp Sigma <$> checkTy r (KRow expected)
+checkTy0 (TConApp Mu f) expected = TConApp Mu <$> checkTy f (KFun expected expected)
+checkTy0 (TConApp (TCUnif g) t) expected =
+  do mk <- readRef (goalRef g)
+     case mk of
+       Just k -> checkTy0 (TConApp k t) expected
+       Nothing -> fail "don't know how to kind check unknown constructor application"
 checkTy0 (TInst ig t) expected =
   TInst ig <$> checkTy t expected
 checkTy0 t@(TMapFun f) expected =

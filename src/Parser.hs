@@ -220,9 +220,9 @@ labeledTy =
 atype :: Parser Ty
 atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
                , TSing <$> (char '#' >> atype)
-               , TSigma <$> (symbol "Sigma" >> atype)
-               , TPi <$> (symbol "Pi" >> atype)
-               , TMu <$> (symbol "Mu" >> atype)
+               , TConApp Sigma <$> (symbol "Sigma" >> atype)
+               , TConApp Pi <$> (symbol "Pi" >> atype)
+               , TConApp Mu <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
                , const TString <$> symbol "String"
                , (\x -> TVar (-1) x) <$> identifier
@@ -285,9 +285,9 @@ term = prefixes typedTerm where
     do t <- catTerm
        choice
          [ do symbol ":="
-              ELabel t <$> term
+              ELabel Nothing t <$> term
          , do symbol "/"
-              EUnlabel t <$> catTerm
+              EUnlabel Nothing t <$> catTerm
          , return t ]
 
     -- chainl1 catTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
@@ -328,8 +328,8 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                           (_, Nothing) -> unexpected $ Label (fromList "unlabeled term"))
                  ]
 
-  labeledTerm t@(ELabel _ _) = Just t
-  labeledTerm _              = Nothing
+  labeledTerm t@(ELabel _ _ _) = Just t
+  labeledTerm _                = Nothing
 
   const = choice [reserved s >> return k | (s, k) <-
                    [("prj", CPrj),
