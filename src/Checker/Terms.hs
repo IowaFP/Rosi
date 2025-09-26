@@ -129,7 +129,7 @@ checkTerm0 e0@(ELabel el e) expected =
        (ELabel <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
 checkTerm0 e0@(EUnlabel e el) expected =
   do tl <- typeGoal' "l" KLabel
-     el' <-checkTerm el (TSing tl)
+     el' <- checkTerm el (TSing tl)
      elimForm expected $ \expected ->
        do e' <- checkTerm' e (TLabeled tl expected)
           return (EUnlabel e' el')
@@ -137,8 +137,8 @@ checkTerm0 e@(EConst c) expected =
   do ir <- newRef Nothing
      t <- constType c
      name <- fresh "i"
-     expectT e t (TInst (Unknown 0 (Goal (name, ir))) expected)
-     return (EInst e (Unknown 0 (Goal (name, ir))))
+     q <- expectT e t (TInst (Unknown 0 (Goal (name, ir))) expected)
+     return (wrap q $ EInst e (Unknown 0 (Goal (name, ir))))
   where -- This is necessary because I don't yet support kind polymorphism, so I can't express the
         -- types of the constants directly
         constType CPrj =
