@@ -66,7 +66,7 @@ check eqns actual expected =
   do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runUnifyM $ unify' actual expected) (Just [])) eqns
      if isNothing result
      then mapM_ perform undoes
-     else tell (TCOut  preds)
+     else tell (TCOut preds)
      return result
 
 data ProductiveUnification = Productive Evid | Unproductive | UnificationFails
@@ -93,18 +93,15 @@ checking m =
      put s
      return x
 
-refine :: UnifyM (Maybe Evid) -> UnifyM (Maybe Evid)
-refine m =
-  do s <- get
-     case s of
-       Nothing -> m
-       Just _  -> return Nothing
-
 requireEq :: Ty -> Ty -> UnifyM (Maybe Evid)
 requireEq t u =
-  do v <- newRef Nothing
-     require (PEq t u) v
-     return (Just (VGoal (Goal ("q", v))))
+  do s <- get
+     case s of
+       Just _ -> return Nothing
+       Nothing ->
+         do v <- newRef Nothing
+            require (PEq t u) v
+            return (Just (VGoal (Goal ("q", v))))
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM (Maybe Evid)
 unify' actual expected =
@@ -245,23 +242,23 @@ unify0 (TInst (Unknown n i1) t) (TInst (Unknown n' i2) u)
 unify0 t u@(TInst {}) =
   do mq <- unifyInstantiating t u unify'
      case mq of
-       Nothing -> refine $ requireEq t u
+       Nothing -> requireEq t u
        Just q  -> return (Just q)
 unify0 t@(TInst {}) u =
   do mq <- unifyInstantiating u t (flip unify')
      case mq of
-       Nothing -> refine $ requireEq t u
+       Nothing -> requireEq t u
        Just q  -> return (Just q)
 unify0 TFun TFun = return (Just VEqRefl)
 unify0 (TThen pa ta) (TThen px tx) =
   liftM2 VEqThen <$> unifyP pa px <*> unify' ta tx
 unify0 t@(TApp {}) (u@(TApp {}))
-  | TUnif {} <- ft = refine $ requireEq t u -- unifySpines
-  | TUnif {} <- fu = refine $ requireEq t u -- unifySpines
+  | TUnif {} <- ft = requireEq t u -- unifySpines
+  | TUnif {} <- fu = requireEq t u -- unifySpines
   | otherwise      =
       do mq <- checking $ unify' ft fu
          case mq of
-           Nothing -> refine $ requireEq t u
+           Nothing -> requireEq t u
            Just q  ->
              do mqs <- zipWithM unify' ts us
                 case sequence mqs of
@@ -387,12 +384,12 @@ unify0 t@(TCompl x y) u@(TCompl x' y') =
                 mqy <- unify' y y'
                 case (mqx, mqy) of
                   (Just qx, Just qy) -> return (Just (VEqComplCong qx qy))
-                  _                  -> refine $ requireEq t u
-unify0 t@(TCompl {}) u = refine $ requireEq t u
-unify0 t u@(TCompl {}) = refine $ requireEq t u
+                  _                  -> requireEq t u
+unify0 t@(TCompl {}) u = requireEq t u
+unify0 t u@(TCompl {}) = requireEq t u
 unify0 t u
   | (not (null ts) && refinable ft) ||
-    (not (null us) && refinable fu) = refine $ requireEq t u
+    (not (null us) && refinable fu) = requireEq t u
   | otherwise =
       do trace $ "5 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
          return Nothing
