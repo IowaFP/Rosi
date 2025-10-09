@@ -49,6 +49,7 @@ instance HasTyVars Ty where
          Just is -> subst v t (TInst (shiftIsV [] 0 n is) u)
   subst v t (TMapFun f) = TMapFun <$> subst v t f
   subst v t (TMapArg f) = TMapArg <$> subst v t f
+  subst v t TString = return TString
   subst v t u = error $ "internal: subst " ++ show v ++ " (" ++ show t ++ ") (" ++ show u ++")"
 
 instance HasTyVars Pred where

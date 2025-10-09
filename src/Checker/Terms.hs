@@ -286,6 +286,7 @@ generalize e =
           iuvars (TyArg t) = uvars level t
           iuvars (PrArg {}) = return []
         uvars level (TMapArg t) = uvars level t
+        uvars _ TString = return []
 
         puvars :: Int -> Pred -> CheckM [UVar]
         puvars level (PEq t u) = cat <$> uvars level t <*> uvars level u

@@ -231,6 +231,7 @@ shiftTNV vs j n (TMapFun t) = TMapFun (shiftTNV vs j n t)
 shiftTNV vs j n (TMapArg t) = TMapArg (shiftTNV vs j n t)
 shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t) where
 shiftTNV vs j n (TCompl r0 r1) = TCompl (shiftTNV vs j n r0) (shiftTNV vs j n r1)
+shiftTNV _ _ _  t@TString = t
 shiftTNV vs _ _ t = error $ "shiftTN: unhandled: " ++ show t
 
 -- shiftTN j n t shifts variables at or above `j` up by `n`
@@ -288,6 +289,7 @@ shiftENV vs j n (EFold e f g h) = EFold (shiftENV vs j n e) (shiftENV vs j n f) 
 shiftENV vs j n (ELet x e f) = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
 shiftENV vs j n (ECast e q) = ECast (shiftENV vs j n e) q
 shiftENV vs j n (ETyped e t) = ETyped e (shiftTNV vs j n t)
+shiftENV _ _ _ e@(EStringLit {}) = e
 
 shiftEN :: Int -> Int -> Term -> Term
 shiftEN = shiftENV []
