@@ -16,9 +16,14 @@ fst = \x. sel x #'1
 snd = \x. sel x #'2
 thd = \x. sel x #'3
 
-first = \f x. (#'1 := f (fst x)) ++ prj x
-second = \f x. (#'2 := f (snd x)) ++ prj x
-third = \f x. (#'3 := f (thd x)) ++ prj x
+nth : forall l a b y z z'.
+        {l := a} + y ~ z, {l := b} + y ~ z' =>
+        #l -> (a -> b) -> Pi z -> Pi z'
+nth = \l f x. (l := f (sel x l)) ++ prj x
+
+first = nth #'1
+second = nth #'2
+third = nth #'3
 
 curry : forall a b c. (Pair a b -> c) -> a -> b -> c
 curry = \f x y. f (pair x y)
