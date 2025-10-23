@@ -19,7 +19,7 @@ two : Nat
 two = succ one
 
 add : Nat -> Nat -> Nat
-add = \m. fix (\add n. (case #'Zero (\u. m) ? case #'Succ (\nn. succ (add nn))) (out n))
+add = \m. fix (\add n. (case #'Zero (\u. m) | case #'Succ (\nn. succ (add nn))) (out n))
 
 three : Nat
 three = add one two
