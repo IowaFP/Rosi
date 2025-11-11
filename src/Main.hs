@@ -117,15 +117,15 @@ main = do nowArgs <- getArgs
           when (printOkay flags) $ putStrLn "okay"
   where goCheck d g [] = return []
         goCheck d g (TyDecl x k t : ds) =
-          do t' <- flattenT =<< reportErrors =<< runCheckM' d g (errorContext (ErrContextDefn x . ErrContextType t) $ checkTy t k)
+          do t' <- flattenT =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ checkTy t k)
              goCheck (KBDefn k t' : d) g ds
         goCheck d g (TmDecl v (Just ty) te : ds) =
-          do ty' <- flattenT =<< reportErrors =<< runCheckM' d g (errorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
-             te' <- flattenE =<< reportErrors =<< runCheckM' d g (errorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
+          do ty' <- flattenT =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
+             te' <- flattenE =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              ds' <- goCheck d (ty' : g) ds
              return ((v, ty', te') : ds')
         goCheck d g (TmDecl v Nothing te : ds) =
-          do (te', ty) <- bitraverse flattenE flattenT =<< reportErrors =<< runCheckM' d g (errorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
+          do (te', ty) <- bitraverse flattenE flattenT =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
              ds' <- goCheck d (ty : g) ds
              return ((v, ty, te') : ds')
         goCheck d g (TyDecl {} : ds) =

@@ -21,16 +21,15 @@ import Syntax
 expectT :: Term -> Ty -> Ty -> CheckM Evid
 expectT m actual expected =
   do trace ("expect (" ++ renderString False (ppr actual) ++ ") (" ++ renderString False (ppr expected) ++ ")")
-     b <- errorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify [] actual expected
+     b <- typeErrorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify [] actual expected
      case b of
-       Nothing -> typeMismatch m actual expected
-       Just q  -> flattenV q
+       Left (actual', expected') -> typeMismatch m actual expected actual' expected'
+       Right q  -> flattenV q
 
-typeMismatch :: Term -> Ty -> Ty -> CheckM a
-typeMismatch m actual expected =
-  do actual' <- flattenT actual
-     expected' <- flattenT expected
-     throwError (ErrContextTerm m $ ErrTypeMismatch actual' expected')
+typeMismatch :: Term -> Ty -> Ty -> Ty -> Ty -> CheckM a
+typeMismatch m actual expected actual' expected' =
+  do [actual0, expected0, actual'0, expected'0] <- mapM flattenT [actual, expected, actual', expected']
+     typeError (ErrContextTerm m $ ErrTypeMismatch actual0 expected0 actual'0 expected'0)
 
 wrap :: Evid -> Term -> Term
 wrap VEqRefl t = t
@@ -47,7 +46,7 @@ checkTerm m t =
   do g <- asks tctxt
      l <- theLevel
      trace $ "checkTerm@" ++ show l ++ " (" ++ renderString False (ppr m) ++ ") (" ++ renderString False (ppr t) ++ ") in (" ++ intercalate "," (map (renderString False . ppr) g) ++ ")"
-     errorContext (ErrContextTerm m) $ checkTerm0 m t
+     typeErrorContext (ErrContextTerm m) $ checkTerm0 m t
 
 elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
 elimForm expected k =
@@ -80,7 +79,7 @@ checkTerm0 e0@(EPrLam p e) expected =
 checkTerm0 e (TThen p t) =
   EPrLam p <$> assume p (checkTerm e t)
 checkTerm0 (EVar (-1) x) expected =
-  throwError (ErrOther $ "scoping error: variable " ++ x ++ " not resolved")
+  typeError (ErrOther $ "scoping error: variable " ++ x ++ " not resolved")
 checkTerm0 e@(EVar i v) expected =
   do t <- lookupVar i
      elimForm expected $ \ expected ->

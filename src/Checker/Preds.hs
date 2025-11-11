@@ -6,9 +6,10 @@ import Control.Monad.Error.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
 import Data.Bifunctor
+import Data.Either (isLeft, isRight)
 import Data.IORef
 import Data.List
-import Data.Maybe (isNothing)
+
 
 import Checker.Monad
 import Checker.Normalize
@@ -76,7 +77,7 @@ solve (cin, p, r) =
   typesEqual :: Ty -> Ty -> CheckM Bool
   typesEqual t u =
     do q <- check [] t u
-       return (not (isNothing q))
+       return (isRight q)
 
   sameAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM Bool
   sameAssocs xs ys =
@@ -97,8 +98,8 @@ solve (cin, p, r) =
         Just yt ->
           do q <- unify [] xt yt
              case q of
-               Nothing -> fundeps p q
-               Just _  -> return ()) xs
+               Left _ -> fundeps p
+               Right _  -> return ()) xs
 
   matchLeqDirect, matchLeqMap, matchPlusDirect, matchPlusMap, matchEqDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
   match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q <|> matchPlusMap p q <|> matchEqDirect p q
@@ -162,7 +163,7 @@ solve (cin, p, r) =
     where forceFD t t' =
             do q <- unify [] t t'
                case q of
-                 Nothing -> fundeps p q
+                 Left _ -> fundeps p
                  _       -> return (Just v)
   matchPlusDirect _ _ = return Nothing
 
@@ -208,8 +209,8 @@ solve (cin, p, r) =
           forceFD t t' =
             do q <- unify [] t t'
                case q of
-                 Nothing -> fundeps p q
-                 _       -> return (Just v)
+                 Left _  -> fundeps p
+                 Right _ -> return (Just v)
   matchPlusMap _ _ = return Nothing
 
   matchEqDirect p@(PEq x y) q@(PEq x' y', v) =
@@ -221,7 +222,7 @@ solve (cin, p, r) =
 
   -- question to self: why do I have both the `fundeps` error and the `force` error?
 
-  fundeps p q = throwError (ErrTypeMismatchFD p q)
+  fundeps p = throwError (ErrTypeMismatchFD p)
 
   expand1 :: (Pred, Evid) -> [(Pred, Evid)]
   expand1 (PPlus x y z, v)
@@ -269,8 +270,8 @@ solve (cin, p, r) =
   force p t u =
     do q <- unify [] t u
        case q of
-         Nothing -> fundeps p Nothing
-         Just q  -> return ()
+         Left _ -> fundeps p
+         Right _  -> return ()
 
   prim p@(PLeq (TRow y) (TRow z))
     | Just yd <- mapM concreteLabel y, Just zd <- mapM concreteLabel z =
@@ -329,7 +330,7 @@ solve (cin, p, r) =
        case result of
          Productive v -> return (Just v)
          Unproductive -> return Nothing
-         UnificationFails -> throwError (ErrTypeMismatchPred p t u)
+         UnificationFails _ -> throwError (ErrTypeMismatchPred p t u)
   prim _ = return Nothing
 
   funCallsFrom :: [Ty] -> Maybe ([Ty], [Ty], [Ty])

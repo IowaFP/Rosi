@@ -88,36 +88,46 @@ instance MonadRef CheckM where
   readRef = liftIO . readIORef
   writeRef r = liftIO . writeIORef r
 
-class (Monad m, MonadFail m, MonadError Error m, MonadRef m, MonadIO m, MonadReader TCIn m) => MonadCheck m where
+class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => MonadCheck m where
   bindTy :: Kind -> m a -> m a
+  bindTy k = local (\env -> env { kctxt = KBVar k (level env) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPNV [] 0 1) (pctxt env) })
+
   defineTy :: Kind -> Ty -> m a -> m a
+  defineTy k t = local (\env -> env { kctxt = KBDefn k t : kctxt env, tctxt = shiftE (tctxt env), level = level env + 1 })
+
   bind :: Ty -> m a -> m a
+  bind t = local (\env -> env { tctxt = t : tctxt env })
 
   assume :: Pred -> m a -> m a
+  assume g = local (\env -> env { pctxt = g : pctxt env })
+
   require :: Pred -> IORef (Maybe Evid) -> m ()
 
-  errorContext :: (Error -> Error) -> m a -> m a
+  typeError :: Error -> m a
+
+  typeErrorContext :: (Error -> Error) -> m a -> m a
+  typeErrorContext f = local (\env -> env { ectxt = ectxt env . f})
 
   fresh :: String -> m String
+
   atLevel :: Int -> m t -> m t
+  atLevel l = local (\st -> st { level = l })
+
   theLevel :: m Int
+  theLevel = asks level
 
 instance MonadCheck CheckM where
-  bindTy k = local (\env -> env { kctxt = KBVar k (level env) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPNV [] 0 1) (pctxt env) })
-  defineTy k t = local (\env -> env { kctxt = KBDefn k t : kctxt env, tctxt = shiftE (tctxt env), level = level env + 1 })
-  bind t = local (\env -> env { tctxt = t : tctxt env })
-  assume g = local (\env -> env { pctxt = g : pctxt env })
   require p r =
     do cin <- ask
        p' <- flattenP p
        trace ("requiring " ++ show p')
        tell (TCOut [(cin, p, r)])
-  errorContext f = local (\env -> env { ectxt = ectxt env . f})
+
+  typeError = throwError
+
   fresh x = do i <- gets next
                modify (\st -> st { next = i + 1 })
                return ((takeWhile ('#' /=) x) ++ '#' : show i)
-  atLevel l = local (\st -> st { level = l })
-  theLevel = asks level
 
 
 collect :: CheckM a -> CheckM (a, TCOut)
@@ -140,15 +150,15 @@ type Eqn = (Ty, (Ty, Evid))
 type UR = [Eqn]
 type US = Maybe [Dynamic]
 type UW = ([Update], [(TCIn, Pred, IORef (Maybe Evid))])
-newtype UnifyM a = UM { runUnifyM :: StateT US (WriterT UW (ReaderT UR CheckM)) a }
-  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadError Error, MonadIO, MonadState US)
+newtype UnifyM a = UM { runUnifyM :: ExceptT (Ty, Ty) (StateT US (WriterT UW (ReaderT UR CheckM))) a }
+  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO, MonadState US)
 
 instance MonadRef UnifyM where
-  newRef v = UM $ StateT $ \checking -> WriterT (body checking) where
+  newRef v = UM $ ExceptT $ StateT $ \checking -> WriterT (body checking) where
     body Nothing = do r <- liftIO (newIORef v)
-                      return ((r, Nothing), ([], []))
+                      return ((Right r, Nothing), ([], []))
     body (Just rs) = do r <- liftIO (newIORef v)
-                        return ((r, Just (toDyn r : rs)), ([], []))
+                        return ((Right r, Just (toDyn r : rs)), ([], []))
   readRef = liftIO . readIORef
   writeRef r v =
     do v' <- readRef r
@@ -156,29 +166,39 @@ instance MonadRef UnifyM where
        liftIO (writeIORef r v)
 
 instance MonadReader TCIn UnifyM where
-  ask = UM (lift (lift (lift ask)))
-  local f r = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> local f (runReaderT (runWriterT (runStateT (runUnifyM r) checking)) eqns))
+  ask = UM (lift (lift (lift (lift ask))))
+  local f r = UM $ ExceptT $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> local f (runReaderT (runWriterT (runStateT (runExceptT (runUnifyM r)) checking)) eqns))
 
 instance MonadCheck UnifyM where
-  bindTy k m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> bindTy k (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
-  defineTy k t m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> defineTy k t (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
-  bind t m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> bind t (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
-  assume g m = UM $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> assume g (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns))
   require p r =
     do cin <- ask
        tell ([], [(cin, p, r)])
-  errorContext f m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> errorContext f (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
-  fresh = UM . lift . lift . lift . fresh
-  atLevel l m = UM $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> atLevel l (runReaderT (runWriterT $ runStateT (runUnifyM m) checking) eqns)
-  theLevel = UM $ lift $ lift $ lift theLevel
+
+  typeError e = UM (lift (lift (lift (lift (typeError e)))))
+
+  fresh = UM . lift . lift . lift . lift . fresh
 
 canUpdate :: Typeable a => IORef a -> UnifyM Bool
-canUpdate r = UM (StateT $ \checking -> WriterT (body checking)) where
-  body Nothing = return ((True, Nothing), ([], []))
-  body (Just rs) = return ((any ok rs, Just rs), ([], []))
+canUpdate r = UM (ExceptT $ StateT $ \checking -> WriterT (body checking)) where
+  body Nothing = return ((Right True, Nothing), ([], []))
+  body (Just rs) = return ((Right (any ok rs), Just rs), ([], []))
   ok dr = case fromDynamic dr of
             Just r' -> r == r'
             Nothing -> False
 
 theEqns :: UnifyM [Eqn]
 theEqns = UM ask
+
+unificationFails :: Ty -> Ty -> UnifyM a
+unificationFails actual expected = UM (throwError (actual, expected))
+
+try :: UnifyM a -> UnifyM (Maybe a)
+try (UM body) =
+  UM $ either (const Nothing) Just <$> tryError body
+
+bracket :: UnifyM () -> UnifyM a -> UnifyM () -> UnifyM a
+bracket (UM before) (UM body) (UM after) =
+  UM $ do before
+          z <- body `catchError` (\e -> do after; throwError e)
+          after
+          return z

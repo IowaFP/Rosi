@@ -94,15 +94,15 @@ kindMismatch :: MonadCheck m => Ty -> Kind -> Kind -> m a
 kindMismatch t actual expected =
   do actual' <- flattenK actual
      expected' <- flattenK expected
-     throwError (ErrContextType t (ErrKindMismatch actual' expected'))
+     typeError (ErrContextType t (ErrKindMismatch actual' expected'))
 
 checkTy' :: Term -> Ty -> Kind -> CheckM Ty
-checkTy' e t k = errorContext (ErrContextTerm e . ErrContextType t) $ checkTy t k
+checkTy' e t k = typeErrorContext (ErrContextTerm e . ErrContextType t) $ checkTy t k
 
 checkTy :: Ty -> Kind -> CheckM Ty
 checkTy t k =
   do trace $ "checkTy " ++ renderString False (ppr t) ++ " : " ++ renderString False (ppr k)
-     errorContext (ErrContextType t) (checkTy0 t k)
+     typeErrorContext (ErrContextType t) (checkTy0 t k)
 
 checkTy0 (TVar (-1) x) expected =
   throwError (ErrOther $ "scoping error: " ++ x ++ " not resolved")
@@ -201,12 +201,12 @@ checkTy0 TString expected =
 
 checkPred :: Pred -> CheckM Pred
 checkPred p@(PLeq y z) =
-  errorContext (ErrContextPred p)  $
+  typeErrorContext (ErrContextPred p)  $
   do kelem <- kindGoal "e"
      PLeq <$> checkTy y (KRow kelem)
           <*> checkTy z (KRow kelem)
 checkPred p@(PPlus x y z) =
-  errorContext (ErrContextPred p) $
+  typeErrorContext (ErrContextPred p) $
   do kelem <- kindGoal "e"
      PPlus <$> checkTy x (KRow kelem)
            <*> checkTy y (KRow kelem)

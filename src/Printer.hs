@@ -237,8 +237,8 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
 
         (ctxts, te') = contexts te
 
-        pprErr (ErrTypeMismatch actual expected) = vsep ["Actual type" <+> ppr actual, "was expected to be" <+> ppr expected]
-        pprErr (ErrTypeMismatchFD p _) = "Type mismatch in functional dependencies for" <+> ppr p
+        pprErr (ErrTypeMismatch actual expected actual' expected') = vsep ["Actual type" <+> ppr actual, "was expected to be" <+> ppr expected, "specifically: " <+> ppr actual' <+> "~/~" <+> ppr expected']
+        pprErr (ErrTypeMismatchFD p) = "Type mismatch in functional dependencies for" <+> ppr p
         pprErr (ErrTypeMismatchPred p t u) = vsep ["Type mismatch in functional dependencies for" <+> ppr p, "type" <+> ppr t, "was expected to be" <+> ppr u]
         pprErr (ErrKindMismatch k k') = vsep ["Actual kind" <+> ppr k, "was expected to be" <+> ppr k']
         pprErr (ErrNotEntailed errs) = vsep (map pprOne errs)

@@ -435,7 +435,7 @@ flattenV v = return v
 
 data Error = ErrContextDefn String Error | ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
            | ErrContextTyEq Ty Ty Error
-           | ErrTypeMismatch Ty Ty | ErrTypeMismatchFD Pred (Maybe Evid) | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Kind Kind
+           | ErrTypeMismatch Ty Ty Ty Ty | ErrTypeMismatchFD Pred | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Kind Kind
            | ErrNotEntailed [(Pred, [Pred])]
            | ErrUnboundVar String | ErrUnboundTyVar String
            | ErrOther String
