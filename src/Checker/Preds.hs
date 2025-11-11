@@ -63,7 +63,7 @@ solve (cin, p, r) =
 
   everything as p =
     do trace ("Solving " ++ show p)
-       v <- prim p <|> refl p <|> mapFunApp as p <|> byAssump as p
+       v <- byAssump as p <|> prim p <|> refl p <|> mapFunApp as p
        trace ("Solved " ++ show p ++ " by " ++ show v)
        return v
 
