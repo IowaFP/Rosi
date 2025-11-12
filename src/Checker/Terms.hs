@@ -249,12 +249,12 @@ generalize e =
      when (not (null ungeneralizable)) $ notEntailed ungeneralizable
      tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere))
      genVars <- foldl cat [] <$> ((:) <$> uvars level t <*> mapM (puvars level . fst) generalizable)
+     fixInsts t
      t' <- shiftTNV genVars 0 (length genVars) <$> flattenT t
      e'' <- shiftENV genVars 0 (length genVars) <$> flattenE e'
      trace $ "Generalizing " ++ intercalate ", " (map (renderString False . ppr) genVars) ++ " in " ++ renderString False (ppr t')
      as <- generalizeVars genVars
      generalizePreds generalizable
-     fixInsts t'
      let (e''', t'') = buildFinal as genVars generalizable e'' t'
      trace $ "Generalized: " ++ renderString False (ppr t')
      return (e''', t'')
