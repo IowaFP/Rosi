@@ -248,7 +248,7 @@ generalize e =
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
      when (not (null ungeneralizable)) $ notEntailed ungeneralizable
      tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere))
-     genVars <- uvars level t
+     genVars <- foldl cat [] <$> ((:) <$> uvars level t <*> mapM (puvars level . fst) generalizable)
      t' <- shiftTNV genVars 0 (length genVars) <$> flattenT t
      e'' <- shiftENV genVars 0 (length genVars) <$> flattenE e'
      trace $ "Generalizing " ++ intercalate ", " (map (renderString False . ppr) genVars) ++ " in " ++ renderString False (ppr t')
