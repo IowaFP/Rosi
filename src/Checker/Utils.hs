@@ -40,7 +40,10 @@ kindOf (TConApp (TCUnif g) t) =
   do mk <- readRef (goalRef g)
      case mk of
        Just k -> kindOf (TConApp k t)
-       Nothing -> fail "kindOf: unknown constructor"
+       Nothing ->
+          -- Wild assumption here: if there's constructor polymorphism, then it's over Pi / Sigma
+          do KRow k <- kindOf t
+             return k
 kindOf (TInst _ t) = kindOf t
 kindOf (TMapFun f) =
   do KFun kd kc <- kindOf f
