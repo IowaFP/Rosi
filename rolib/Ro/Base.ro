@@ -75,6 +75,17 @@ not = case #'True (con #'False)
 impossible : forall a. Sigma {} -> a
 impossible = fix (\x. x)
 
+---
+
+type Labels : R[*] -> R[*]
+type Labels = \r. Const Unit r
+
+upd : forall x' y z z'.
+        y < z,
+        x' + y ~ z',
+        Labels (z - y) < Labels x' =>
+        Pi x' -> Pi z -> Pi z'
+upd = \r s. r ++ prj s
 
 -------------------------------------------------------------------------------
 -- Basic analysis / synthesis
