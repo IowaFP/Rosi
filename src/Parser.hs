@@ -308,7 +308,6 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
   app (BuiltIn "syn") (Type phi : Term t : ts) = app (Term (ESyn phi t)) ts
   app (BuiltIn "syn") (Term t : ts) = app (Term (ESyn (TLam "X" (Just KType) (TVar 0 "X")) t)) ts
   app (BuiltIn s) _ = unexpected (Label $ fromList ("ill-formed " ++ s))
-
   goal s = Goal . (s,) <$> newIORef Nothing
 
   -- builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)", "in", "out", "fix"]) where
@@ -339,7 +338,8 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                     ("in", CIn),
                     ("out", COut),
                     ("fix", CFix),
-                    ("(^)", CStringCat)]]
+                    ("(^)", CStringCat),
+                    ("fold", CFold)]]
 
   buildNumber 0 = EVar (-1) "zero"
   buildNumber n = EApp (EVar (-1) "succ") (buildNumber (n - 1))

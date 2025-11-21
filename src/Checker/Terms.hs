@@ -193,6 +193,19 @@ checkTerm0 e@(EConst c) expected =
         constType CStringCat =
           return (TString `funTy` TString `funTy` TString)
 
+        constType CFold =
+          return $
+            TForall "r" (Just (KRow KType)) $
+            TForall "t" (Just KType) $
+              (TForall "l" (Just KLabel) $
+               TForall "u" (Just KType) $
+                  PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "u")]) (TVar 3 "r") `TThen`
+                  TSing (TVar 1 "l") `funTy` TVar 0 "u" `funTy` TVar 2 "t") `funTy`
+              (TVar 0 "t" `funTy` TVar 0 "t" `funTy` TVar 0 "t") `funTy`
+              TVar 0 "t" `funTy`
+              TConApp Pi (TVar 1 "r") `funTy`
+              TVar 0 "t"
+
 checkTerm0 e0@(EAna phi e) expected =
   do k <- kindGoal "k"
      phi' <- checkTy' e0 phi (KFun k KType)
@@ -215,10 +228,7 @@ checkTerm0 e0@(ESyn phi e) expected =
      ESyn phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
                                                  PLeq (TRow [TLabeled (tvar 1) (tvar 0)]) (shiftTN 0 2 r) `TThen`
                                                  TSing (tvar 1) `funTy` TApp (shiftTN 0 2 phi') (tvar 0))
---     ESyn phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $ TForall "y1" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "y2" (Just (KRow k)) $
---                                PPlus (TVar 2 "y1" (Just (KRow k))) (TRow [TLabeled (TVar 4 "l" (Just KLabel)) (TVar 3 "u" (Just k))]) (TVar 1 "z" (Just (KRow k))) `TThen`
---                                PPlus (TVar 1 "z" (Just (KRow k))) (TVar 0 "y2" (Just (KRow k))) (shiftTN 0 5 r) `TThen`
---                                TSing (TVar 4 "l" (Just KLabel)) `funTy` TApp (shiftTN 0 5 phi') (TVar 3 "u" (Just k)))
+
 checkTerm0 e0@(ETyped e t) expected =
   do (t', _) <- normalize [] =<< checkTy' e0 t KType
      e' <- checkTerm e t'  -- any reason to preserve the type ascription?

@@ -168,6 +168,17 @@ eval' h (EConst CStringCat) =
       (_, VString s1 : VString s0 : _) ->
          VString (s0 ++ s1)
       _ -> error $ "bad environment for (^): " ++ show h
+eval' h (EConst CFold) =
+  VLam h $ Prim $ \h ->
+  VLam h $ Prim $ \h ->
+  VLam h $ Prim $ \h ->
+  VLam h $ Prim $ \h ->
+    case h of
+      (_, r : def : comp : single : _) ->
+        let n = recordSize r
+            vs = recordFrom r
+            one k = app (app (prapp single (VLeq [k])) VSing) (vs k)
+        in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1..n - 1])
 eval' h (ESyn _ e) = VSyn (\i -> app (prapp f (VLeq [i])) VSing)
   where f = eval h e
 eval' h (EAna _ e) =
