@@ -47,6 +47,28 @@ functorRec : Pi (Functor RecF)
 functorRec = #'Fix := functorId
 
 -------------------------------------------------------------------------------
+-- Shows
+
+tupleNames = (#'1 := "1", #'2 := "2", #'3 := "3")
+
+showTuple = \d. showP (#'names := prj tupleNames, #'shows := every d)
+
+showBoolF : forall t. Show t -> ShowR (BoolF t)
+showBoolF = \d. (#'names := (#'BConst := "BConst", #'If := "If"),
+                 #'shows := (#'BConst := showBool, #'If := showTuple d))
+
+showArithF : forall t. Show t -> ShowR (ArithF t)
+showArithF = \d. (#'names := (#'IConst := "IConst", #'Plus := "Plus"),
+                  #'shows := (#'IConst := showNat, #'Plus := showTuple d))
+
+showLamF : forall t. Show t -> ShowR (LamF t)
+showLamF = \d. (#'names := (#'Var := "Var", #'Lam := "Lam", #'App := "App"),
+                #'shows := (#'Var := showNat, #'Lam := d, #'App := showTuple d))
+
+showRecF : forall t. Show t -> ShowR (RecF t)
+showRecF = \d. (#'names := (#'Fix := "Fix"), #'shows := (#'Fix := d))
+
+-------------------------------------------------------------------------------
 -- Shorthand
 
 type LBF : R [* -> *]
@@ -75,14 +97,35 @@ functorAll = functorArith
           ++ functorLBF
           ++ functorRec
 
+showLBF : forall t. Show t -> ShowR (LBF t)
+showLBF = \d. showRCat (showBoolF d) (showLamF d)
+
+showABLF : forall t. Show t -> ShowR (ABLF t)
+showABLF = \d. showRCat (showArithF d) (showLBF d)
+
+showAllF : forall t. Show t -> ShowR (AllF t)
+showAllF = \d. showRCat (showABLF d) (showRecF d)
+
+showExpr : forall z : R[* -> *]. (forall t. Show t -> ShowR (z t)) -> Show (Mu (Sigma z))
+showExpr = \d. fix (\showExpr e. showS (d showExpr) (out e))
+
 -------------------------------------------------------------------------------
 -- Some expressions
 
 xpId : Mu (Sigma AllF)
 xpId = rcon #'Lam (rcon #'Var zero)
 
+shId : String
+shId = showExpr showAllF xpId
+
 xpConst : Mu (Sigma AllF)
 xpConst = rcon #'Lam (rcon #'Lam (rcon #'Var one))
 
+shConst : String
+shConst = showExpr showAllF xpConst
+
 xpNot : Mu (Sigma AllF)
 xpNot = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (rcon #'BConst True)))
+
+shNot : String
+shNot = showExpr showAllF xpNot

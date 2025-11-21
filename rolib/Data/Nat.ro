@@ -1,4 +1,4 @@
-import Ro.Base
+import Ro.Base, Ro.Show
 
 type NatF : * -> *
 type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}
@@ -48,6 +48,11 @@ equal = fix (\equal m n.
 
 --
 
+showNat : Show Nat
+showNat = fix (\showNat n. showS (#'names := (#'Succ := "Succ", #'Zero := "Zero"), #'shows := (#'Zero := showUnit, #'Succ := showNat)) (out n))
+
+--
+
 one : Nat
 one = succ zero
 
@@ -76,3 +81,11 @@ three' = add one' 2
 
 three'1 : Nat
 three'1 = max three' 1
+
+--
+
+one'' : String
+one'' = showNat one'
+
+three'' : String
+three'' = showNat three'
