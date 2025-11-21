@@ -229,14 +229,16 @@ atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
                , parens ty ]
 
 pr :: Parser Pred
-pr = do t <- arrTy
-        choice
-          [ do symbol "<"
-               PLeq t <$> arrTy
-          , do symbol "+"
-               u <- arrTy
-               symbol "~"
-               PPlus t u <$> arrTy ]
+pr = choice [ do symbol "Fold"
+                 PFold <$> arrTy
+            , do t <- arrTy
+                 choice
+                   [ do symbol "<"
+                        PLeq t <$> arrTy
+                   , do symbol "+"
+                        u <- arrTy
+                        symbol "~"
+                        PPlus t u <$> arrTy ] ]
 
 -- We need a random precedence table here.  Let's try:
 --

@@ -111,7 +111,7 @@ eqS = \ d v. ana (\ l y. match v
                          ( case l (\x. sel d l x y)
                          | const False))
 
-eqP : forall z: R[*]. Pi (Eq z) -> Eq (Pi z)
+eqP : forall z: R[*]. Fold z => Pi (Eq z) -> Eq (Pi z)
 eqP = \ d r. fold (\l x. sel d l (sel r l) x) and True
 
 -------------------------------------------------------------------------------

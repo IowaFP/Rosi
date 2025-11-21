@@ -15,7 +15,7 @@ showRCat = \r s. (#'names := sel r #'names ++ sel s #'names, #'shows := sel r #'
 showS : forall z. ShowR z -> Sigma z -> String
 showS = \d. ana (\l x. sel (sel d #'names) l ^ " := " ^ sel (sel d #'shows) l x)
 
-showP : forall z. ShowR z -> Pi z -> String
+showP : forall z. Fold z => ShowR z -> Pi z -> String
 showP = \d r. "(" ^ fold (\l x. sel (sel d #'names) l ^ " := " ^ sel (sel d #'shows) l x) (\s t. s ^ ", " ^ t) "" r  ^ ")"
 
 --

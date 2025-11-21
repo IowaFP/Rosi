@@ -56,6 +56,7 @@ instance HasTyVars Pred where
   subst v t (PEq u u') = PEq <$> subst v t u <*> subst v t u'
   subst v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
   subst v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
+  subst v t (PFold z) = PFold <$> subst v t z
 
 normalize' :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
 normalize' eqns t =
@@ -202,3 +203,4 @@ normalizeP :: MonadCheck m => [Eqn] -> Pred -> m Pred -- no evidence structure f
 normalizeP eqns (PLeq x y) = PLeq <$> (fst <$> normalize eqns x) <*> (fst <$> normalize eqns y)
 normalizeP eqns (PPlus x y z) = PPlus <$> (fst <$> normalize eqns x) <*> (fst <$> normalize eqns y) <*> (fst <$> normalize eqns z)
 normalizeP eqns (PEq t u) = PEq <$> (fst <$> normalize' eqns t) <*> (fst <$> normalize' eqns u)
+normalizeP eqns (PFold z) = PFold <$> (fst <$> normalize' eqns z)

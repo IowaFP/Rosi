@@ -58,7 +58,7 @@ flattenK (KFun dom cod) = KFun <$> flattenK dom <*> flattenK cod
 flattenK k = return k
 
 data Pred =
-    PLeq Ty Ty | PPlus Ty Ty Ty | PEq Ty Ty
+    PLeq Ty Ty | PPlus Ty Ty Ty | PEq Ty Ty | PFold Ty
   deriving (Data, Eq, Show, Typeable)
 
 --------------------------------------------------------------------------------
@@ -195,6 +195,8 @@ flattenP (PPlus x y z) =
   PPlus <$> flattenT x <*> flattenT y <*> flattenT z
 flattenP (PEq t u) =
   PEq <$> flattenT t <*> flattenT u
+flattenP (PFold z) =
+  PFold <$> flattenT z
 
 flattenIs :: MonadIO m => Insts -> m Insts
 flattenIs is@(Unknown n (Goal (s, r))) =
@@ -248,6 +250,7 @@ shiftPNV :: [UVar] -> Int -> Int -> Pred -> Pred
 shiftPNV vs j n (PEq t u) = PEq (shiftTNV vs j n t) (shiftTNV vs j n u)
 shiftPNV vs j n (PLeq y z) = PLeq (shiftTNV vs j n y) (shiftTNV vs j n z)
 shiftPNV vs j n (PPlus x y z) = PPlus (shiftTNV vs j n x) (shiftTNV vs j n y) (shiftTNV vs j n z)
+shiftPNV vs j n (PFold z) = PFold (shiftTNV vs j n z)
 
 shiftT :: Int -> Ty -> Ty
 shiftT j = shiftTN j 1
@@ -307,8 +310,9 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
 data Evid =
     VVar Int | VGoal (Goal Evid)     -- VVars are entirely internal, so I'll only give them de Bruijn indices
   | VPredEq Evid Evid             -- p1 ~ p2 /\ p1  ==>  p2
-
+  --
   -- Leq proofs
+  --
   | VLeqRefl | VLeqTrans Evid Evid
   | VLeqSimple [Int]              -- Ground evidence for r1 <= r2: indices of r1 entries in r2
   | VLeqLiftL Ty Evid             -- x <= y     ==>  f x <= f y
@@ -316,12 +320,15 @@ data Evid =
   | VPlusLeqL Evid                -- x + y ~ z  ==>  x <= z
   | VPlusLeqR Evid                -- x + y ~ z  ==>  y <= z
   | VComplLeq Evid                -- x < y      ==>  y - x < y
+  --
   -- Plus proofs
+  --
   | VPlusSimple [Either Int Int]  -- Ground evidence for r1 + r2 ~ r3: indices of each r3 entry in (Left) r1 or (Right) r2
   | VPlusLiftL Ty Evid            -- x + y ~ z  ==>  f x + f y ~ f z
   | VPlusLiftR Evid Ty            -- x + y ~ z  ==>  x t + y t ~ z t
   | VPlusComplL Evid              -- x < y      ==>  (y - x) + x ~ y
   | VPlusComplR Evid              -- x < y      ==>  x + (y - x) ~ y
+  --
   -- Eq proofs
   --
   -- For now, I'm only keeping enough information here to identify the rule, not
@@ -348,6 +355,10 @@ data Evid =
   | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid | VEqCon TyCon Evid
   | VEqMapCong Evid | VEqComplCong Evid Evid
   | VEqLeq Evid Evid | VEqPlus Evid Evid Evid
+  --
+  -- Fold proofs
+  --
+  | VFold Int
   deriving (Data, Eq, Show, Typeable)
 
 isRefl :: Evid -> Bool
@@ -424,7 +435,7 @@ flattenV (VEqPlus v1 v2 v3) =
      return (if all isRefl vs' then VEqRefl else VEqPlus (vs' !! 0) (vs' !! 1) (vs' !! 2))
 flattenV v = return v
   -- Covers: VVar, VRefl, VLeqSimple, VPlusSimple, VEqBeta, VEqMap, VEqCompl, VEqDefn,
-  -- VEqLiftTyCon, VEqTyConSing, VEqMapId, VEqMapCompose,
+  -- VEqLiftTyCon, VEqTyConSing, VEqMapId, VEqMapCompose, VFold
 
 --------------------------------------------------------------------------------
 -- Type errors

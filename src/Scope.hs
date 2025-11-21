@@ -62,6 +62,8 @@ instance HasVars Ty where
 instance HasVars Pred where
   scope (PLeq y z) = PLeq <$> scope y <*> scope z
   scope (PPlus x y z) = PPlus <$> scope x <*> scope y <*> scope z
+  scope (PEq t u) = PEq <$> scope t <*> scope u
+  scope (PFold z) = PFold <$> scope z
 
 -- There's no `instance HasVars Evid` because evidence is all constructed during
 -- type checking, and so starts with de Bruijn indices.

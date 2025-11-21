@@ -197,6 +197,7 @@ checkTerm0 e@(EConst c) expected =
           return $
             TForall "r" (Just (KRow KType)) $
             TForall "t" (Just KType) $
+              PFold (TVar 1 "r") `TThen`
               (TForall "l" (Just KLabel) $
                TForall "u" (Just KType) $
                   PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "u")]) (TVar 3 "r") `TThen`
@@ -301,6 +302,7 @@ generalize e =
         puvars level (PEq t u) = cat <$> uvars level t <*> uvars level u
         puvars level (PLeq y z) = cat <$> uvars level y <*> uvars level z
         puvars level (PPlus x y z) = cat <$> (cat <$> uvars level x <*> uvars level y) <*> uvars level z
+        puvars level (PFold z) = uvars level z
 
         cat :: [UVar] -> [UVar] -> [UVar]
         cat ts us = ts ++ filter (\u -> all (different u) ts) us

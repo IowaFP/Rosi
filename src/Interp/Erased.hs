@@ -40,7 +40,7 @@ instance Show Value where
   show (VSyn t) = "<<syn>>"
   show (VString s) = "\"" ++ s ++ "\""
 
-data EValue = VLeq [Int] | VPlus [Either Int Int] | VEq
+data EValue = VLeq [Int] | VPlus [Either Int Int] | VEq | VVFold Int
   deriving Show
 
 evalB :: Env -> Body -> Value
@@ -54,6 +54,8 @@ app v w = error $ "don't know how to apply " ++ show v ++ " to " ++ show w
 prapp :: Value -> EValue -> Value
 prapp f@(VPrLam (hp, he) f') v =
   evalB (v : hp, he) f'
+prapp f v =
+  error $ "don't know how to apply " ++ show f ++ " to " ++ show v
 
 recordFrom :: HasCallStack => Value -> Int -> Value
 recordFrom (VRecord vs) i = vs !! i
@@ -169,14 +171,14 @@ eval' h (EConst CStringCat) =
          VString (s0 ++ s1)
       _ -> error $ "bad environment for (^): " ++ show h
 eval' h (EConst CFold) =
+  VPrLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
     case h of
-      (_, r : def : comp : single : _) ->
-        let n = recordSize r
-            vs = recordFrom r
+      (VVFold n : _, r : def : comp : single : _) ->
+        let vs = recordFrom r
             one k = app (app (prapp single (VLeq [k])) VSing) (vs k)
         in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1..n - 1])
 eval' h (ESyn _ e) = VSyn (\i -> app (prapp f (VLeq [i])) VSing)
@@ -208,6 +210,7 @@ evalV h v@(VPlusLiftL {})  = VPlus $ evalPlus h v
 evalV h v@(VPlusLiftR {})  = VPlus $ evalPlus h v
 evalV h v@(VPlusComplL {}) = VPlus $ evalPlus h v
 evalV h v@(VPlusComplR {}) = VPlus $ evalPlus h v
+evalV h (VFold n)          = VVFold n
 evalV h v                  = VEq
 
 evalLeq :: Env -> Evid -> [Int]

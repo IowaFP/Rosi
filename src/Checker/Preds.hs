@@ -101,8 +101,8 @@ solve (cin, p, r) =
                Left _ -> fundeps p
                Right _  -> return ()) xs
 
-  matchLeqDirect, matchLeqMap, matchPlusDirect, matchPlusMap, matchEqDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
-  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q <|> matchPlusMap p q <|> matchEqDirect p q
+  matchLeqDirect, matchLeqMap, matchPlusDirect, matchPlusMap, matchEqDirect, matchFoldDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
+  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q <|> matchPlusMap p q <|> matchEqDirect p q <|> matchFoldDirect p q
 
   matchLeqDirect (PLeq y@(TRow es) z) (PLeq y'@(TRow es') z', v) =
     suppose (typesEqual z z') $
@@ -220,6 +220,12 @@ solve (cin, p, r) =
   matchEqDirect _ _ =
     return Nothing
 
+  matchFoldDirect p@(PFold z) q@(PFold z', v) =
+    suppose (typesEqual z z') $
+      return (Just v)
+  matchFoldDirect _ _ =
+    return Nothing
+
   -- question to self: why do I have both the `fundeps` error and the `force` error?
 
   fundeps p = throwError (ErrTypeMismatchFD p)
@@ -246,6 +252,7 @@ solve (cin, p, r) =
           isLiteralRow _         = False
   expand1 (PEq x y, VEqSym {}) = []
   expand1 (PEq x y, v) = [(PEq y x, VEqSym v)]
+  expand1 (PFold _, _) = []
 
   isComplement (TCompl {}) = True
   isComplement _           = False
@@ -331,6 +338,8 @@ solve (cin, p, r) =
          Productive v -> return (Just v)
          Unproductive -> return Nothing
          UnificationFails _ -> throwError (ErrTypeMismatchPred p t u)
+  prim p@(PFold (TRow xs)) =
+    return (Just (VFold (length xs)))
   prim _ = return Nothing
 
   funCallsFrom :: [Ty] -> Maybe ([Ty], [Ty], [Ty])

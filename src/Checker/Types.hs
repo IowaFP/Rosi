@@ -211,3 +211,12 @@ checkPred p@(PPlus x y z) =
      PPlus <$> checkTy x (KRow kelem)
            <*> checkTy y (KRow kelem)
            <*> checkTy z (KRow kelem)
+checkPred p@(PEq t u) =
+  typeErrorContext (ErrContextPred p) $
+  do k <- kindGoal "k"
+     PEq <$> checkTy t k
+         <*> checkTy u k
+checkPred p@(PFold z) =
+  typeErrorContext (ErrContextPred p) $
+  do kelem <- kindGoal "e"
+     PFold <$> checkTy z (KRow kelem)
