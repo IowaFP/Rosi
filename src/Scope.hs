@@ -77,8 +77,6 @@ instance HasVars Term where
   scope (ESing t) = ESing <$> scope t
   scope (ELabel k l m) = ELabel k <$> scope l <*> scope m
   scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l
-  scope (ESyn t m) = ESyn <$> scope t <*> scope m
-  scope (EAna t m) = EAna <$> scope t <*> scope m
   scope (ELet x m n) = ELet x <$> scope m <*> bindVar x (scope n)
   scope (ETyped m t) = ETyped <$> scope m <*> scope t
   scope (EInst m (Known is)) = EInst <$> scope m <*> (Known <$> mapM scopeI is) where

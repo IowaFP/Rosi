@@ -260,7 +260,7 @@ shiftT j = shiftTN j 1
 --------------------------------------------------------------------------------
 
 data Const =
-    CPrj | CConcat | CInj | CBranch | CIn | COut | CFix | CStringCat | CFold
+    CPrj | CConcat | CInj | CBranch | CSyn | CAna | CFold | CIn | COut | CFix | CStringCat
     deriving (Data, Eq, Show, Typeable)
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?
@@ -270,7 +270,6 @@ data Term =
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const
-  | ESyn Ty Term | EAna Ty Term
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
   | EStringLit String
   deriving (Data, Eq, Show, Typeable)
@@ -286,8 +285,6 @@ shiftENV vs j n (ESing t) = ESing (shiftTNV vs j n t)
 shiftENV vs j n (ELabel k l e) = ELabel k (shiftENV vs j n l) (shiftENV vs j n e)
 shiftENV vs j n (EUnlabel k e l) = EUnlabel k (shiftENV vs j n e) (shiftENV vs j n l)
 shiftENV _ _ _ e@(EConst {}) = e
-shiftENV vs j n (ESyn t e) = ESyn (shiftTNV vs j n t) e
-shiftENV vs j n (EAna t e) = EAna (shiftTNV vs j n t) e
 shiftENV vs j n (ELet x e f) = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
 shiftENV vs j n (ECast e q) = ECast (shiftENV vs j n e) q
 shiftENV vs j n (ETyped e t) = ETyped e (shiftTNV vs j n t)

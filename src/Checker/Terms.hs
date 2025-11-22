@@ -175,6 +175,50 @@ checkTerm0 e@(EConst c) expected =
                          (TConApp Sigma (tvar 3) `funTy` tvar 0) `funTy`
                          (TConApp Sigma (tvar 2) `funTy` tvar 0) `funTy`
                          (TConApp Sigma (tvar 1) `funTy` tvar 0))
+
+        constType CSyn =
+          do k <- kindGoal "e"
+             return $
+               TForall "f" (Just (KFun k KType)) $
+               TForall "z" (Just (KRow k)) $
+                 TSing (TVar 1 "f") `funTy`
+                 (TForall "l" (Just KLabel) $
+                  TForall "t" (Just k) $
+                    PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "t")]) (TVar 2 "z") `TThen`
+                     TSing (TVar 1 "l") `funTy`
+                     TApp (TVar 3 "f") (TVar 0 "t")) `funTy`
+                 TConApp Pi (TApp (TMapFun (TVar 1 "f")) (TVar 0 "z"))
+
+        constType CAna =
+          do k <- kindGoal "e"
+             return $
+               TForall "f" (Just (KFun k KType)) $
+               TForall "z" (Just (KRow k)) $
+               TForall "t" (Just KType) $
+                 TSing (TVar 2 "f") `funTy`
+                 (TForall "l" (Just KLabel) $
+                  TForall "u" (Just k) $
+                    PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "u")]) (TVar 3 "z") `TThen`
+                    TSing (TVar 1 "l") `funTy`
+                    TApp (TVar 4 "f") (TVar 0 "u") `funTy`
+                    TVar 2 "t") `funTy`
+                 TConApp Sigma (TApp (TMapFun (TVar 2 "f")) (TVar 1 "z")) `funTy`
+                 TVar 0 "t"
+
+        constType CFold =
+          return $
+            TForall "r" (Just (KRow KType)) $
+            TForall "t" (Just KType) $
+              PFold (TVar 1 "r") `TThen`
+              (TForall "l" (Just KLabel) $
+               TForall "u" (Just KType) $
+                  PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "u")]) (TVar 3 "r") `TThen`
+                  TSing (TVar 1 "l") `funTy` TVar 0 "u" `funTy` TVar 2 "t") `funTy`
+              (TVar 0 "t" `funTy` TVar 0 "t" `funTy` TVar 0 "t") `funTy`
+              TVar 0 "t" `funTy`
+              TConApp Pi (TVar 1 "r") `funTy`
+              TVar 0 "t"
+
         constType CIn =
           do let f = TVar 0 "f"
              return (TForall "f" (Just (KType `KFun` KType)) $
@@ -192,43 +236,6 @@ checkTerm0 e@(EConst c) expected =
 
         constType CStringCat =
           return (TString `funTy` TString `funTy` TString)
-
-        constType CFold =
-          return $
-            TForall "r" (Just (KRow KType)) $
-            TForall "t" (Just KType) $
-              PFold (TVar 1 "r") `TThen`
-              (TForall "l" (Just KLabel) $
-               TForall "u" (Just KType) $
-                  PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "u")]) (TVar 3 "r") `TThen`
-                  TSing (TVar 1 "l") `funTy` TVar 0 "u" `funTy` TVar 2 "t") `funTy`
-              (TVar 0 "t" `funTy` TVar 0 "t" `funTy` TVar 0 "t") `funTy`
-              TVar 0 "t" `funTy`
-              TConApp Pi (TVar 1 "r") `funTy`
-              TVar 0 "t"
-
-checkTerm0 e0@(EAna phi e) expected =
-  do k <- kindGoal "k"
-     phi' <- checkTy' e0 phi (KFun k KType)
-     r <- typeGoal' "r" (KRow k)
-     t <- typeGoal "t"
-     elimForm expected $ \expected ->
-       do q <- expectT e0 (TConApp Sigma (TApp (TMapFun phi') r) `funTy` t) expected
-          let tvar 0 = TVar 0 "u"
-              tvar 1 = TVar 1 "l"
-          EAna phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
-                                                      PLeq (TRow [TLabeled (tvar 1) (tvar 0)]) (shiftTN 0 2 r) `TThen`
-                                                      TSing (tvar 1) `funTy` TApp (shiftTN 0 2 phi') (tvar 0) `funTy` shiftTN 0 2 t)
-checkTerm0 e0@(ESyn phi e) expected =
-  do k <- kindGoal "k"
-     phi' <- checkTy' e0 phi (KFun k KType)
-     r <- typeGoal' "r" (KRow k)
-     q <- expectT e0 (TConApp Pi (TApp (TMapFun phi') r)) expected
-     let tvar 0 = TVar 0 "u"
-         tvar 1 = TVar 1 "l"
-     ESyn phi' <$> checkTerm e (TForall "l" (Just KLabel) $ TForall "u" (Just k) $
-                                                 PLeq (TRow [TLabeled (tvar 1) (tvar 0)]) (shiftTN 0 2 r) `TThen`
-                                                 TSing (tvar 1) `funTy` TApp (shiftTN 0 2 phi') (tvar 0))
 
 checkTerm0 e0@(ETyped e t) expected =
   do (t', _) <- normalize [] =<< checkTy' e0 t KType

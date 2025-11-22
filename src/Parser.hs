@@ -296,25 +296,18 @@ term = prefixes typedTerm where
 
   catTerm = chainl1 appTerm $ op "^" (ebinary CStringCat)
 
-data AppTerm = BuiltIn String | Type Ty | Term Term
+data AppTerm = Type Ty | Term Term
 
 appTerm :: Parser Term
-appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|> Term <$> aterm)
+appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
              app t ts where
   app (Term t) [] = return t
   app (Type _) _ = unexpected (Label $ fromList "type argument")
   app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
   app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
-  app (BuiltIn "ana") (Type phi : Term t : ts) = app (Term (EAna phi t)) ts
-  app (BuiltIn "ana") (Term t : ts) = app (Term (EAna (TLam "X" (Just KType) (TVar 0 "X")) t)) ts
-  app (BuiltIn "syn") (Type phi : Term t : ts) = app (Term (ESyn phi t)) ts
-  app (BuiltIn "syn") (Term t : ts) = app (Term (ESyn (TLam "X" (Just KType) (TVar 0 "X")) t)) ts
-  app (BuiltIn s) _ = unexpected (Label $ fromList ("ill-formed " ++ s))
   goal s = Goal . (s,) <$> newIORef Nothing
 
   -- builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)", "in", "out", "fix"]) where
-  builtIns = choice (map builtIn ["ana", "syn"]) where
-    builtIn s = reserved s >> return s
 
   aterm = choice [ EConst <$> const
                  , EVar (-1) <$> identifier
@@ -337,11 +330,13 @@ appTerm = do (t : ts) <- some (BuiltIn <$> builtIns <|> Type <$> brackets ty <|>
                     ("inj", CInj),
                     ("(++)", CConcat),
                     ("(|)", CBranch),
+                    ("syn", CSyn),
+                    ("ana", CAna),
+                    ("fold", CFold),
                     ("in", CIn),
                     ("out", COut),
                     ("fix", CFix),
-                    ("(^)", CStringCat),
-                    ("fold", CFold)]]
+                    ("(^)", CStringCat)]]
 
   buildNumber 0 = EVar (-1) "zero"
   buildNumber n = EApp (EVar (-1) "succ") (buildNumber (n - 1))

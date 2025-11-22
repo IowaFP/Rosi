@@ -170,6 +170,21 @@ eval' h (EConst CStringCat) =
       (_, VString s1 : VString s0 : _) ->
          VString (s0 ++ s1)
       _ -> error $ "bad environment for (^): " ++ show h
+eval' h (EConst CSyn) =
+  VLam h $ Prim $ \h ->
+  VLam h $ Prim $ \h ->
+    case h of
+      (_, f : _) ->
+        VSyn (\i -> app (prapp f (VLeq [i])) VSing)
+eval' h (EConst CAna) =
+  VLam h $ Prim $ \h ->
+  VLam h $ Prim $ \h ->
+  VLam h $ Prim $ \h ->
+    case h of
+      (_, VVariant k w : f : _) ->
+        app (app (prapp f (VLeq [k])) VSing) w
+      (_, v : e : _) ->
+        error $ "bad argument for (ana" ++ show e ++ "): " ++ show v
 eval' h (EConst CFold) =
   VPrLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
@@ -181,14 +196,14 @@ eval' h (EConst CFold) =
         let vs = recordFrom r
             one k = app (app (prapp single (VLeq [k])) VSing) (vs k)
         in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1..n - 1])
-eval' h (ESyn _ e) = VSyn (\i -> app (prapp f (VLeq [i])) VSing)
-  where f = eval h e
-eval' h (EAna _ e) =
-  VLam h $ Prim $ \ h ->
-    case h of
-      (_, VVariant k w : _) -> app (app (prapp f (VLeq [k])) VSing) w
-      _ -> error $ "bad environment for (ana " ++ show e ++ "): " ++ show (head (snd h))
-  where f = eval h e
+-- eval' h (ESyn _ e) = VSyn (\i -> app (prapp f (VLeq [i])) VSing)
+--   where f = eval h e
+-- eval' h (EAna _ e) =
+--   VLam h $ Prim $ \ h ->
+--     case h of
+--       (_, VVariant k w : _) -> app (app (prapp f (VLeq [k])) VSing) w
+--       _ -> error $ "bad argument for (ana" ++ show e ++ "): " ++ show v
+--   where f = eval h e
 eval' h (ECast e q) = q `seq` eval h e
 eval' h (ETyped e _) = eval h e
 eval' h (EStringLit s) = VString s
