@@ -6,7 +6,7 @@ type Applicative = \f. Pi { 'Functor := Functor f,
                             'ap := forall a b. f (a -> b) -> f a -> f b }
 
 applicativeFunctor : forall z : R[* -> *]. Pi (Applicative z) -> Pi (Functor z)
-applicativeFunctor = mapP [Applicative] [Functor] #Applicative #Functor (\l d. sel d #'Functor)
+applicativeFunctor = mapP #(Applicative) #(Functor) (\l d. sel d #'Functor)
 
 --
 
