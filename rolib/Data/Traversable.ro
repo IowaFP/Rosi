@@ -5,10 +5,10 @@ type Traversable = \t. Pi { 'Functor := Functor t,
                             'sequence := forall f a. Applicative f -> t (f a) -> f (t a) }
 
 traversableFunctor : forall z : R[* -> *]. Pi (Traversable z) -> Pi (Functor z)
-traversableFunctor = mapP [Traversable] [Functor] (\l d. sel d #'Functor)
+traversableFunctor = mapP #Traversable #Functor (\l d. sel d #'Functor)
 
 sequenceS : forall z : R[* -> *]. Pi (Traversable z) -> (forall f a. Applicative f -> Sigma z (f a) -> f (Sigma z a))
-sequenceS  = \d. /\ f a. \applf v. ana [\g. g (f a)] (\l x. sel applf #'Functor (con l) (sel (sel d l) #'sequence applf x)) v
+sequenceS  = \d. /\ f a. \applf v. ana #(\g. g (f a)) (\l x. sel applf #'Functor (con l) (sel (sel d l) #'sequence applf x)) v
 
 traversableS : forall z : R[* -> *]. Pi (Traversable z) -> Traversable (Sigma z)
 traversableS = \d. (#'Functor := fmapS (traversableFunctor d),
