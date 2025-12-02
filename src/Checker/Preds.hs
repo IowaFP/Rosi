@@ -389,9 +389,9 @@ solve (cin, p, r) =
 guess :: [Problem] -> CheckM (Maybe [Problem])
 guess (pr@(tcin, PEq t u, v) : prs) =
   local (const tcin) $
-  do t' <- fst <$> normalize [] t
-     u' <- fst <$> normalize [] u
-     case (t', u') of
+  do t'0 <- fst <$> normalize [] t
+     u'0 <- fst <$> normalize [] u
+     case (t'0, u'0) of
        (TInst (Unknown {}) (TInst (Unknown _ (Goal (s, r))) _), _) ->
          do trace $ unwords ["guessing", s, ":= {}"]
             writeRef r (Just (Known []))
@@ -404,12 +404,28 @@ guess (pr@(tcin, PEq t u, v) : prs) =
           guessInstantiation t u
        (t@(TForall {}), u@(TInst (Unknown {}) _)) ->
           guessInstantiation t u
+       (TApp tf@(TUnif _) ta@(TUnif _), TApp uf ua) ->
+          do trace $ guessingRefinement tf ta uf ua
+             r1 <- newRef Nothing
+             r2 <- newRef Nothing
+             v1 <- fresh "v"
+             v2 <- fresh "v"
+             writeRef v (Just (VEqApp (VGoal (Goal (v1, r1))) (VGoal (Goal (v2, r2)))))
+             return (Just ((tcin, PEq tf uf, r1) : (tcin, PEq ta ua, r2) : prs))
+       (TApp tf ta, TApp uf@(TUnif _) ua@(TUnif _)) ->
+          do trace $ guessingRefinement tf ta uf ua
+             r1 <- newRef Nothing
+             r2 <- newRef Nothing
+             v1 <- fresh "v"
+             v2 <- fresh "v"
+             writeRef v (Just (VEqApp (VGoal (Goal (v1, r1))) (VGoal (Goal (v2, r2)))))
+             return (Just ((tcin, PEq tf uf, r1) : (tcin, PEq ta ua, r2) : prs))
        (t@(TApp (TUnif v) t'), u) ->
           do x <- fresh "x"
              k <- kindOf t'
              u' <- TLam x (Just k) <$> walk (TVar 0 [x, ""]) t' 0 u
              trace $
-               "solving " ++ show (PEq t u) ++ ":\n" ++
+               "solving " ++ show (PEq t'0 u'0) ++ ":\n" ++
                "by guessing " ++ show v ++ " := " ++ show u'
              solveUV v u'
              return (Just (pr : prs))
@@ -418,12 +434,13 @@ guess (pr@(tcin, PEq t u, v) : prs) =
              k <- kindOf t'
              u' <- TLam x (Just k) <$> walk (TVar 0 [x, ""]) t' 0 u
              trace $
-               "solving " ++ show (PEq t u) ++ ":\n" ++
+               "solving " ++ show (PEq t'0 u'0) ++ ":\n" ++
                "by guessing " ++ show v ++ " := " ++ show u'
              solveUV v u'
              return (Just (pr : prs))
        (TApp f@(TMapFun _) a, TApp f'@(TMapFun _) a') ->
-          do r1 <- newRef Nothing
+          do trace $ guessingRefinement f a f' a'
+             r1 <- newRef Nothing
              r2 <- newRef Nothing
              v1 <- fresh "v"
              v2 <- fresh "v"
@@ -513,6 +530,14 @@ guess (pr@(tcin, PEq t u, v) : prs) =
         walkP v u m (PLeq x y)    = PLeq <$> walk v u m x <*> walk v u m y
         walkP v u m (PEq t t')    = PEq <$> walk v u m t <*> walk v u m t'
         walkP v u m (PPlus x y z) = PPlus <$> walk v u m x <*> walk v u m y <*> walk v u m z
+
+        guessingRefinement tf ta uf ua =
+          unlines
+            [ "guessing refinement:"
+            , "     " ++ renderString (ppr (TApp tf ta)) ++ " ~ " ++ renderString (ppr (TApp uf ua))
+            , "  if " ++ renderString (ppr tf) ++ " ~ " ++ renderString (ppr uf)
+            , " and " ++ renderString (ppr ta) ++ " ~ " ++ renderString (ppr ua)
+            ]
 
 
 guess (pr : prs) = fmap (pr :) <$> guess prs
