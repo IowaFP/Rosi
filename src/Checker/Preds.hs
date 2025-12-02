@@ -422,6 +422,13 @@ guess (pr@(tcin, PEq t u, v) : prs) =
                "by guessing " ++ show v ++ " := " ++ show u'
              solveUV v u'
              return (Just (pr : prs))
+       (TApp f@(TMapFun _) a, TApp f'@(TMapFun _) a') ->
+          do r1 <- newRef Nothing
+             r2 <- newRef Nothing
+             v1 <- fresh "v"
+             v2 <- fresh "v"
+             writeRef v (Just (VEqApp (VGoal (Goal (v1, r1))) (VGoal (Goal (v2, r2)))))
+             return (Just ((tcin, PEq f f', r1) : (tcin, PEq a a', r2) : prs))
        _ -> fmap (pr :) <$> guess prs
 
   where -- There is a lot of similarity with the code in unifyInstantiating here...
