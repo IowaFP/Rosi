@@ -20,7 +20,7 @@ import Syntax
 
 expectT :: Term -> Ty -> Ty -> CheckM Evid
 expectT m actual expected =
-  do trace ("expect (" ++ renderString False (ppr actual) ++ ") (" ++ renderString False (ppr expected) ++ ")")
+  do trace ("expect (" ++ renderString (ppr actual) ++ ") (" ++ renderString (ppr expected) ++ ")")
      b <- typeErrorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify [] actual expected
      case b of
        Left (actual', expected') -> typeMismatch m actual expected actual' expected'
@@ -45,7 +45,9 @@ checkTerm :: Term -> Ty -> CheckM Term
 checkTerm m t =
   do g <- asks tctxt
      l <- theLevel
-     trace $ "checkTerm@" ++ show l ++ " (" ++ renderString False (ppr m) ++ ") (" ++ renderString False (ppr t) ++ ") in (" ++ intercalate "," (map (renderString False . ppr) g) ++ ")"
+     traceM $ do
+       t' <- fst <$> normalize [] t
+       return $ "checkTerm@" ++ show l ++ " (" ++ renderString (ppr m) ++ ") (" ++ renderString (ppr t') ++ ")"-- ") in (" ++ intercalate "," (map (renderString . ppr) g) ++ ")"
      typeErrorContext (ErrContextTerm m) $ checkTerm0 m t
 
 elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
@@ -245,7 +247,7 @@ checkTerm0 e0@(ETyped e t) expected =
           return (ECast e' q)
 checkTerm0 e0@(ELet x e f) expected =
   do (e', t) <- generalize e
-     f' <- bind t (elimForm expected (checkTerm0 f))
+     f' <- bind t (elimForm expected (checkTerm f))
      return (ELet x e' f')
 checkTerm0 e0@(EStringLit _) expected =
   do expectT e0 TString expected
@@ -270,11 +272,11 @@ generalize e =
      fixInsts t
      t' <- shiftTNV genVars 0 (length genVars) <$> flattenT t
      e'' <- shiftENV genVars 0 (length genVars) <$> flattenE e'
-     trace $ "Generalizing " ++ intercalate ", " (map (renderString False . ppr) genVars) ++ " in " ++ renderString False (ppr t')
+     trace $ "Generalizing " ++ intercalate ", " (map (renderString . ppr) genVars) ++ " in " ++ renderString (ppr t')
      as <- generalizeVars genVars
      generalizePreds generalizable
      let (e''', t'') = buildFinal as genVars generalizable e'' t'
-     trace $ "Generalized: " ++ renderString False (ppr t')
+     trace $ "Generalized: " ++ renderString (ppr t')
      return (e''', t'')
 
   where uvars :: Int -> Ty -> CheckM [UVar]
@@ -379,9 +381,9 @@ generalize e =
 
 checkTop :: Term -> Maybe Ty -> CheckM (Term, Ty)
 checkTop m (Just t) =
-  do trace $ "Begin type checking: " ++ renderString False (ppr m)
+  do trace $ "Begin type checking: " ++ renderString (ppr m)
      m' <- checkTerm m t
      return (m', t)
 checkTop m Nothing =
-  do trace $ "Begin type checking: " ++ renderString False (ppr m)
+  do trace $ "Begin type checking: " ++ renderString (ppr m)
      generalize m

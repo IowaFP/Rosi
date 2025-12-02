@@ -25,37 +25,43 @@ import Printer
 import Scope
 import Syntax
 
-data Flag = Eval String | Input String | Import String | TraceKindInference
-          | TraceTypeInference | TraceEvaluation | PrintTypedTerms | PrintOkay | Reset
-  deriving Show
+-- data Flag = Eval String | Input String | Import String | TraceKindInference
+--           | TraceTypeInference | TraceEvaluation | PrintTypedTerms | PrintOkay | Reset
+--   deriving Show
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doTraceKindInference, doTraceInference
-                   , doTraceEvaluation, doPrintTyped, printOkay :: Bool }
+                   , doTraceEvaluation, doPrintTyped, printOkay
+                   , doPrintKinds, doPrintMaps :: Bool }
 
-interpretFlag :: Flags -> Flag -> Flags
-interpretFlag f (Eval s)           = f { evals = evals f ++ splitOn "," s }
-interpretFlag f (Input s)          = f { inputs = inputs f ++ [s] }
-interpretFlag f (Import s)         = f { imports = imports f ++ [s] }
-interpretFlag f PrintOkay          = f { printOkay = True }
-interpretFlag f TraceKindInference = f { doTraceKindInference = True }
-interpretFlag f TraceTypeInference = f { doTraceInference = True }
-interpretFlag f TraceEvaluation    = f { doTraceEvaluation = True }
-interpretFlag f PrintTypedTerms    = f { doPrintTyped = True }
-interpretFlag f Reset              = Flags [] [] [] False False False False False
+emptyFlags :: Flags
+emptyFlags = Flags [] [] [] False False False False False False False
 
-interpretFlags = foldl interpretFlag (Flags [] [] [] False False False False False)
+-- interpretFlag :: Flags -> Flag -> Flags
+-- interpretFlag f (Eval s)           = f { evals = evals f ++ splitOn "," s }
+-- interpretFlag f (Input s)          = f { inputs = inputs f ++ [s] }
+-- interpretFlag f (Import s)         = f { imports = imports f ++ [s] }
+-- interpretFlag f PrintOkay          = f { printOkay = True }
+-- interpretFlag f TraceKindInference = f { doTraceKindInference = True }
+-- interpretFlag f TraceTypeInference = f { doTraceInference = True }
+-- interpretFlag f TraceEvaluation    = f { doTraceEvaluation = True }
+-- interpretFlag f PrintTypedTerms    = f { doPrintTyped = True }
+-- interpretFlag f Reset              = Flags [] [] [] False False False False False False False
 
-options :: [OptDescr Flag]
-options = [ Option ['e'] ["eval"] (ReqArg Eval "SYMBOL") "symbol to evaluate"
-          , Option ['i'] ["import"] (ReqArg Import "DIR") "directory to search"
-          , Option [] [] (ReqArg Input "FILE") "file to process"
-          , Option ['t'] [] (NoArg PrintTypedTerms) "print typed terms"
-          , Option [] ["okay"] (NoArg PrintOkay) "print okay after execution"
-          , Option ['K'] ["trace-kind-inference"] (NoArg TraceKindInference) "generate trace output in kind inference"
-          , Option ['T'] ["trace-type-inference"] (NoArg TraceTypeInference) "generate trace output in type inference"
-          , Option ['E'] ["trace-evaluation"] (NoArg TraceEvaluation) "generate trace output from evaluation"
-          , Option [] ["reset"] (NoArg Reset) "reset flags" ]
+interpretFlags = foldl (flip ($)) emptyFlags
+
+options :: [OptDescr (Flags -> Flags)]
+options = [ Option ['e'] ["eval"] (ReqArg (\s f -> f { evals = evals f ++ splitOn "," s}) "SYMBOL") "symbol to evaluate"
+          , Option ['i'] ["import"] (ReqArg (\s f -> f { imports = imports f ++ [s]}) "DIR") "directory to search"
+          , Option [] [] (ReqArg (\s f -> f { inputs = inputs f ++ [s]}) "FILE") "file to process"
+          , Option ['t'] [] (NoArg (\f -> f { doPrintTyped = True })) "print typed terms"
+          , Option [] ["okay"] (NoArg (\f -> f { printOkay = True })) "print okay after execution"
+          , Option ['K'] ["trace-kind-inference"] (NoArg (\f -> f { doTraceKindInference = True })) "generate trace output in kind inference"
+          , Option ['T'] ["trace-type-inference"] (NoArg (\f -> f { doTraceInference = True })) "generate trace output in type inference"
+          , Option ['E'] ["trace-evaluation"] (NoArg (\f -> f { doTraceEvaluation = True })) "generate trace output from evaluation"
+          , Option [] ["print-kinds"] (NoArg (\f -> f { doPrintKinds = True })) "print kind information"
+          , Option [] ["print-maps"] (NoArg (\f -> f { doPrintMaps = True })) "print maps explicitly"
+          , Option [] ["reset"] (NoArg (const emptyFlags)) "reset flags" ]
 unprog (Prog ds) = ds
 
 parseChasing :: [FilePath] -> [FilePath] -> IO [Decl]
@@ -98,7 +104,7 @@ main = do nowArgs <- getArgs
           globalArgs <- wordsIfExists =<< getXdgDirectory XdgConfig configFile
           localArgs <- wordsIfExists configFile
           flags <-
-             case getOpt (ReturnInOrder Input) options (globalArgs ++ localArgs ++ nowArgs) of
+             case getOpt (ReturnInOrder (\s f -> f { inputs = inputs f ++ [s]})) options (globalArgs ++ localArgs ++ nowArgs) of
                (flags, [], []) -> return (interpretFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   exitFailure
@@ -152,5 +158,5 @@ reportErrors (Left err) =
 reportErrors (Right x) = return x
 
 putDocWLn :: Int -> RDoc ann -> IO ()
-putDocWLn n d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = False})
+putDocWLn n d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = False, printMaps = False})
                    putStrLn ""

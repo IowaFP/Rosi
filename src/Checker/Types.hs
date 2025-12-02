@@ -23,7 +23,7 @@ bindRef (Goal (s, r)) (Just k) =
   do b <- check k
      if b
      then writeRef r (Just k)
-     else error $ "rejecting binding " ++ s ++ " +-> " ++ renderString False (ppr k)
+     else error $ "rejecting binding " ++ s ++ " +-> " ++ renderString (ppr k)
   where check KType = return True
         check KLabel = return True
         check (KRow k) = check k
@@ -101,7 +101,7 @@ checkTy' e t k = typeErrorContext (ErrContextTerm e . ErrContextType t) $ checkT
 
 checkTy :: Ty -> Kind -> CheckM Ty
 checkTy t k =
-  do trace $ "checkTy " ++ renderString False (ppr t) ++ " : " ++ renderString False (ppr k)
+  do trace $ "checkTy " ++ renderString (ppr t) ++ " : " ++ renderString (ppr k)
      typeErrorContext (ErrContextType t) (checkTy0 t k)
 
 checkTy0 (TVar (-1) x) expected =

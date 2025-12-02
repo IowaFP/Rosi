@@ -116,6 +116,6 @@ solveUV v t =
            return Nothing
        Just t' ->
          do trace ("1 promoted " ++ show t ++ " to " ++ show t')
-            trace ("1 instantiating " ++ goalName (uvGoal v) ++ " to " ++ show t') --  renderString False (ppr t'))
+            trace ("1 instantiating " ++ goalName (uvGoal v) ++ " to " ++ show t') --  renderString (ppr t'))
             writeRef (goalRef (uvGoal v)) (Just t')
             return (Just VEqRefl)

@@ -514,7 +514,7 @@ guess [] = return Nothing
 solverLoop :: [Problem] -> CheckM [Problem]
 solverLoop [] = return []
 solverLoop ps =
-  do trace $ unlines $ "Solver loop:" : ["    " ++ renderString False (ppr p) | (_, p, _) <- ps]
+  do trace $ unlines $ "Solver loop:" : ["    " ++ renderString (ppr p) | (_, p, _) <- ps]
      (b, ps') <- once False [] ps
      if b
      then solverLoop ps'

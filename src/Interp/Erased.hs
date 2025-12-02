@@ -23,7 +23,7 @@ type Env = ([EValue], [Value])
 data Body = Term Term | Prim (Env -> Value)
 
 instance Show Body where
-  show (Term t) = renderString False (ppr t)
+  show (Term t) = renderString (ppr t)
   show (Prim _) = "<<prim>>"
 
 data Value = VPrLam Env Body | VLam Env Body
@@ -83,7 +83,7 @@ variantFrom (VVariant k v) = (k, v)
 variantFrom v              = (0, v)
 
 eval, eval' :: HasCallStack => Env -> Term -> Value
-eval h e = -- trace ("Eval: " ++ renderString False (ppr e)) $
+eval h e = -- trace ("Eval: " ++ renderString (ppr e)) $
            eval' h e
 
 eval' (_, he) (EVar i _)

@@ -30,6 +30,11 @@ trace s = liftIO $
   do b <- readIORef traceTypeInference
      when b $ putStrLn s
 
+traceM :: MonadIO m => m String -> m ()
+traceM ms =
+  do b <- liftIO $ readIORef traceTypeInference
+     when b (ms >>= liftIO . putStrLn)
+
 class Monad m => MonadRef m where
   readRef :: IORef a -> m a
   writeRef :: Typeable a => IORef a -> a -> m ()

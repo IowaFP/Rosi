@@ -14,7 +14,7 @@ import System.IO.Unsafe
 
 import Syntax
 
-data PrinterOptions = PO { level :: Int, printKinds :: Bool }
+data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool }
 type RDoc ann = ReaderT PrinterOptions IO (P.Doc ann)
 
 instance Semigroup (RDoc ann) where
@@ -140,8 +140,12 @@ instance Printable Ty where
        case mk of
          Just k -> ppr (TConApp k t)
          Nothing -> with 3 $ ppre (goalName g) <+> at 4 (ppr t)
-  ppr (TMapFun t) = ppr t
-  ppr (TMapArg t) = ppr t
+  ppr (TMapFun t) =
+    do b <- asks printMaps
+       if b then "map" <+> ppr t else ppr t
+  ppr (TMapArg t) =
+    do b <- asks printMaps
+       if b then "map_arg" <+> ppr t else ppr t
   ppr TString = "String"
   ppr (TInst (Unknown n (Goal (s, r))) t) =
     do minst <- liftIO $ readIORef r
@@ -258,12 +262,12 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrDuplicateDefinition v) = "Duplicate definition o" <+> ppr v
         pprErr (ErrOther s) = ppre s
 
-f :: Int -> Bool -> RDoc ann -> IO ()
-f n pk d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = pk})
-              putStrLn ""
+f :: Int -> Bool -> Bool -> RDoc ann -> IO ()
+f n pk pm d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = pk, printMaps = pm})
+                 putStrLn ""
 
-renderString :: Bool -> RDoc ann -> String
-renderString pk doc =
+renderString :: RDoc ann -> String
+renderString doc =
   unsafePerformIO $
-  do d <- runReaderT doc (PO {level = 0, printKinds = pk})
+  do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = False})
      return (P.renderString (P.layoutPretty (P.LayoutOptions P.Unbounded) d))

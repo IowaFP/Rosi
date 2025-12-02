@@ -57,7 +57,7 @@ types). How bad are the error messages?
 
 unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either (Ty, Ty) Evid)
 unify eqns actual expected =
-  do trace ("1 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
+  do trace ("1 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
      case result of
        Right q ->
@@ -68,7 +68,7 @@ unify eqns actual expected =
             return (Left err)
 
 check eqns actual expected =
-  do trace ("2 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
+  do trace ("2 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) (Just [])) eqns
      case result of
        Right q ->
@@ -81,7 +81,7 @@ check eqns actual expected =
 data ProductiveUnification = Productive Evid | Unproductive | UnificationFails (Ty, Ty)
 
 unifyProductive eqns actual expected =
-  do trace ("3 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
+  do trace ("3 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
      case result of
        Right q ->
@@ -117,7 +117,7 @@ requireEq t u =
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify' actual expected =
-  do -- trace ("1 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
+  do -- trace ("1 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      eqns <- theEqns
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected
@@ -177,8 +177,8 @@ unifyInstantiating t u unify =
                 matchKnown _ [] = T.trace "3 ruh-roh" Nothing
                 matchKnown is qs = error $ "ruh-roh: " ++ show is ++ ", " ++ show qs
         match is qs =
-          T.trace (unlines ["1 ruh-roh: in ", renderString False (ppr t), " ~ ", renderString False (ppr u), "misaligned " ++ show is ++ " and " ++ show qs])
-          Nothing -- error $ unlines ["ruh-roh: in ", renderString False (ppr t), " ~ ", renderString False (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
+          T.trace (unlines ["1 ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs])
+          Nothing -- error $ unlines ["ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
 
         -- Need to write function to apply list of instantiations derived from
         -- `match` above. Problem is (a) need to work outside in, but (b)
