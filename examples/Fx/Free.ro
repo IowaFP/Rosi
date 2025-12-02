@@ -1,4 +1,4 @@
-import Ro.Base, Ro.Xr, Data.Functor, Control.Monad, Control.Monad.St, Data.Nat, Data.Tuple
+import Ro.Base, Ro.Xr, Data.Functor, Control.Monad, Data.Nat, Data.Tuple
 
 -- data Free g a = Ret a | Con (g (Free g a))
 
