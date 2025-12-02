@@ -131,8 +131,8 @@ instance Printable Ty where
        case mk of
          Just k -> ppr (TConApp k t)
          Nothing -> with 3 $ ppre (goalName g) <+> at 4 (ppr t)
-  ppr (TMapFun t) = ppr t
-  ppr (TMapArg t) = ppr t
+  ppr (TMapFun t) = "map" <+> ppr t
+  ppr (TMapArg t) = "map_arg" <+> ppr t
   ppr TString = "String"
   ppr (TInst (Unknown n (Goal (s, r))) t) =
     do minst <- liftIO $ readIORef r

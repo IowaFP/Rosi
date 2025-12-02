@@ -45,7 +45,9 @@ checkTerm :: Term -> Ty -> CheckM Term
 checkTerm m t =
   do g <- asks tctxt
      l <- theLevel
-     trace $ "checkTerm@" ++ show l ++ " (" ++ renderString False (ppr m) ++ ") (" ++ renderString False (ppr t) ++ ") in (" ++ intercalate "," (map (renderString False . ppr) g) ++ ")"
+     traceM $ do
+       t' <- fst <$> normalize [] t
+       return $ "checkTerm@" ++ show l ++ " (" ++ renderString False (ppr m) ++ ") (" ++ renderString False (ppr t') ++ ")"-- ") in (" ++ intercalate "," (map (renderString False . ppr) g) ++ ")"
      typeErrorContext (ErrContextTerm m) $ checkTerm0 m t
 
 elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
@@ -245,7 +247,7 @@ checkTerm0 e0@(ETyped e t) expected =
           return (ECast e' q)
 checkTerm0 e0@(ELet x e f) expected =
   do (e', t) <- generalize e
-     f' <- bind t (elimForm expected (checkTerm0 f))
+     f' <- bind t (elimForm expected (checkTerm f))
      return (ELet x e' f')
 checkTerm0 e0@(EStringLit _) expected =
   do expectT e0 TString expected
