@@ -17,6 +17,15 @@ const : forall t u. t -> u -> t
 const = \ x y. x
 
 -------------------------------------------------------------------------------
+-- Unit type
+
+type Unit : *
+type Unit = Pi {}
+
+tt : Unit
+tt = prj (#'x := /\ a. \x. x)
+
+-------------------------------------------------------------------------------
 -- Convenience functions for records and variants
 
 sel : forall l t z. {l := t} < z => Pi z -> #l -> t
@@ -50,35 +59,6 @@ relabelP : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
            #l0 -> #l1 -> Pi y0 -> Pi y1
 relabelP = \ l0 l1 r. (l1 := sel r l0) ++ prj r
 
--------------------------------------------------------------------------------
--- Base types
-
-type Unit : *
-type Unit = Pi {}
-
-tt : Unit
-tt = prj (#'x := /\ a. \x. x)
-
-type Bool : *
-type Bool = Sigma { 'True := Unit, 'False := Unit }
-
-True : Bool
-True = con #'True tt
-
-False : Bool
-False = con #'False tt
-
-not : Bool -> Bool
-not = case #'True (con #'False)
-    | case #'False (con #'True)
-
-and : Bool -> Bool -> Bool
-and = case #'True (const id)
-    | case #'False (const (const False))
-
-impossible : forall a. Sigma {} -> a
-impossible = fix (\x. x)
-
 ---
 
 type Labels : R[*] -> R[*]
@@ -90,6 +70,37 @@ upd : forall x' y z z'.
         Labels (z - y) < Labels x' =>
         Pi x' -> Pi z -> Pi z'
 upd = \r s. r ++ prj s
+
+--------------------------------------------------------------------------------
+-- The Bool type
+
+type Bool : *
+type Bool = Sigma { 'True := Unit, 'False := Unit }
+
+True : Bool
+True = con #'True tt
+
+False : Bool
+False = con #'False tt
+
+ite : forall t : *. Bool -> t -> t -> t
+ite = case #'True (\ u t1 t2. t1) 
+    | case #'False (\ u t1 t2. t2)
+
+not : Bool -> Bool
+not = \ b. ite b False True 
+
+and : Bool -> Bool -> Bool
+and = \ b. ite b id (const False)
+
+or : Bool -> Bool -> Bool
+or = \ b. ite b (const True) id
+
+--------------------------------------------------------------------------------
+-- Bot elimination
+
+impossible : forall a. Sigma {} -> a
+impossible = fix (\x. x)
 
 -------------------------------------------------------------------------------
 -- Basic analysis / synthesis
