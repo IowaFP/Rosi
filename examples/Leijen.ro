@@ -1,0 +1,83 @@
+import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
+--------------------------------------------------------------------------------
+-- Reproducing results from Leijen's First Class Labels for Extensible Rows
+--   - https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/fclabels.pdf?msockid=204eae218676650527f9bd2e871464e2
+
+--------------------------------------------------------------------------------
+--
+-- to run (from home dir):
+--   - cabal run Rosi -- -i rolib -i examples Leijen
+-- to evaluate terms, e.g., foo:
+--   - cabal run Rosi -- -i rolib -i examples Leijen -e foo
+
+--------------------------------------------------------------------------------
+-- §3 First Class labels
+-- 
+-- We can recover the primitives of Leijen's calculus:
+--   - record selection
+--   - record restriction
+
+-- Selection (from Ro.Base)
+sel' : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
+sel' = sel
+
+-- (multi-field) restriction
+restrict : forall x y : R[*]. x < y => Pi y -> Pi (y - x)
+restrict = \ d. prj d
+
+-- single-field restriction
+remove : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> Pi (z - {l := t})
+remove = \ d l. prj d
+
+--------------------------------------------------------------------------------
+-- §3.1 Label constants
+
+zeroPair : forall l m : L , z : R[ * ]. {l := Nat} + {m := Nat} ~ z =>  #l -> #m -> Pi z
+zeroPair = \ l m. (l := 0) ++ (m := 0)
+
+origin : Pi {'x := Nat , 'y := Nat}
+origin = zeroPair #'x #'y
+
+--------------------------------------------------------------------------------
+-- §4 Expressiveness of first-class labels
+
+-- Leijen defines any = ⊥, which we needn't do.
+-- Ultimately this is justified as labels translate to the unit type.
+any : forall l : L. #l
+any = /\ l. #l
+
+-- §4.1 Intersection types
+intBool : forall l : L, t : *.
+          {l := t} < {'n := Nat , 'b := Bool} => t
+intBool = /\ l t. sel (#'n := 1 , #'b := True) (any [ l ])
+
+-- The magic is sort of lost with explicit type parameters---
+-- of course, a first-class label is often just a type annotation
+-- in disguise.
+n : Nat 
+n = ite (intBool ['b] [Bool]) (succ (intBool ['n] [Nat])) 0
+
+-- §4.2 Overloading
+type Plus : R[ * ]
+type Plus = { 'nat := Nat -> Nat -> Nat ,
+              'bool := Bool -> Bool -> Bool }
+
+plusRec : Pi Plus
+plusRec = (#'nat := add , #'bool := or )
+
+plus : forall l : L , t : *. {l := t } < Plus => t 
+plus = /\ l. sel plusRec (any [ l ])
+
+-- it'd be a lot cooler if these type applications could be inferred
+ok : Pair Nat Bool
+ok = pair (plus ['nat] [Nat -> Nat -> Nat] 1 2) (plus ['bool] [Bool -> Bool -> Bool] True False)
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,53 @@
+import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List
+
+--------------------------------------------------------------------------------
+-- to run (from home dir):
+--   - cabal run Rosi -- -i rolib -i examples Optics.Lenses
+-- to evaluate terms, e.g., showBob:
+--   - cabal run Rosi -- -i rolib -i examples Optics.Lenses -e showBob
+
+--------------------------------------------------------------------------------
+-- The interface for lenses 
+
+type Lens : * -> * -> *
+type Lens =  \ s t. Pi { 'get := s -> t , 'put := s -> t -> s }
+
+--------------------------------------------------------------------------------
+-- A nested record type
+
+type Address : * 
+type Address = Pi { 'street := String , 'zip := Nat }
+
+type Place : * 
+type Place = Pi { 'address := Address , 'isApartment := Bool  }
+
+type Person : * 
+type Person = Pi { 'age := Nat , 'place := Place }
+
+--------------------------------------------------------------------------------
+-- We have a record of Bob
+
+Bob : Person
+Bob = (#'age := 2 , 
+       #'place := 
+         (#'address     := (#'street := "Abbey Road" , #'zip := 1) ,
+          #'isApartment := True))
+
+showAddress : Show Address
+showAddress = showP (#'names := (#'street := "street" , #'zip := "zip") , #'shows := (#'street := id , #'zip := showNat))
+
+showPlace : Show Place
+showPlace = 
+  showP (#'names := (#'address := "address" , #'isApartment := "isApartment") , 
+         #'shows := (#'address := showAddress , #'isApartment := showBool))
+
+showPerson : Show Person
+showPerson = showP (#'names := (#'age := "age" , #'place := "place") , #'shows := (#'age := showNat , #'place := showPlace))
+
+showBob : String
+showBob = showPerson Bob
+
+-- But updating Bob can become a pain
+updateAge : Nat -> Person -> Person
+updateAge = \ n p. upd (#'age := n) p
+
