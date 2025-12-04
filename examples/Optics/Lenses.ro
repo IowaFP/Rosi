@@ -1,5 +1,37 @@
 import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List
+{- 
+-- reading list:
 
+  # Bidirectional transformations
+    - Introduction to BX
+      - https://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/ssbx-intro.pdf
+    - Combinators for Bidirectional Tree Transformations: A Linguistic Approach to the View-Update Problem
+      - https://dl.acm.org/doi/pdf/10.1145/1232420.1232424
+
+  # Symmetric lenses & complements
+    - Symmetric Lenses
+      - https://www.cis.upenn.edu/~bcpierce/papers/symmetric.pdf 
+    - Complements Witness Consistency
+      - https://groups.inf.ed.ac.uk/bx/2016-Bx-CWC.pdf
+  
+  # Lenses *without* combinators
+    - HOBiT: Programming Lenses Without Lens Combinators.
+      This may be a promising avenue of Rosi if we can realize BX sans combinators
+      - https://mengwangoxf.github.io/Papers/ESOP18.pdf
+
+  # Profunctor optics & prisms
+    - What you need to know about Yoneda:
+      - https://www.cs.ox.ac.uk/jeremy.gibbons/publications/proyo.pdf
+    - Profunctor Optics: Modular Data Accessors
+      (fairly accessible and implementation oriented)
+      - https://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/poptics.pdf
+
+  # Dependent lenses
+    - Secondary reading that may be relevant to dependent rows, and other work by Danielsson
+      - https://www.cse.chalmers.se/~nad/publications/danielsson-dependent-lenses.pdf
+      - https://www.cse.chalmers.se/~nad/publications/capriotti-danielsson-vezzosi-higher-lenses.pdf
+
+-}
 --------------------------------------------------------------------------------
 -- to run (from home dir):
 --   - cabal run Rosi -- -i rolib -i examples Optics.Lenses
@@ -8,6 +40,7 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List
 
 --------------------------------------------------------------------------------
 -- The interface for lenses 
+-- N.b. there are handful of equivalent representations one could use.
 
 type Lens : * -> * -> *
 type Lens =  \ s t. Pi { 'get := s -> t , 'put := s -> t -> s }
@@ -33,6 +66,9 @@ Bob = (#'age := 2 ,
          (#'address     := (#'street := "Abbey Road" , #'zip := 1) ,
           #'isApartment := True))
 
+--------------------------------------------------------------------------------
+-- We'd like to print Bob
+
 showAddress : Show Address
 showAddress = showP (#'names := (#'street := "street" , #'zip := "zip") , #'shows := (#'street := id , #'zip := showNat))
 
@@ -47,7 +83,30 @@ showPerson = showP (#'names := (#'age := "age" , #'place := "place") , #'shows :
 showBob : String
 showBob = showPerson Bob
 
--- But updating Bob can become a pain
+--------------------------------------------------------------------------------
+-- We'd like to get (nested) details from Bob
+
+sel : forall l t z. {l := t} < z => #l -> Pi z -> t
+sel = \ l r. prj r / l
+
+-- clearly (sel l) forms 1/2 of a lens
+getStreet : Person -> String 
+getStreet = \ p. sel #'street (sel #'address (sel #'place p))
+
+bobStreet : String 
+bobStreet = getStreet Bob
+
+--------------------------------------------------------------------------------
+-- We'd like to update (nested) details of Bob
+
+-- Simple enough to update a surface layer attribute
 updateAge : Nat -> Person -> Person
 updateAge = \ n p. upd (#'age := n) p
+
+-- Painful in layers
+-- updateStreet : String -> Person -> Person 
+-- updateStreet = \ street p. 
+--   upd (#'place := (#'address := 
+--                     (#'Street := street , #'zip := sel #'zip (sel #'address (sel #'place p))) , 
+--                 #'isApartment := (sel #'isApartment (sel #'place p)))) p
 
