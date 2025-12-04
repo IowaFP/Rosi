@@ -27,7 +27,7 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List
       - https://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/poptics.pdf
 
   # Dependent lenses
-    - Secondary reading that may be relevant to dependent rows, and other work by Danielsson
+    - Secondary reading that may be relevant to dependent rows
       - https://www.cse.chalmers.se/~nad/publications/danielsson-dependent-lenses.pdf
       - https://www.cse.chalmers.se/~nad/publications/capriotti-danielsson-vezzosi-higher-lenses.pdf
 
@@ -40,13 +40,34 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List
 
 --------------------------------------------------------------------------------
 -- The interface for lenses 
+--
 -- N.b. there are handful of equivalent representations one could use.
+-- I follow the simplest and original, as proposed by Foster et al (2007).
+
+-- Swapping the order or #l and (Pi z) from that in Ro.Base
+sel : forall l t z. {l := t} < z => #l -> Pi z -> t
+sel = \ l r. prj r / l
 
 type Lens : * -> * -> *
 type Lens =  \ s t. Pi { 'get := s -> t , 'put := s -> t -> s }
 
+get : forall s t : *. Lens s t -> s -> t 
+get = sel #'get 
+
+put : forall s t : *. Lens s t -> s -> t -> s 
+put = sel #'put
+
+-- Each label forms a lens 
+lens : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Lens (Pi z) t
+lens = \ l. (#'get := sel l , #'put := \ s t. (l := t) ++ prj s)
+
+-- lenses may be composed
+comp : forall a b c : *. Lens a b -> Lens b c -> Lens a c 
+comp = \ x y. (#'get :=  o (get y) (get x) , #'put := \ a c. put x a (put y (get x a) c) )
+
+
 --------------------------------------------------------------------------------
--- A nested record type
+-- An example nested record type
 
 type Address : * 
 type Address = Pi { 'street := String , 'zip := Nat }
@@ -58,7 +79,7 @@ type Person : *
 type Person = Pi { 'age := Nat , 'place := Place }
 
 --------------------------------------------------------------------------------
--- We have a record of Bob
+-- Bob, an example Person
 
 Bob : Person
 Bob = (#'age := 2 , 
@@ -67,7 +88,7 @@ Bob = (#'age := 2 ,
           #'isApartment := True))
 
 --------------------------------------------------------------------------------
--- We'd like to print Bob
+-- Pretty printing Bob
 
 showAddress : Show Address
 showAddress = showP (#'names := (#'street := "street" , #'zip := "zip") , #'shows := (#'street := id , #'zip := showNat))
@@ -84,29 +105,22 @@ showBob : String
 showBob = showPerson Bob
 
 --------------------------------------------------------------------------------
--- We'd like to get (nested) details from Bob
+-- Getting and updating Bob with lenses
 
-sel : forall l t z. {l := t} < z => #l -> Pi z -> t
-sel = \ l r. prj r / l
+streetLens : Lens Person String 
+streetLens = comp (comp (lens #'place) (lens #'address)) (lens #'street)
 
--- clearly (sel l) forms 1/2 of a lens
-getStreet : Person -> String 
-getStreet = \ p. sel #'street (sel #'address (sel #'place p))
+-- Getting is straightforward
+BobStreet : String
+BobStreet = get streetLens Bob 
 
-bobStreet : String 
-bobStreet = getStreet Bob
+-- Updating is straightforward
+movedBob : Person 
+movedBob = put streetLens Bob "1818 Pleasant St."
 
---------------------------------------------------------------------------------
--- We'd like to update (nested) details of Bob
-
--- Simple enough to update a surface layer attribute
-updateAge : Nat -> Person -> Person
-updateAge = \ n p. upd (#'age := n) p
-
--- Painful in layers
--- updateStreet : String -> Person -> Person 
--- updateStreet = \ street p. 
---   upd (#'place := (#'address := 
---                     (#'Street := street , #'zip := sel #'zip (sel #'address (sel #'place p))) , 
---                 #'isApartment := (sel #'isApartment (sel #'place p)))) p
+-- N.b., evaluating `put` terms causes my compiler to loop.
+-- To reproduce, run:
+--   cabal run Rosi -- -i rolib -i examples Optics.Lenses -e bug
+bug : Person 
+bug = put (lens #'age) Bob 2
 
