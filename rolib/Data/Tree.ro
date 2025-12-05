@@ -1,0 +1,13 @@
+import Ro.Base, Ro.Xr, Data.Functor, Data.Nat, Data.Tuple
+
+type TreeF : * -> * -> *
+type TreeF = \a. Sigma { 'Empty := Const Unit, 'Node := \l. Triple l a l }
+
+type Tree : * -> *
+type Tree = \a. Mu (TreeF a)
+
+empty : forall a. Tree a
+empty = rcon #'Empty tt
+
+node : forall a. Tree a -> a -> Tree a -> Tree a
+node = \ l a r. rcon #'Node (triple l a r)
