@@ -25,6 +25,8 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List
     - Profunctor Optics: Modular Data Accessors
       (fairly accessible and implementation oriented)
       - https://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/poptics.pdf
+    - Bartosz Milewski on optics:
+      - https://bartoszmilewski.com/2022/04/05/teaching-optics-through-conspiracy-theories/
 
   # Dependent lenses
     - Secondary reading that may be relevant to dependent rows
