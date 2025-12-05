@@ -1,6 +1,6 @@
 import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List
 {- 
--- reading list:
+-- reading list & notes:
 
   # Bidirectional transformations
     - Introduction to BX
@@ -30,6 +30,56 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List
     - Secondary reading that may be relevant to dependent rows
       - https://www.cse.chalmers.se/~nad/publications/danielsson-dependent-lenses.pdf
       - https://www.cse.chalmers.se/~nad/publications/capriotti-danielsson-vezzosi-higher-lenses.pdf
+
+  # Open problems in BX
+    - Towards a Repository of Bx Examples
+      - https://www.cs.ox.ac.uk/jeremy.gibbons/publications/repo.pdf
+        http://bx-community.wikidot.com/examples:home
+    - Benchmarx:
+      - https://ris.utwente.nl/ws/portalfiles/portal/5301511/bx2014.pdf
+    - Benchmarx Reloaded (2017): 
+      - https://ceur-ws.org/Vol-1827/paper6.pdf
+    - Benchmarx 2.0 (for concurrent model synchronization), 2024: 
+      - https://dl.acm.org/doi/pdf/10.1145/3652620.3688217
+    - Provenance meets Bidirectional Transformations: 
+      - https://www.usenix.org/system/files/tapp2019-paper-anjorin.pdf
+
+  # The Van Laarhoven Representation
+    The Data.Lens package represents a lens as:
+      type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
+    Some reading:
+    - Functor is to Lens as Applicative is to Biplate:
+      - https://arxiv.org/pdf/1103.2841
+    - CPS based functional references:
+      - https://www.twanvl.nl/blog/haskell/cps-functional-references
+
+  # Research questions
+    - What happens to a lens when its source type is extended or changed?
+      I cannot find much in the literature about changes to *schema* of models.
+      Consider the prototypical Benchmarx example:
+        - FamilyToPersons http://bx-community.wikidot.com/examples:familytopersons
+      The challenge is to convert instances of one model to the other---
+      but what if the schema of a model is changed? E.g., the "name" field
+      is renamed? Or a field is added or removed.
+      Another example would be database migrations: how do we propagate
+      changes to a table's schema to changes to that table's linked views?
+      In essence I am trying to extract the expression problem in BX.
+    - Composability of generalized, heterogeneous lenses:
+        type Lens s t a b = { 'get := s -> a , 'put := s -> b -> t }
+      This definition transforms the source type from s to t
+      and the view type from a to b.
+      The challenge here (I assume) is that it's not straightforward
+      to compose two arbitrary lenses, hence nice composition is lost.
+    - Composability of *optics* (how do I compose a lens with a prism?)
+    - This section from Pickering et al strikes me:
+      - "Prisms are an implementation of first-class patterns, unlike other proposals; for example, Tullsen
+        [37] recognised the close connection between data constructors and pattern matching.
+        Pattern matching is the method which is used to deconstruct values constructed by
+        data constructors; first-class patterns should also be able to re-build the values that
+        they match."
+    - Another approach to BX is to write *one* function that runs in both directions.
+      Can I extract `put` from an implementation of `get`?
+
 
 -}
 --------------------------------------------------------------------------------
@@ -87,7 +137,6 @@ Defn. A *well-behaved* lens (l : Lens S T) observes the following two laws:
 - (PutGet): The put function captures all of the information in the abstract view:
             get l (put l s t) = t    for all s : S , t : T
 
-In addition:
 Defn. A lens (l : Lens S T) is called *very well-behaved* if in addition it observes:
 - (PutPut): performing two puts ignores the first put.
             put l (put l s t) t' = put s t'   for all s : S and t, t' : T
