@@ -26,6 +26,12 @@ tt : Unit
 tt = prj (#'x := /\ a. \x. x)
 
 -------------------------------------------------------------------------------
+-- the any label
+
+any : forall l : L. #l
+any = /\ l. #l
+
+-------------------------------------------------------------------------------
 -- Convenience functions for records and variants
 
 sel : forall l t z. {l := t} < z => Pi z -> #l -> t

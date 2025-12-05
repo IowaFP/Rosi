@@ -49,7 +49,10 @@ equal = fix (\equal m n.
 --
 
 showNat : Show Nat
-showNat = fix (\showNat n. showS (#'names := (#'Succ := "Succ", #'Zero := "Zero"), #'shows := (#'Zero := showUnit, #'Succ := showNat)) (out n))
+showNat = fix (\showNat n. 
+  match (out n) 
+      ((case #'Zero (\ u. "Zero"))
+    | (case #'Succ (\ n. "Succ (" ^ (showNat n) ^ ")" ))))
 
 --
 

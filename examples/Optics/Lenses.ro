@@ -65,23 +65,56 @@ lens = \ l. (#'get := sel l , #'put := \ s t. (l := t) ++ prj s)
 comp : forall a b c : *. Lens a b -> Lens b c -> Lens a c 
 comp = \ x y. (#'get :=  o (get y) (get x) , #'put := \ a c. put x a (put y (get x a) c) )
 
+--------------------------------------------------------------------------------
+-- Asymmetric lenses (with complements)
+-- TODO
+-- AH> What do these really give?
+
+{- -----------------------------------------------------------------------------
+# A bit on lens laws
+--------------------
+
+Lenses are a solution to the classic database "view update" problem,
+in which one asks what changes may be made to a "view" that can be reflected back
+to a source. This question has inspired the vast field of Bidirectional Programming today,
+of which lenses, prisms, and optics are a leading, language-theoretic solution.
+Ensuring that changes to a view accurately reflect back to the source amounts
+to the following laws.
+
+Defn. A *well-behaved* lens (l : Lens S T) observes the following two laws:
+- (GetPut): A round-trip from source back to source incurs no changes:
+            put l s (get l s) = s    for all s : S
+- (PutGet): The put function captures all of the information in the abstract view:
+            get l (put l s t) = t    for all s : S , t : T
+
+In addition:
+Defn. A lens (l : Lens S T) is called *very well-behaved* if in addition it observes:
+- (PutPut): performing two puts ignores the first put.
+            put l (put l s t) t' = put s t'   for all s : S and t, t' : T
+
+There are a number of other laws and variants of these laws depending on which
+particular type of lens you are working with. Because Rosi is not dependently typed,
+we cannot prove any law directly in the theory of Rosi. Just as with e.g. functor
+laws in Haskell, these must be verified by hand.
+
+----------------------------------------------------------------------------- -} 
 
 --------------------------------------------------------------------------------
 -- An example nested record type
 
-type Address : * 
-type Address = Pi { 'street := String , 'zip := Nat }
+type Address : R[ * ]
+type Address = { 'street := String , 'zip := Nat }
 
-type Place : * 
-type Place = Pi { 'address := Address , 'isApartment := Bool  }
+type Place : R[ * ]
+type Place = { 'address := Pi Address , 'isApartment := Bool  }
 
-type Person : * 
-type Person = Pi { 'age := Nat , 'place := Place }
+type Person : R[ * ]
+type Person = { 'age := Nat , 'place := Pi Place }
 
 --------------------------------------------------------------------------------
 -- Bob, an example Person
 
-Bob : Person
+Bob : Pi Person
 Bob = (#'age := 2 , 
        #'place := 
          (#'address     := (#'street := "Abbey Road" , #'zip := 1) ,
@@ -90,24 +123,23 @@ Bob = (#'age := 2 ,
 --------------------------------------------------------------------------------
 -- Pretty printing Bob
 
-showAddress : Show Address
-showAddress = showP (#'names := (#'street := "street" , #'zip := "zip") , #'shows := (#'street := id , #'zip := showNat))
+showAddress : ShowR Address
+showAddress = (#'names := (#'street := "street" , #'zip := "zip") , #'shows := (#'street := id , #'zip := showNat))
 
-showPlace : Show Place
-showPlace = 
-  showP (#'names := (#'address := "address" , #'isApartment := "isApartment") , 
-         #'shows := (#'address := showAddress , #'isApartment := showBool))
+showPlace : ShowR Place
+showPlace = (#'names := (#'address := "address" , #'isApartment := "isApartment") , 
+             #'shows := (#'address := showP showAddress , #'isApartment := showBool))
 
-showPerson : Show Person
-showPerson = showP (#'names := (#'age := "age" , #'place := "place") , #'shows := (#'age := showNat , #'place := showPlace))
+showPerson : ShowR Person
+showPerson = (#'names := (#'age := "age" , #'place := "place") , #'shows := (#'age := showNat , #'place := showP showPlace))
 
 showBob : String
-showBob = showPerson Bob
+showBob = showP showPerson Bob
 
 --------------------------------------------------------------------------------
 -- Getting and updating Bob with lenses
 
-streetLens : Lens Person String 
+streetLens : Lens (Pi Person) String 
 streetLens = comp (comp (lens #'place) (lens #'address)) (lens #'street)
 
 -- Getting is straightforward
@@ -115,12 +147,79 @@ BobStreet : String
 BobStreet = get streetLens Bob 
 
 -- Updating is straightforward
-movedBob : Person 
+movedBob : Pi Person 
 movedBob = put streetLens Bob "1818 Pleasant St."
 
 -- N.b., evaluating `put` terms causes my compiler to loop.
 -- To reproduce, run:
 --   cabal run Rosi -- -i rolib -i examples Optics.Lenses -e bug
-bug : Person 
+bug : Pi Person 
 bug = put (lens #'age) Bob 2
 
+--------------------------------------------------------------------------------
+-- Projection is a lens
+-- ... and can be thought of as a solution to the classical view-update problem.
+-- As an example,  consider the SQL query:
+--   SELECT id , name from Users where id = 1
+-- yielding the record ('id := 1 , 'name := Bob)
+-- Invoking a put permits us to change the view and propagate that save back to the table.
+-- Let xs be the full row for Bob in the `Users` table. Then
+--      put xs ('id := 1 , 'name := Shirly)
+--    = ('id := 1 , 'name := Shirly) ++ prj xs
+-- where prj xs has all the fields of `Users` minus id and name.
+
+-- We verify this lens is well-behaved:
+--   - (GetPut). Let x + y ~ z and let zs : Pi z.
+--        put projectLens zs (get projectLens zs)
+--      = put projectLens zs ++ prj [x] [z] zs
+--      = prj [x] [z] zs ++ prj [y] [z] zs
+--      = zs
+--   And
+--   - (PutGet). Let x + y ~ z, xs : Pi x and zs : Pi z.
+--        get projectLens (put projectLens zs xs)
+--      = prj [x] [z] (put projectLens zs xs)
+--      = prj [x] [z] (xs ++ prj [y] [z] zs)
+--      = xs 
+--   as desired.
+projectLens : forall x y z : R[*]. x + y ~ z => 
+              Lens (Pi z) (Pi x)
+projectLens = /\ x y z. (#'get := prj [x] [z] , #'put := \ zs xs. xs ++ prj [y] [z] zs)              
+
+
+--------------------------------------------------------------------------------
+-- Concatenation is a lens
+-- N.b. This would be a good candidate for asymmetric lenses w/ complements.
+-- ((Pi y) is the complement.)
+--
+-- We verify this lens is well-behaved:
+--   - (GetPut). Let p : Pair (Pi x) (Pi y)
+--        put concatLens p (get concatLens p)
+--      = put concatLens p (fst p ++ snd p)
+--      = pair (prj [x] [z] (fst p ++ snd p)) (prj [y] [z] (fst p ++ snd p))
+--      = pair (fst p) (snd p)
+--      = p
+--   And
+--   - (PutGet). Let p : Pair (Pi x) (Pi y) and xs : Pi x
+--        get concatLens (put concatLens xs p)
+--      = get concatLens (pair (prj [x] [z] zs) (prj [y] [z] zs))
+--      = fst (pair (prj [x] [z] zs) (prj [y] [z] zs)) ++ snd (pair (prj [x] [z] zs) (prj [y] [z] zs))
+--      = (prj [x] [z] zs) ++ (prj [y] [z] zs)
+--      = zs
+concatLens : forall x y z : R[ * ]. x + y ~ z => 
+             Lens (Pair (Pi x) (Pi y)) (Pi z)
+concatLens = /\ x y z. (#'get := \ p.  fst p ++ snd p , #'put := \ p zs. pair (prj [x] [z] zs) (prj [y] [z] zs))
+
+-- example
+moreAboutBob = 
+  showP (showRCat showPerson (#'names := (#'height := "height") , #'shows := (#'height := showNat)))
+  (get concatLens (pair Bob (#'height := 2)))
+
+--------------------------------------------------------------------------------
+-- Joining is a lens
+
+innerJoin : forall l : L , t : * , a b c d : R[*]. 
+       {l := t} < a , {l := t} < b , 
+        (a - {l := t}) + (b - {l := t}) ~ c , {l := t} + c ~ d => 
+       #l -> (t -> t -> Bool) -> 
+       List (Pi a) -> List (Pi b) -> List (Pi d)
+innerJoin = \ l eq xs ys. sorry

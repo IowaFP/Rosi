@@ -24,4 +24,13 @@ showUnit : Show Unit
 showUnit = showP (#'names := tt, #'shows := tt)
 
 showBool : Show Bool
-showBool = showS (#'names := (#'True := "True", #'False := "False"), #'shows := every showUnit)
+showBool = \b . ite b "True" "False"
+
+-------------------------------------------------------------------------------
+-- A sneaky encoding of closed-world overloading, for demonstration.
+
+show : forall l : L, t : *. Show {l := t} < Show { 'Unit := Unit , 'Bool := Bool } => Show t
+show = /\ l t. sel (#'Unit := showUnit , #'Bool := showBool) (any [l])
+
+ex : String 
+ex = show ['Bool] [Bool] True
