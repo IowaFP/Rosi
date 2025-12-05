@@ -217,6 +217,19 @@ innerJoin : forall l : L , t : * , a b c d : R[*].
 innerJoin = \ l eq xs ys. sorry
 
 --------------------------------------------------------------------------------
+-- A Pi to Sigma lens
+
+toS : forall l : L , t : *, r : R[*]. {l := t} < r => #l -> Pi r -> Sigma r 
+toS = \ l d. inj (l := sel l d)
+
+patch : forall r: R[*]. Pi r -> Sigma r -> Pi r
+patch = \ d v. ana #(\X. X) (\ l u. prj d ++ (l := u)) v
+
+RecToVar : forall l : L , t : *, r : R[*]. {l := t} < r => #l -> Lens (Pi r) (Sigma r)
+RecToVar = \ l. (#'get := toS l , #'put := patch)
+
+
+--------------------------------------------------------------------------------
 -- Asymmetric lenses with complements
 
 --------------------------------------------------------------------------------
