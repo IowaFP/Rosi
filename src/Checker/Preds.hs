@@ -407,7 +407,7 @@ guess (pr@(tcin, PEq t u, v) : prs) =
        (t@(TApp (TUnif v) t'), u) ->
           do x <- fresh "x"
              k <- kindOf t'
-             u' <- TLam x (Just k) <$> walk (TVar 0 x) t' 0 u
+             u' <- TLam x (Just k) <$> walk (TVar 0 [x, ""]) t' 0 u
              trace $
                "solving " ++ show (PEq t u) ++ ":\n" ++
                "by guessing " ++ show v ++ " := " ++ show u'
@@ -416,7 +416,7 @@ guess (pr@(tcin, PEq t u, v) : prs) =
        (u, t@(TApp (TUnif v) t')) ->
           do x <- fresh "x"
              k <- kindOf t'
-             u' <- TLam x (Just k) <$> walk (TVar 0 x) t' 0 u
+             u' <- TLam x (Just k) <$> walk (TVar 0 [x, ""]) t' 0 u
              trace $
                "solving " ++ show (PEq t u) ++ ":\n" ++
                "by guessing " ++ show v ++ " := " ++ show u'

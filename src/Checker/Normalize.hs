@@ -106,7 +106,7 @@ normalize eqns (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
      (t, q) <- normalize eqns (TApp (TMapFun (TLam v k f')) z)
      return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TApp (TMapFun (TLam v (Just (KFun KType KType)) f)) (TApp (TMapFun TFun) z)) =
-  do f' <- subst 0 (TApp TFun (TVar 0 v)) f
+  do f' <- subst 0 (TApp TFun (TVar 0 [v, ""])) f
      (t, q) <- normalize eqns (TApp (TMapFun (TLam v (Just KType) f')) z)
      return (t, VEqTrans VEqMapCompose q)
 normalize eqns (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
@@ -119,7 +119,7 @@ normalize eqns (TApp (TMapArg (TRow es)) t)
 normalize eqns (TMapArg z) =
     do k <- kindOf z
        case k of
-         KRow (KFun k1 k2) -> return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 "Y") (TVar 1 "X")))) (shiftTN 0 1 z)), VEqDefn)
+         KRow (KFun k1 k2) -> return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 ["Y", ""]) (TVar 1 ["X", ""])))) (shiftTN 0 1 z)), VEqDefn)
          _ -> fail ("normalize: ill-kinded " ++ show (TMapArg z))
 normalize eqns (TApp t1 t2) =
   do (t1', q1) <- normalize eqns t1
@@ -147,7 +147,7 @@ normalize eqns (TConApp Sigma z) =
      k <- kindOf z'
      case k of
        KRow (KRow k') ->
-         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Sigma (TVar 0 "x")))) z')
+         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Sigma (TVar 0 ["x", ""])))) z')
             return (z'', VEqTrans q q')
        _ -> return (TConApp Sigma z', VEqCon Sigma q)
 normalize eqns (TConApp Pi z) =
@@ -155,7 +155,7 @@ normalize eqns (TConApp Pi z) =
      k <- kindOf z'
      case k of
        KRow (KRow k') ->
-         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Pi (TVar 0 "x")))) z')
+         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Pi (TVar 0 ["x", ""])))) z')
             return (z'', VEqTrans q q')
        _ -> return (TConApp Pi z', VEqCon Pi q)
 normalize eqns (TConApp Mu z) =

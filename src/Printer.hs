@@ -5,6 +5,7 @@ module Printer where
 
 import Control.Monad.Reader
 import Data.IORef (readIORef)
+import Data.List (intercalate)
 import Data.String
 import qualified Prettyprinter as P
 import qualified Prettyprinter.Render.String as P
@@ -74,6 +75,14 @@ braces = fmap P.braces
 brackets = fmap P.brackets
 parens = fmap P.parens
 
+stringFromQName :: QName -> String
+stringFromQName [x] = x
+stringFromQName [x, ""] = x
+stringFromQName xs = intercalate "." (reverse xs)
+
+instance Printable QName where
+  ppr = ppre . stringFromQName
+
 
 instance Printable Kind where
   ppr KType = "*"
@@ -109,7 +118,7 @@ instance Printable UVar where
               else name
 
 instance Printable Ty where
-  ppr (TVar _ x) = ppre x
+  ppr (TVar _ x) = ppr x
   ppr (TUnif v) = ppr v
   ppr TFun = "(->)"
   ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
@@ -171,7 +180,7 @@ instance Printable TyCon where
 
 
 instance Printable Term where
-  ppr (EVar _ s) = ppre s
+  ppr (EVar _ s) = ppr s
   ppr (ELam x (Just t) m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
   ppr (ELam x Nothing m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <> ".", ppr m]
   ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
@@ -219,8 +228,8 @@ instance Printable Term where
 instance Printable Evid where
   ppr _ = "<evid>"
 
-pprTyDecl :: String -> Ty -> RDoc ann
-pprTyDecl x ty = fillSep [ppre x <+> ":", ppr ty]
+pprTyDecl :: QName -> Ty -> RDoc ann
+pprTyDecl x ty = fillSep [ppr x <+> ":", ppr ty]
 
 pprTyping (x, ty, e) =
   vcat [fillSep [ppre x <+> ":", ppr ty], fillSep [ppre x <+> "=", ppr e]]
@@ -228,7 +237,7 @@ pprTyping (x, ty, e) =
 pprTypeError :: Error -> RDoc ann
 pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
   where d <:> (ds, te) = (d : ds, te)
-        contexts (ErrContextDefn d te) = ("Whilst checking the definition of" <+> fromString d) <:> contexts te
+        contexts (ErrContextDefn d te) = ("Whilst checking the definition of" <+> ppr d) <:> contexts te
         contexts (ErrContextType ty te) = ("Whilst checking the type" <+> ppr ty) <:> contexts te
         contexts (ErrContextPred pr te) = ("Whilst checking the predicate" <+> ppr pr) <:> contexts te
         contexts (ErrContextTerm t te) = ("While checking the term" <+> ppr t) <:> contexts te
@@ -244,8 +253,9 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrKindMismatch k k') = vsep ["Actual kind" <+> ppr k, "was expected to be" <+> ppr k']
         pprErr (ErrNotEntailed errs) = vsep (map pprOne errs)
           where pprOne (p, qs) = vsep ["The predicate" <+> ppr p, hang 2 ("is not entailed by" <+> fillSep (punctuate "," (map ppr qs)))]
-        pprErr (ErrUnboundTyVar v) = "Unbound type variable" <+> ppre v
-        pprErr (ErrUnboundVar v) = "Unbound variable" <+> ppre v
+        pprErr (ErrUnboundTyVar v) = "Unbound type variable" <+> ppr v
+        pprErr (ErrUnboundVar v) = "Unbound variable" <+> ppr v
+        pprErr (ErrDuplicateDefinition v) = "Duplicate definition o" <+> ppr v
         pprErr (ErrOther s) = ppre s
 
 f :: Int -> Bool -> RDoc ann -> IO ()

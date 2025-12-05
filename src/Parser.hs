@@ -13,6 +13,7 @@ import Data.Data
 import Data.IORef (newIORef)
 import Data.List (delete, intercalate)
 import Data.List.NonEmpty (fromList)
+import Data.List.Split (splitOn)
 import Data.Maybe (fromMaybe)
 import Data.Void (Void)
 import System.IO (hPutStrLn, stderr)
@@ -121,6 +122,12 @@ symbol      = lexeme . string
 reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'')))
 
 identifier  = lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '\''))
+
+qidentifier  =
+  do x <- identifier
+     xs <- many (try (string "." >> identifier))
+     return (reverse (x : xs))
+
 parens      = between (symbol "(") (symbol ")")
 angles      = between (symbol "<") (symbol ">")
 brackets    = between (symbol "[") (symbol "]")
@@ -225,7 +232,7 @@ atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
                , TConApp Mu <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
                , const TString <$> symbol "String"
-               , (\x -> TVar (-1) x) <$> identifier
+               , (\x -> TVar (-1) x) <$> qidentifier
                , parens ty ]
 
 pr :: Parser Pred
@@ -310,7 +317,7 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
   -- builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)", "in", "out", "fix"]) where
 
   aterm = choice [ EConst <$> const
-                 , EVar (-1) <$> identifier
+                 , EVar (-1) <$> qidentifier
                  , ESing <$> (char '#' >> atype)
                  , buildNumber <$> number
                  , EStringLit <$> stringLit
@@ -338,8 +345,8 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                     ("fix", CFix),
                     ("(^)", CStringCat)]]
 
-  buildNumber 0 = EVar (-1) "zero"
-  buildNumber n = EApp (EVar (-1) "succ") (buildNumber (n - 1))
+  buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
+  buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
 
 data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String]
   deriving (Data, Eq, Show, Typeable)
@@ -353,7 +360,7 @@ topLevel = item lhs body where
         TermLHS <$> identifier
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
-  -- which will check the identation level, but we are looking for entries at
+  -- which will check the indentation level, but we are looking for entries at
   -- *exactly* the start of the current block.
   --
   -- Maybe this points to a more cunning behavior for lexeme: that having
@@ -365,11 +372,11 @@ topLevel = item lhs body where
   body (TermLHS x) = colon *> ((x,) . TypeSig <$> ty) <|>
                      symbol "=" *> ((x,) . TermDef <$> term)
 
-prog :: Parser Program
-prog = whitespace >> block topLevel >>= defns
+prog :: [String] -> Parser Program
+prog moduleNames = whitespace >> block topLevel >>= defns moduleNames
 
-defns :: MonadFail m => [(String, TL)] -> m Program
-defns tls
+defns :: MonadFail m => [String] -> [(String, TL)] -> m Program
+defns moduleNames tls
   -- | not (null unmatchedTermDefs) = fail $ "definitions of " ++ intercalate ", " unmatchedTermDefs ++ " lack type signatures"
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
@@ -397,15 +404,15 @@ defns tls
 
         mkDecl x = fromMaybe (error $ "in building declaration of " ++ x) decl where
           decl = do tm <- lookup x termDefs
-                    return (TmDecl x (lookup x typeSigs) tm)
+                    return (TmDecl (x : moduleNames) (lookup x typeSigs) tm)
                  `mplus`
                  do k <- lookup x kindSigs
                     ty <- lookup x typeDefs
-                    return (TyDecl x k ty)
+                    return (TyDecl (x : moduleNames) k ty)
 
-parse :: String -> String -> IO Program
-parse fn s =
-  do let tls = evalState (runParserT (prog <* eof) fn s) []
+parse :: String -> [String] -> String -> IO Program
+parse fileName moduleNames s =
+  do let tls = evalState (runParserT (prog moduleNames <* eof) fileName s) []
      case tls of
        Left err -> do hPutStrLn stderr (errorBundlePretty err)
                       exitFailure

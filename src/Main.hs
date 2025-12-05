@@ -63,32 +63,33 @@ parseChasing additionalImportDirs fs =
   do fs' <- mapM findStartingPoint fs
      evalStateT (chase fs') [] where
 
-  chase :: [FilePath] -> StateT [FilePath] IO [Decl]
+  chase :: [([String], FilePath)] -> StateT [FilePath] IO [Decl]
   chase [] = return []
-  chase (fn : fns) =
+  chase ((moduleName, fn) : fns) =
     do already <- get
        if fn `elem` already
        then chase fns
-       else do (imports, decls) <- unprog <$> liftIO (parse fn =<< readFile fn)
+       else do (imports, decls) <- unprog <$> liftIO (parse fn moduleName =<< readFile fn)
                importFns <- mapM (liftIO . findImport) imports
                imported <- chase importFns
                modify (\already -> fn : already)
                ((imported ++ decls) ++) <$> chase fns
 
-  findImport :: String -> IO FilePath
+  findImport :: String -> IO ([String], FilePath)
   findImport s = check importDirs
-    where fn = foldr1 (</>) (splitOn "." s) <.> "ro"
+    where moduleName = splitOn "." s
+          fn = foldr1 (</>) moduleName <.> "ro"
           importDirs = "." : additionalImportDirs
           check (d : ds) =
             do exists <- doesPathExist (d </> fn)
-               if exists then return (d </> fn) else check ds
+               if exists then return (reverse moduleName, d </> fn) else check ds
           check [] =
             do hPutStrLn stderr $ "import not found: " ++ s
                exitFailure
 
-  findStartingPoint :: String -> IO FilePath
+  findStartingPoint :: String -> IO ([String], FilePath)
   findStartingPoint s
-    | takeExtension s == ".ro" = return s
+    | takeExtension s == ".ro" = return ([takeBaseName s], s)
     | otherwise                = findImport s
 
 main :: IO ()
@@ -112,8 +113,8 @@ main = do nowArgs <- getArgs
           when (doPrintTyped flags) $
             mapM_ (putDocWLn 120 . pprTyping) checked
           evaled <- goEvalE [] checked
-          let output = filter ((`elem` evals flags) . fst) evaled
-          sequence_ [putStrLn $ x ++ " = " ++ show v | (x, v) <- output]
+          let output = filter ((`elem` evals flags) . head . fst) evaled
+          sequence_ [putStrLn $ stringFromQName x ++ " = " ++ show v | (x, v) <- output]
           when (printOkay flags) $ putStrLn "okay"
   where goCheck d g [] = return []
         goCheck d g (TyDecl x k t : ds) =

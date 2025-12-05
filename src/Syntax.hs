@@ -11,10 +11,14 @@ import GHC.Stack
 -- Top-level entities
 --------------------------------------------------------------------------------
 
+-- Qualified names: are stored in reverse order ("Data.Nat.zero" --> ["zero",
+-- "Nat", "Data"]). Local names are signified with an empty list ["zero", ""].
+type QName = [String]
+
 data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
 
-data Decl = TyDecl String Kind Ty | TmDecl String (Maybe Ty) Term
+data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term
   deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
@@ -75,7 +79,7 @@ data TyCon = Pi | Sigma | Mu | TCUnif (Goal TyCon)
   deriving (Data, Eq, Show, Typeable)
 
 data Ty =
-    TVar Int String
+    TVar Int [String]
   | TUnif UVar
     -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
@@ -266,7 +270,7 @@ data Const =
     -- TODO: can treat label and unlabel as constants with provided type argument?
 
 data Term =
-    EVar Int String | ELam String (Maybe Ty) Term | EApp Term Term
+    EVar Int [String] | ELam String (Maybe Ty) Term | EApp Term Term
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const
@@ -440,9 +444,9 @@ flattenV v = return v
 -- Probably ought to live somewhere else
 --------------------------------------------------------------------------------
 
-data Error = ErrContextDefn String Error | ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
+data Error = ErrContextDefn QName Error | ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
            | ErrContextTyEq Ty Ty Error
            | ErrTypeMismatch Ty Ty Ty Ty | ErrTypeMismatchFD Pred | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Kind Kind
            | ErrNotEntailed [(Pred, [Pred])]
-           | ErrUnboundVar String | ErrUnboundTyVar String
+           | ErrUnboundVar QName | ErrUnboundTyVar QName | ErrDuplicateDefinition QName
            | ErrOther String

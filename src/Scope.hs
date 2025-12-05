@@ -6,26 +6,34 @@ import Data.Bifunctor
 import Data.List
 import Syntax
 
-newtype ScopeM a = ScopeM { runScope :: ReaderT ([String], [String]) (Except Error) a }
-  deriving (Functor, Applicative, Monad, MonadReader ([String], [String]), MonadError Error)
+newtype ScopeM a = ScopeM { runScope :: ReaderT ([QName], [QName]) (Except Error) a }
+  deriving (Functor, Applicative, Monad, MonadReader ([QName], [QName]), MonadError Error)
 
 runScopeM :: ScopeM a -> Either Error a
 runScopeM m = runExcept (runReaderT (runScope m) ([], []))
 
-bindVars :: ([String], [String]) -> ScopeM a -> ScopeM a
+bindVars :: ([QName], [QName]) -> ScopeM a -> ScopeM a
 bindVars (tvs, vs) = local (bimap (reverse tvs ++) (reverse vs ++))
 
 bindTyVar, bindVar :: String -> ScopeM a -> ScopeM a
-bindTyVar tv = bindVars ([tv], [])
-bindVar v = bindVars ([], [v])
+bindTyVar tv = bindVars ([[tv, ""]], [])
+bindVar v    = bindVars ([], [[v, ""]])
 
-generic :: (([String], [String]) -> [String]) -> (String -> Error) -> String -> ScopeM Int
-generic sel err x = do mi <- asks (elemIndex x . sel)
-                       case mi of
+bindGTyVar, bindGVar :: QName -> ScopeM a -> ScopeM a
+bindGTyVar tv = bindVars ([tv], [])
+bindGVar v    = bindVars ([], [v])
+
+generic :: (([QName], [QName]) -> [QName]) -> (QName -> Error) -> QName -> ScopeM (Int, QName)
+generic sel err x = do names <- asks sel
+                       case findIndex (lookFor x) names of
                          Nothing -> throwError (err x)
-                         Just i  -> return i
+                         Just i  -> return (i, names !! i)
+  where lookFor :: QName -> QName -> Bool
+        lookFor [x] (y : ys) = x == y
+        lookFor xs ys        = xs == ys
 
-var, tyvar :: String -> ScopeM Int
+
+var, tyvar :: QName -> ScopeM (Int, QName)
 var = generic snd ErrUnboundVar
 tyvar = generic fst ErrUnboundTyVar
 
@@ -40,7 +48,8 @@ instance HasVars t => HasVars (Maybe t) where
 
 instance HasVars Ty where
   scope (TVar _ x) =
-    TVar <$> tyvar x <*> pure x
+
+    uncurry TVar <$> tyvar x
   -- Wild assumption: scoping happens before any goals have been resolved, so
   -- I'm not going to track down the contents of the goal
   scope t@TUnif{} = return t
@@ -69,7 +78,7 @@ instance HasVars Pred where
 -- type checking, and so starts with de Bruijn indices.
 
 instance HasVars Term where
-  scope (EVar _ x) = EVar <$> var x <*> pure x
+  scope (EVar _ x) = uncurry EVar <$> var x
   scope (EConst c) = return (EConst c)
   scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
@@ -92,7 +101,14 @@ instance HasVars Decl where
   scope (TmDecl x t m) = TmDecl x <$> (maybe id (withError . ErrContextType) t) (scope t) <*> withError (ErrContextTerm m) (scope m)
   scope (TyDecl x k t) = TyDecl x k <$> withError (ErrContextType t) (scope t)
 
+declName (TmDecl x _ _) = x
+declName (TyDecl x _ _) = x
+
 scopeProg :: [Decl] -> ScopeM [Decl]
 scopeProg [] = return []
-scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindVar x (scopeProg ds)
-scopeProg (d@(TyDecl x _ _) : ds) = (:) <$> scope d <*> bindTyVar x (scopeProg ds)
+scopeProg (d@(TmDecl x _ _) : ds)
+  | x `elem` map declName ds = throwError (ErrDuplicateDefinition x)
+  | otherwise = (:) <$> scope d <*> bindGVar x (scopeProg ds)
+scopeProg (d@(TyDecl x _ _) : ds)
+  | x `elem` map declName ds = throwError (ErrDuplicateDefinition x)
+  | otherwise = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)

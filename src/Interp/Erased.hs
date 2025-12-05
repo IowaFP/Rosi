@@ -160,7 +160,7 @@ eval' h (EConst COut) = -- VLam h (Const COut)
       (_, VIn v : _) -> v
       _ -> error $ "bad environment for out: " ++ show h
 eval' h (EConst CFix) = -- VLam h (Const CFix)
-  eval h (ELam "f" Nothing (EApp (EVar 0 "f") (EApp (EConst CFix) (EVar 0 "f"))))
+  eval h (ELam "f" Nothing (EApp (EVar 0 ["f", ""]) (EApp (EConst CFix) (EVar 0 ["f", []]))))
 --   VLam h $ Prim $ \ (_, VLam (hp, he) (Term e) : _) ->
 --     eval (hp, eval h (EApp (EConst CFix) (ELam "x" Nothing e)) : he) e
 eval' h (EConst CStringCat) =
@@ -196,14 +196,6 @@ eval' h (EConst CFold) =
         let vs = recordFrom r
             one k = app (app (prapp single (VLeq [k])) VSing) (vs k)
         in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1..n - 1])
--- eval' h (ESyn _ e) = VSyn (\i -> app (prapp f (VLeq [i])) VSing)
---   where f = eval h e
--- eval' h (EAna _ e) =
---   VLam h $ Prim $ \ h ->
---     case h of
---       (_, VVariant k w : _) -> app (app (prapp f (VLeq [k])) VSing) w
---       _ -> error $ "bad argument for (ana" ++ show e ++ "): " ++ show v
---   where f = eval h e
 eval' h (ECast e q) = q `seq` eval h e
 eval' h (ETyped e _) = eval h e
 eval' h (EStringLit s) = VString s

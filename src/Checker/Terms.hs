@@ -79,7 +79,7 @@ checkTerm0 e0@(EPrLam p e) expected =
 checkTerm0 e (TThen p t) =
   EPrLam p <$> assume p (checkTerm e t)
 checkTerm0 (EVar (-1) x) expected =
-  typeError (ErrOther $ "scoping error: variable " ++ x ++ " not resolved")
+  typeError (ErrOther $ "scoping error: variable " ++ head x ++ " not resolved")
 checkTerm0 e@(EVar i v) expected =
   do t <- lookupVar i
      elimForm expected $ \ expected ->
@@ -144,32 +144,32 @@ checkTerm0 e@(EConst c) expected =
         -- types of the constants directly
         constType CPrj =
           do k <- kindGoal "r"
-             let tvar 1 = TVar 1 "y"
-                 tvar 0 = TVar 0 "z"
+             let tvar 1 = TVar 1 ["y", ""]
+                 tvar 0 = TVar 0 ["z", ""]
              return (TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PLeq (tvar 1) (tvar 0) `TThen`
                          TConApp Pi (tvar 0) `funTy` TConApp Pi (tvar 1))
         constType CInj =
           do k <- kindGoal "r"
-             let tvar 1 = TVar 1 "y"
-                 tvar 0 = TVar 0 "z"
+             let tvar 1 = TVar 1 ["y", ""]
+                 tvar 0 = TVar 0 ["z", ""]
              return (TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PLeq (tvar 1) (tvar 0) `TThen`
                          TConApp Sigma (tvar 1) `funTy` TConApp Sigma (tvar 0))
         constType CConcat =
           do k <- kindGoal "r"
-             let tvar 2 = TVar 2 "x"
-                 tvar 1 = TVar 1 "y"
-                 tvar 0 = TVar 0 "z"
+             let tvar 2 = TVar 2 ["x", ""]
+                 tvar 1 = TVar 1 ["y", ""]
+                 tvar 0 = TVar 0 ["z", ""]
              return (TForall "x" (Just (KRow k)) $ TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PPlus (tvar 2) (tvar 1) (tvar 0) `TThen`
                          TConApp Pi (tvar 2) `funTy` TConApp Pi (tvar 1) `funTy` TConApp Pi (tvar 0))
         constType CBranch =
           do k <- kindGoal "r"
-             let tvar 3 = TVar 3 "x"
-                 tvar 2 = TVar 2 "y"
-                 tvar 1 = TVar 1 "z"
-                 tvar 0 = TVar 0 "t"
+             let tvar 3 = TVar 3 ["x", ""]
+                 tvar 2 = TVar 2 ["y", ""]
+                 tvar 1 = TVar 1 ["z", ""]
+                 tvar 0 = TVar 0 ["t", ""]
              return (TForall "x" (Just (KRow k)) $ TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "t" (Just KType) $
                        PPlus (tvar 3) (tvar 2) (tvar 1) `TThen`
                          (TConApp Sigma (tvar 3) `funTy` tvar 0) `funTy`
@@ -181,13 +181,13 @@ checkTerm0 e@(EConst c) expected =
              return $
                TForall "f" (Just (KFun k KType)) $
                TForall "z" (Just (KRow k)) $
-                 TSing (TVar 1 "f") `funTy`
+                 TSing (TVar 1 ["f", ""]) `funTy`
                  (TForall "l" (Just KLabel) $
                   TForall "t" (Just k) $
-                    PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "t")]) (TVar 2 "z") `TThen`
-                     TSing (TVar 1 "l") `funTy`
-                     TApp (TVar 3 "f") (TVar 0 "t")) `funTy`
-                 TConApp Pi (TApp (TMapFun (TVar 1 "f")) (TVar 0 "z"))
+                    PLeq (TRow [TLabeled (TVar 1 ["l", ""]) (TVar 0 ["t", ""])]) (TVar 2 ["z", ""]) `TThen`
+                     TSing (TVar 1 ["l", ""]) `funTy`
+                     TApp (TVar 3 ["f", ""]) (TVar 0 ["t", ""])) `funTy`
+                 TConApp Pi (TApp (TMapFun (TVar 1 ["f", ""])) (TVar 0 ["z", ""]))
 
         constType CAna =
           do k <- kindGoal "e"
@@ -195,42 +195,42 @@ checkTerm0 e@(EConst c) expected =
                TForall "f" (Just (KFun k KType)) $
                TForall "z" (Just (KRow k)) $
                TForall "t" (Just KType) $
-                 TSing (TVar 2 "f") `funTy`
+                 TSing (TVar 2 ["f",""]) `funTy`
                  (TForall "l" (Just KLabel) $
                   TForall "u" (Just k) $
-                    PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "u")]) (TVar 3 "z") `TThen`
-                    TSing (TVar 1 "l") `funTy`
-                    TApp (TVar 4 "f") (TVar 0 "u") `funTy`
-                    TVar 2 "t") `funTy`
-                 TConApp Sigma (TApp (TMapFun (TVar 2 "f")) (TVar 1 "z")) `funTy`
-                 TVar 0 "t"
+                    PLeq (TRow [TLabeled (TVar 1 ["l",""]) (TVar 0 ["u",""])]) (TVar 3 ["z",""]) `TThen`
+                    TSing (TVar 1 ["l",""]) `funTy`
+                    TApp (TVar 4 ["f",""]) (TVar 0 ["u",""]) `funTy`
+                    TVar 2 ["t",""]) `funTy`
+                 TConApp Sigma (TApp (TMapFun (TVar 2 ["f",""])) (TVar 1 ["z",""])) `funTy`
+                 TVar 0 ["t",""]
 
         constType CFold =
           return $
             TForall "r" (Just (KRow KType)) $
             TForall "t" (Just KType) $
-              PFold (TVar 1 "r") `TThen`
+              PFold (TVar 1 ["r",""]) `TThen`
               (TForall "l" (Just KLabel) $
                TForall "u" (Just KType) $
-                  PLeq (TRow [TLabeled (TVar 1 "l") (TVar 0 "u")]) (TVar 3 "r") `TThen`
-                  TSing (TVar 1 "l") `funTy` TVar 0 "u" `funTy` TVar 2 "t") `funTy`
-              (TVar 0 "t" `funTy` TVar 0 "t" `funTy` TVar 0 "t") `funTy`
-              TVar 0 "t" `funTy`
-              TConApp Pi (TVar 1 "r") `funTy`
-              TVar 0 "t"
+                  PLeq (TRow [TLabeled (TVar 1 ["l",""]) (TVar 0 ["u",""])]) (TVar 3 ["r",""]) `TThen`
+                  TSing (TVar 1 ["l",""]) `funTy` TVar 0 ["u",""] `funTy` TVar 2 ["t",""]) `funTy`
+              (TVar 0 ["t",""] `funTy` TVar 0 ["t",""] `funTy` TVar 0 ["t",""]) `funTy`
+              TVar 0 ["t",""] `funTy`
+              TConApp Pi (TVar 1 ["r",""]) `funTy`
+              TVar 0 ["t",""]
 
         constType CIn =
-          do let f = TVar 0 "f"
+          do let f = TVar 0 ["f",""]
              return (TForall "f" (Just (KType `KFun` KType)) $
                        f `TApp` TConApp Mu f `funTy` TConApp Mu f) where
 
         constType COut =
-          do let f = TVar 0 "f"
+          do let f = TVar 0 ["f",""]
              return (TForall "f" (Just (KType `KFun` KType)) $
                        TConApp Mu f `funTy` f `TApp` TConApp Mu f) where
 
         constType CFix =
-          do let a = TVar 0 "a"
+          do let a = TVar 0 ["a",""]
              return (TForall "a" (Just KType) $
                       (a `funTy` a) `funTy` a) where
 
@@ -341,7 +341,7 @@ generalize e =
              return names
           where n = length ts - 1
                 generalize (UV { uvGoal = Goal (_, r), uvKind = k }) b i =
-                   writeRef r (Just (TVar (n - i) b))
+                   writeRef r (Just (TVar (n - i) [b, ""]))
 
         generalizePreds :: [(Pred, IORef (Maybe Evid))] -> CheckM ()
         generalizePreds ps =

@@ -105,7 +105,7 @@ checkTy t k =
      typeErrorContext (ErrContextType t) (checkTy0 t k)
 
 checkTy0 (TVar (-1) x) expected =
-  throwError (ErrOther $ "scoping error: " ++ x ++ " not resolved")
+  throwError (ErrOther $ "scoping error: " ++ head x ++ " not resolved")
 checkTy0 (TVar i v) expected =
   do k <- asks (kbKind . (!! i) . kctxt)
      expectK (TVar i v) k expected
