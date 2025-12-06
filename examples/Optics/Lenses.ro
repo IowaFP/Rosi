@@ -30,6 +30,11 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Contro
     - Invariant functor optics (easier to digest profunctors):
       - https://dl.acm.org/doi/pdf/10.1145/3191697.3191718
 
+  # Library documentation
+    - Using Haskell's Generic to derive lenses, prisms, etc.
+      A wealth of good examples.
+      - https://dl.acm.org/doi/pdf/10.1145/3236780
+
   # Dependent lenses
     - Secondary reading that may be relevant to dependent rows
       - https://www.cse.chalmers.se/~nad/publications/danielsson-dependent-lenses.pdf
