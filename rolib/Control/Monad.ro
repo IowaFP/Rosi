@@ -4,7 +4,11 @@ type Monad : (* -> *) -> *
 type Monad = \t. Pi { 'Applicative := Applicative t,
                       'bind := forall a b. t a -> (a -> t b) -> t b }
 
---
+
+composeKleisli : forall t : * -> *, a b c : *. 
+                 Monad t -> 
+                 (b -> t c) -> (a -> t b) -> (a -> t c)
+composeKleisli = \ m f g a. sel m #'bind (g a) f
 
 bindMaybe : forall a b. Maybe a -> (a -> Maybe b) -> Maybe b
 bindMaybe =

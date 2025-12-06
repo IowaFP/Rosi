@@ -1,4 +1,4 @@
-import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree
+import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Control.Monad
 {- 
 -- reading list & notes:
 
@@ -111,10 +111,7 @@ sel = \ l r. prj r / l
 type Lens : * -> * -> *
 type Lens =  \ s t. Pi { 'get := s -> t , 'put := s -> t -> s }
 
-get : forall s t : *. Lens s t -> s -> t 
 get = sel #'get 
-
-put : forall s t : *. Lens s t -> s -> t -> s 
 put = sel #'put
 
 -- Each label forms a lens 
@@ -124,6 +121,24 @@ lens = \ l. (#'get := sel l , #'put := \ s t. (l := t) ++ prj s)
 -- lenses may be composed
 comp : forall a b c : *. Lens a b -> Lens b c -> Lens a c 
 comp = \ x y. (#'get :=  o (get y) (get x) , #'put := \ a c. put x a (put y (get x a) c) )
+
+-- Bijective lenses are lenses that ignore the source during a putback
+bijective : forall s t : *. (s -> t) -> (t -> s) -> Lens s t 
+bijective = \ get put. (#'get := get , #'put := \ s. put)
+
+--------------------------------------------------------------------------------
+-- Prisms
+
+type Prism : * -> * -> * 
+type Prism = \ s t. Pi { 'get := s -> Maybe t , 'put := t -> s }
+
+-- each lens creates a prism
+prism : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Prism (Sigma z) t
+prism = \ l. (#'get := case l Just | otherwise Nothing , #'put := con l)
+
+-- Prisms may be composed
+compPrism : forall a b c : *. Prism a b -> Prism b c -> Prism a c 
+compPrism = \ l u. (#'get := composeKleisli monadMaybe (get u) (get l) , #'put := o (put l) (put u) )
 
 {- -----------------------------------------------------------------------------
 # A bit on lens laws
@@ -155,15 +170,6 @@ laws in Haskell, these must be verified by hand.
 
 --------------------------------------------------------------------------------
 -- Projection is a lens
--- ... and can be thought of as a solution to the classical view-update problem.
--- As an example,  consider the SQL query:
---   SELECT id , name from Users where id = 1
--- yielding the record ('id := 1 , 'name := Bob)
--- Invoking a put permits us to change the view and propagate that save back to the table.
--- Let xs be the full row for Bob in the `Users` table. Then
---      put xs ('id := 1 , 'name := Shirly)
---    = ('id := 1 , 'name := Shirly) ++ prj xs
--- where prj xs has all the fields of `Users` minus id and name.
 
 -- We verify this lens is well-behaved:
 --   - (GetPut). Let x + y ~ z and let zs : Pi z.
@@ -178,10 +184,9 @@ laws in Haskell, these must be verified by hand.
 --      = prj [x] [z] (xs ++ prj [y] [z] zs)
 --      = xs 
 --   as desired.
-projectLens : forall x y z : R[*]. x + y ~ z => 
-              Lens (Pi z) (Pi x)
-projectLens = /\ x y z. (#'get := prj [x] [z] , #'put := \ zs xs. xs ++ prj [y] [z] zs)              
-
+projectLens : forall x y : R[*]. x < y => 
+              Lens (Pi y) (Pi x)
+projectLens = /\ x y. (#'get := prj [x] [y] , #'put := \ zs xs. xs ++ prj [y - x] [y] zs)              
 
 --------------------------------------------------------------------------------
 -- Concatenation is a lens
@@ -207,7 +212,27 @@ concatLens : forall x y z : R[ * ]. x + y ~ z =>
 concatLens = /\ x y z. (#'get := \ p.  fst p ++ snd p , #'put := \ p zs. pair (prj [x] [z] zs) (prj [y] [z] zs))
 
 --------------------------------------------------------------------------------
--- Joining is a lens
+-- Injection is a prism
+
+injectPrism : forall x y : R[*]. x < y => 
+              Prism (Sigma y) (Sigma x)
+injectPrism = (#'get := Just | otherwise Nothing , #'put := inj)
+
+--------------------------------------------------------------------------------
+-- Branching is a prism
+
+branchPrism : forall x y z : R[*]. x + y ~ z => 
+              Prism (Sigma z) (Either (Sigma x) (Sigma y))
+branchPrism = (#'get := o Just Left | o Just Right , #'put := case #'Left inj | case #'Right inj)      
+
+-- and a lens on eliminators
+branchLens : forall x y z : R[*], t : *. x + y ~ z => 
+              Lens (Pair (Sigma x -> t) (Sigma y -> t)) (Sigma z -> t)
+branchLens = bijective (\ p. fst p | snd p) (\ t. pair (o t inj) (o t inj))
+
+--------------------------------------------------------------------------------
+-- Joining is a lens (TODO)
+-- (Do I care?)
 
 innerJoin : forall l : L , t : * , a b c d : R[*]. 
        {l := t} < a , {l := t} < b , 
@@ -225,8 +250,13 @@ toS = \ l d. inj (l := sel l d)
 patch : forall r: R[*]. Pi r -> Sigma r -> Pi r
 patch = \ d v. ana #(\X. X) (\ l u. prj d ++ (l := u)) v
 
-RecToVar : forall l : L , t : *, r : R[*]. {l := t} < r => #l -> Lens (Pi r) (Sigma r)
-RecToVar = \ l. (#'get := toS l , #'put := patch)
+RecToVarLens : forall l : L , t : *, r : R[*]. {l := t} < r => #l -> Lens (Pi r) (Sigma r)
+RecToVarLens = \ l. (#'get := toS l , #'put := patch)
+
+-- reify & reflect lenses;
+-- tricky (if not impossible, for now) to verify the GetPut and PutGet laws.
+rrLens : forall z : R[*], t : *. Lens (Pi (z -> t)) (Sigma z -> t)
+rrLens = bijective reflect reify
 
 
 --------------------------------------------------------------------------------
@@ -234,9 +264,6 @@ RecToVar = \ l. (#'get := toS l , #'put := patch)
 
 --------------------------------------------------------------------------------
 -- Symmetric lenses
-
---------------------------------------------------------------------------------
--- Prisms
 
 --------------------------------------------------------------------------------
 -- Prisms w/ complements

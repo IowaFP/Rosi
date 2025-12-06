@@ -162,5 +162,16 @@ fromMaybe = \z. maybe z id
 
 -------------------------------------------------------------------------------
 
+type Either : * -> * -> *
+type Either = \a b. Sigma { 'Left := a, 'Right := b }
+
+Left : forall a b. a -> Either a b
+Left = \a. con #'Left a
+
+Right : forall a b. b -> Either a b
+Right = \b. con #'Right b
+
+-------------------------------------------------------------------------------
+
 sorry : forall a. a
 sorry = fix (\x. x)
