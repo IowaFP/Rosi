@@ -134,36 +134,7 @@ comp = \ x y. (#'get :=  o (get y) (get x) , #'put := \ a c. put x a (put y (get
 bijective : forall s t : *. (s -> t) -> (t -> s) -> Lens s t 
 bijective = \ get put. (#'get := get , #'put := \ s. put)
 
---------------------------------------------------------------------------------
--- Prisms
-
-type Prism : * -> * -> * 
-type Prism = \ s t. Pi { 'get := s -> Maybe t , 'put := t -> s }
-
-
--- each lens creates a prism
-prism : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Prism (Sigma z) t
-prism = \ l. (#'get := case l Just | otherwise Nothing , #'put := con l)
-
--- Prisms may be composed
-compPrism : forall a b c : *. Prism a b -> Prism b c -> Prism a c 
-compPrism = \ l u. (#'get := composeKleisli monadMaybe (get u) (get l) , #'put := o (put l) (put u) )
-
---------------------------------------------------------------------------------
--- Traversals
-
-type Traversal : * -> * -> *
-type Traversal = \ s t. Pi {'toListOf := s -> List t , 'over := (t -> t) -> s -> s }
-
--- traverseOf : forall s t. Traversal s t -> (forall g : )
-
-lensTraversal : forall s t. Lens s t -> Traversal s t 
-lensTraversal = \ l. (#'toListOf := o sing (get l)  , #'over := modify l)
-
-prismTraversal : forall s t. Prism s t -> Traversal s t
-prismTraversal = \ l. (#'toListOf := o (maybe nil sing) (get l)  , #'over := sorry)
-
-{- -----------------------------------------------------------------------------
+{- --------------------------------------------------------------------------
 # A bit on lens laws
 --------------------
 
@@ -191,6 +162,72 @@ laws in Haskell, these must be verified by hand.
 
 ----------------------------------------------------------------------------- -} 
 
+
+
+--------------------------------------------------------------------------------
+-- Prisms
+
+type Prism : * -> * -> * 
+type Prism = \ s t. Pi { 'get := s -> Maybe t , 'put := t -> s }
+
+-- each label creates a prism
+prism : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Prism (Sigma z) t
+prism = \ l. (#'get := case l Just | otherwise Nothing , #'put := con l)
+
+-- Prisms may be composed
+compPrism : forall a b c : *. Prism a b -> Prism b c -> Prism a c 
+compPrism = \ l u. (#'get := composeKleisli monadMaybe (get u) (get l) , #'put := o (put l) (put u) )
+
+--------------------------------------------------------------------------------
+-- Adapters
+-- Adapters specialize lenses and prisms
+
+type Adapter : * -> * -> * 
+type Adapter = \ s t. Pi { 'from := s -> t , 'to := t -> s}
+
+from = sel #'from 
+to   = sel #'to
+
+adapterLens : forall s t. Adapter s t -> Lens s t 
+adapterLens = \ a. (#'get := from a , #'put := \ s t. to a t)
+
+adapterPrism : forall s t. Adapter s t -> Prism s t 
+adapterPrism = \ a. (#'get := o Just (from a) , #'put := to a)
+
+
+--------------------------------------------------------------------------------
+-- Traversals
+-- Traversal generalize lenses & prisms
+
+type Traversal : * -> * -> *
+type Traversal = \ s t. Pi {'toListOf := s -> List t , 'over := (t -> t) -> s -> s }
+
+lensTraversal : forall s t. Lens s t -> Traversal s t 
+lensTraversal = \ l. (#'toListOf := o sing (get l)  , #'over := modify l)
+
+prismTraversal : forall s t. Prism s t -> Traversal s t
+prismTraversal = \ p. 
+  (#'toListOf := o (maybe nil sing) (get p)  , 
+   #'over := \f s. match (get p s) 
+    ( case #'Nothing (const s)
+    | case #'Just (\ t. put p (f t))))
+
+compTraversal : forall a b c. Traversal a b -> Traversal b c -> Traversal a c 
+compTraversal = \ x y. sorry
+
+{- -----------------------------------------------------------------------------
+# The lattice of optics
+-----------------------
+
+      Traversals 
+      /       \
+     /         \
+   Lens        Prisms
+     \         /
+      \       /
+       Adapters 
+
+-}
 --------------------------------------------------------------------------------
 -- Projection is a lens
 
