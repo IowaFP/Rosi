@@ -12,6 +12,9 @@ nil = rcon #'Nil tt
 cons : forall a. a -> List a -> List a
 cons = \hd tl. rcon #'Cons (pair hd tl)
 
+sing : forall a. a -> List a 
+sing = \ a. cons a nil
+
 head : forall a. List a -> Maybe a
 head = \l. match (out l)
            ( case #'Nil (const Nothing)

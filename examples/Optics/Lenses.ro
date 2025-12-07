@@ -119,6 +119,9 @@ type Lens =  \ s t. Pi { 'get := s -> t , 'put := s -> t -> s }
 get = sel #'get 
 put = sel #'put
 
+modify : forall s t. Lens s t -> (t -> t) -> s -> s
+modify = \ l f s. put l s (f (get l s))
+
 -- Each label forms a lens 
 lens : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Lens (Pi z) t
 lens = \ l. (#'get := sel l , #'put := \ s t. (l := t) ++ prj s)
@@ -137,6 +140,7 @@ bijective = \ get put. (#'get := get , #'put := \ s. put)
 type Prism : * -> * -> * 
 type Prism = \ s t. Pi { 'get := s -> Maybe t , 'put := t -> s }
 
+
 -- each lens creates a prism
 prism : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Prism (Sigma z) t
 prism = \ l. (#'get := case l Just | otherwise Nothing , #'put := con l)
@@ -144,6 +148,20 @@ prism = \ l. (#'get := case l Just | otherwise Nothing , #'put := con l)
 -- Prisms may be composed
 compPrism : forall a b c : *. Prism a b -> Prism b c -> Prism a c 
 compPrism = \ l u. (#'get := composeKleisli monadMaybe (get u) (get l) , #'put := o (put l) (put u) )
+
+--------------------------------------------------------------------------------
+-- Traversals
+
+type Traversal : * -> * -> *
+type Traversal = \ s t. Pi {'toListOf := s -> List t , 'over := (t -> t) -> s -> s }
+
+-- traverseOf : forall s t. Traversal s t -> (forall g : )
+
+lensTraversal : forall s t. Lens s t -> Traversal s t 
+lensTraversal = \ l. (#'toListOf := o sing (get l)  , #'over := modify l)
+
+prismTraversal : forall s t. Prism s t -> Traversal s t
+prismTraversal = \ l. (#'toListOf := o (maybe nil sing) (get l)  , #'over := sorry)
 
 {- -----------------------------------------------------------------------------
 # A bit on lens laws
