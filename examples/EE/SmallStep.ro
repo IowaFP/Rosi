@@ -95,15 +95,27 @@ steps = \step. fix (\steps z. match (step z) (case #'Nothing (const z) | case #'
 aexp : Mu (Sigma ABLF)
 aexp = rcon #'Plus (pair (rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst one))) (rcon #'IConst one))
 
+aexpS : String
+aexpS = showExpr showABLF aexp
+
 astep : Maybe (Mu (Sigma ABLF))
 astep = histo step aexp functorABLF
 
 asteps : Mu (Sigma ABLF)
 asteps = steps (\x. histo step x functorABLF) aexp
 
+astepsS : String
+astepsS = showExpr showABLF asteps
+
 exp : Mu (Sigma ABLF)
 exp = rcon #'App (pair (rcon #'Lam (rcon #'Plus (pair (rcon #'Var zero) (rcon #'Var zero))))
                        (rcon #'IConst one))
 
+expS : String
+expS = showExpr showABLF exp
+
 esteps : Mu (Sigma ABLF)
 esteps = steps (\x. histo step x functorABLF) exp
+
+estepsS : String
+estepsS = showExpr showABLF esteps
