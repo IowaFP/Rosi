@@ -51,6 +51,9 @@ functorRec = #'Fix := functorId
 
 tupleNames = (#'1 := "1", #'2 := "2", #'3 := "3")
 
+showTuple : forall t : *, z : R[*].
+            Fold (Const t z), Const String z < {'1 := String, '2 := String, '3 := String} =>
+            (t -> String) -> Pi (Const t z) -> String
 showTuple = \d. showP (#'names := prj tupleNames, #'shows := every d)
 
 showBoolF : forall t. Show t -> ShowR (BoolF t)
