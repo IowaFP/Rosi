@@ -232,7 +232,7 @@ pprTyDecl :: QName -> Ty -> RDoc ann
 pprTyDecl x ty = fillSep [ppr x <+> ":", ppr ty]
 
 pprTyping (x, ty, e) =
-  vcat [fillSep [ppre x <+> ":", ppr ty], fillSep [ppre x <+> "=", ppr e]]
+  vcat [fillSep [ppr x <+> ":", ppr ty], fillSep [ppr x <+> "=", ppr e]]
 
 pprTypeError :: Error -> RDoc ann
 pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
