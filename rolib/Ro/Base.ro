@@ -16,6 +16,9 @@ type Const = \x y. x
 const : forall t u. t -> u -> t
 const = \ x y. x
 
+flip : forall a b c. (a -> b -> c) -> b -> a -> c 
+flip = \ f b a. f a b
+
 -------------------------------------------------------------------------------
 -- Unit type
 
