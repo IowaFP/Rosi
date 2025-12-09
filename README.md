@@ -179,7 +179,7 @@ Second, we need to express the idea of a *record of comparison functions for a r
 * There is currently no explicit syntax for mapping function over rows.
 * Rosi's kind inference algorithm currently eagerly commits to kindings of type variables. Kind annotation can be required.
 
-Finally, we need a label-generic way to deconstruct a variant. The Rose operator that does this is called `ana`, for *analysis*. The following example is drawn from [examples/Ana.ro](examples/Ana.ro)
+Finally, we need a label-generic way to deconstruct a variant. The Rose operator that does this is called `ana`, for *analysis*. The following example is drawn from [rolib/ro/Base.ro](rolib/ro/Base.ro)
 
 ```
 eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
@@ -199,10 +199,10 @@ We can now understand the "body" of the `ana`. We start by doing a case branch o
 To return to our starting point, we can now define an equality function for `Bool`s by just describing how to compare the `Unit` values carried in the `'True` and `'False` cases:
 ```
 eqBool : Eq Bool
-eqBool = eqS (#'True := (\x y. True) ++ #'False := (\x y. True))
+eqBool = eqS (every (\x y. True))
 ```
 
-The argument to `eqS` is built by concatenating singleton records, one for each case of the `Bool` type.
+Each field of the argument to `eqS` is the same (they all compare units), so we can use the `every` combinator to build a suitable record.
 
 ## Higher-order rows and generic programming
 
@@ -242,7 +242,7 @@ Now, just as in the previous section, we have an opportunity to avoid some boile
 fmapS : forall z : R[* -> *] .
         Pi (Functor z) -> Functor (Sigma z)
 fmapS = \ d. /\ a b. \ f w.
-        ana [\x. x a]
+        ana #(\x. x a)
             (\ l x. con l (sel d l f x))
             w
 ```
@@ -259,7 +259,7 @@ Next, we define a label-generic traversal of `w`. In the body of the `ana`, we a
 
 There is one substantial complication. The type of `w` is not just `Sigma z`—which, remember, has kind `* -> *`, but is actually of type `(Sigma z) a`. This type simplifies to `Sigma (z a)`; that is to say, to a variant built from applying each type constructor in `z` to `a`. However, `d` is defined over row `z`, not over row `z a`!
 
-To mediate situations like this, `ana` can be given a type function argument, which function is then applied to the row `z` in the type of the body. Concretely, in this case, the body must have type
+To mediate situations like this, `ana` is given a type function argument, which function is then applied to the row `z` in the type of the body. Concretely, in this case, the body must have type
 
 ```
 forall l : L, u : * -> *. {l := u} < z =>
