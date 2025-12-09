@@ -57,7 +57,8 @@ types). How bad are the error messages?
 
 unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either (Ty, Ty) Evid)
 unify eqns actual expected =
-  do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
+  do trace ("1 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
+     (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
      case result of
        Right q ->
          do tell (TCOut preds)
@@ -67,7 +68,8 @@ unify eqns actual expected =
             return (Left err)
 
 check eqns actual expected =
-  do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) (Just [])) eqns
+  do trace ("2 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
+     (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) (Just [])) eqns
      case result of
        Right q ->
          do tell (TCOut preds)
@@ -79,7 +81,8 @@ check eqns actual expected =
 data ProductiveUnification = Productive Evid | Unproductive | UnificationFails (Ty, Ty)
 
 unifyProductive eqns actual expected =
-  do (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
+  do trace ("3 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
+     (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
      case result of
        Right q ->
          do q' <- flattenV q
@@ -114,7 +117,7 @@ requireEq t u =
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify' actual expected =
-  do trace ("1 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
+  do -- trace ("1 (" ++ renderString False (ppr actual) ++ ") ~ (" ++ renderString False (ppr expected) ++ ")")
      eqns <- theEqns
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected
@@ -374,9 +377,19 @@ unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
        q       -> return (VEqMapCong q)
 
 unify0 t@(TCompl x y) u@(TCompl x' y') =
-  checking $ do qx <- unify' x x'
-                qy <- unify' y y'
-                return (VEqComplCong qx qy)
+  do mq <- try $ checking $ unify' x x'
+     case mq of
+       Just qx -> do qy <- unify' y y'
+                     return $ VEqComplCong qx qy
+       Nothing ->
+         do mq <- try $ checking $ unify' y y'
+            case mq of
+              Just qy -> do qx <- unify' x x'
+                            return $ VEqComplCong qx qy
+              Nothing -> requireEq t u
+  -- checking $ do qx <- unify' x x'
+  --               qy <- unify' y y'
+  --               return (VEqComplCong qx qy)
 unify0 t@(TCompl {}) u = requireEq t u
 unify0 t u@(TCompl {}) = requireEq t u
 unify0 t u
