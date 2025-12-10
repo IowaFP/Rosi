@@ -18,6 +18,9 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.F
     - HOBiT: Programming Lenses Without Lens Combinators.
       This may be a promising avenue of Rosi if we can realize BX sans combinators
       - https://mengwangoxf.github.io/Papers/ESOP18.pdf
+    - Applicative Bidirectional Programming with Lenses
+      This is closer to the mark for us.
+      - https://www2.sf.ecei.tohoku.ac.jp/~kztk/papers/kztk_icfp2015.pdf
 
   # Profunctor optics
     - What you need to know about Yoneda:
