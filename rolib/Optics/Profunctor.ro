@@ -1,0 +1,84 @@
+import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Optics.Polymorphic
+
+--------------------------------------------------------------------------------
+-- Optics 
+-- Optics generalize lenses, adapters, prisms, and traversals
+
+-- Polymorphic version:
+--   type Optic = \ p a b s t. p a b -> p s t 
+type Optic : (* -> * -> *) -> * -> * -> * -> * -> * 
+type Optic = \ p a b s t. p a b -> p s t
+
+
+type Dimap : (* -> * -> *) -> *
+type Dimap = \ p. forall a a' b b'. (a -> a') -> (b -> b') -> p a' b -> p a b'
+
+type Profunctor : (* -> * -> *) -> *
+type Profunctor = \ p. Pi { 
+    'dimap := Dimap p 
+  }
+
+arrowProfunctor : Profunctor (\ x y. x -> y)
+arrowProfunctor = 
+  (#'dimap := /\ a a' b b'. \ f : a -> a'. \ g : b -> b'. \ h : a' -> b. \ x : a. g (h (f x)))         
+
+type Cartesian : (* -> * -> *) -> * 
+type Cartesian = \ p. Pi { 
+  'dimap := Dimap p , 
+  'first := forall a b c. p a b -> p (Pair a c) (Pair b c) ,
+  'second := forall a b c. p a b -> p (Pair c a) (Pair c b) }
+
+-- arrow is a Cartesian profunctor 
+-- (This is the secret sauce.)
+arrowP : Cartesian (\ x y. x -> y)
+arrowP = 
+  (#'dimap := /\ a a' b b'. 
+    \ f : a -> a'. \ g. \ h. \ x. g (h (f x)) ,
+   #'first := /\ a b c. \ f : a -> b. \ p. pair (f (fst p)) (snd p) , 
+   #'second := /\ a b c. \ f : a -> b. \ p. pair (fst p) (f (snd p)))
+
+-- And lenses are Cartesian profunctors 
+lensCartesian : Cartesian Lens
+lensCartesian = 
+  (#'dimap := sorry ,
+   #'first := sorry , 
+   #'second := sorry)
+
+type LensP : * -> * -> * -> * -> * 
+type LensP = \ a b s t. forall p : * -> * -> *. Cartesian p -> Optic p a b s t 
+
+fork : forall a b c. (a -> b) -> (a -> c) -> a -> Pair b c 
+fork = \ f g x. pair (f x) (g x)
+
+-- That this works is breaking my mind
+lensToP : forall s t : *. Lens s t -> LensP t t s s
+lensToP = /\ s t. \ l. /\ p. \ c. \ d : p t t. 
+   sel #'dimap c 
+    (fork (get l) id)              -- s -> Pair t s 
+    (uncurry (flip (put l)))       -- Pair t s -> s
+    (sel #'first c d)              -- p (Pair t s) (Pair t s)
+
+
+-- Broken.
+-- lens' : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> LensP (Pi z) t
+-- lens' = /\ l t z. \ ell. lensToP [Pi z] [t] (lens [l] [t] [z] ell) [\ x y. x -> y] arrowP
+
+-- Because (->) is a profunctor, we can directly apply a lensP by instantiating it
+-- with p = (->). Recall:
+--   type Optic = \ p s t. p t t -> p s s
+-- so 
+--   Optic (->) = (t -> t) -> s -> s
+-- which is the type of modify.
+modify' : forall a b s t : *. LensP a b s t -> (a -> b) -> s -> t
+modify' = \ l. l [\ x y. x -> y] arrowP
+
+-- Pickering et al convert a LensP back to a Lens via 
+-- letting p = Lens a b, where Lens is "polymorphic", i.e.,
+--   Lens = \ a b s t. Pi {'get := s -> a , 'put := b -> s -> t }
+-- I believe this polymorphic business is key to Profunctor optics working.
+-- The function below builds a Lens t t -> Lens s s function,
+-- whereas we need it to build a Lens a b a b -> Lens a b s t function.
+
+pToLens : forall a b s t : *. LensP a b s t -> Lens s t
+pToLens = \ p. p [Lens] lensCartesian (#'get := id , #'put := sorry)
+
