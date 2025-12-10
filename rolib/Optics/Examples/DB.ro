@@ -1,0 +1,12 @@
+import Ro.Base , Optics.Monomorphic
+
+--------------------------------------------------------------------------------
+-- Joining is a lens (TODO)
+-- (Do I care?)
+
+innerJoin : forall l : L , t : * , a b c d : R[*]. 
+       {l := t} < a , {l := t} < b , 
+        (a - {l := t}) + (b - {l := t}) ~ c , {l := t} + c ~ d => 
+       #l -> (t -> t -> Bool) -> 
+       List (Pi a) -> List (Pi b) -> List (Pi d)
+innerJoin = \ l eq xs ys. sorry

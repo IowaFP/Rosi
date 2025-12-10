@@ -79,7 +79,7 @@ newAgeBob = put projectLens Bob (#'age := 3)
 -- An example from Pickering et al
 
 type Number : * 
-type Number = String
+type Number = Nat 
 
 type ID : * 
 type ID = String
@@ -90,24 +90,46 @@ type Name = String
 type Contact : *
 type Contact = Sigma {'Phone := Number , 'Skype := ID }
 
+showContact : Contact -> String
+showContact = showS 
+    (#'names := (#'Phone := "Phone" , #'Skype := "Skype") , 
+     #'shows := (#'Phone := showNat , #'Skype := id))
+
 type Entry : * 
-type Entry = Sigma {'Entry := Pair Name Contact }
+type Entry = Pi {'Entry := Pair Name Contact }
+
+showEntry : Entry -> String
+showEntry = showP 
+    (#'names := (#'Entry := "Entry"),
+     #'shows := (#'Entry := showPair id showContact))
 
 type Book : * 
-type Book = Tree Entry
+type Book = List Entry
 
 -- Define a prism onto phone
--- phone : Prism Contact Number
--- phone = ?
+phone : Prism Contact Number
+phone = prism #'Phone
 
 -- Define a lens onto Contact
--- contact : Lens Entry Contact
--- contact = ?
+contact : Lens Entry Contact
+contact = comp (lens #'Entry) (lens #'2)
 
--- Compose the two into a traversal (?)
--- contactPhone : Traversal Entry Number
--- contactPhone = ?
+-- Compose the two into a traversal
+contactPhone : Traversal Entry Number
+contactPhone = compTraversal (lensTraversal contact) (prismTraversal phone)
 
--- Combine with in-order traversal to access all phone numbers in a Book of contacts
--- bookPhones : Traversal Book Number
--- bookPhones = inOrderP . contact . phone
+alex : Entry 
+alex = (#'Entry := pair "alex" (con #'Phone 2))
+
+bob : Entry 
+bob = (#'Entry := pair "bob" (con #'Skype "bobSkype"))
+
+book : Book 
+book = cons alex (cons bob nil)
+
+updatedBook : Book
+updatedBook = over (inOrder contactPhone) (add 2) book
+
+updatedBookString : String
+updatedBookString = showList showEntry updatedBook
+

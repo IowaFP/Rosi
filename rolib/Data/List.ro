@@ -1,4 +1,4 @@
-import Ro.Base, Ro.Xr, Data.Functor, Data.Nat, Data.Tuple
+import Ro.Base, Ro.Show , Ro.Xr, Data.Functor, Data.Nat, Data.Tuple
 
 type ListF : * -> * -> *
 type ListF = \a. Sigma { 'Nil := Const Unit, 'Cons := \l. Pair a l }
@@ -33,6 +33,22 @@ nth = fix (\f l n.
             ( case #'Zero (const (head l))
             | case #'Succ (f (tail l))
             ))
+
+foldr : forall a b. (a -> b -> b) -> b -> List a -> b 
+foldr = fix (\ foldr f b xs. match (out xs) 
+          ((case #'Nil (const b))
+        |  (case #'Cons (\ ys. f (fst ys) (foldr f b (snd ys)) ))))
+
+append : forall a. List a -> List a -> List a 
+append = \ xs ys. foldr cons ys xs
+
+concat : forall a. List (List a) -> List a 
+concat = foldr append nil
+
+showList : forall a. Show a -> Show (List a)
+showList = \ show. fix ( \ showList xs. match (out xs) 
+    ( (case #'Nil (const "[]"))
+    | (case #'Cons (\ p. show (fst p) ^ " :: " ^ showList (snd p)))))
 
 listTest1 = nth (cons one (cons two (cons three nil))) two
 listTest2 = nth (cons one (cons two nil)) two

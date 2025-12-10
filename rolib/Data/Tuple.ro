@@ -1,4 +1,4 @@
-import Ro.Base
+import Ro.Base , Ro.Show
 
 type Pair : * -> * -> *
 type Pair = \ t u. Pi {'1 := t, '2 := u}
@@ -30,3 +30,6 @@ curry = \f x y. f (pair x y)
 
 uncurry : forall a b c. (a -> b -> c) -> Pair a b -> c
 uncurry = \f p. f (fst p) (snd p)
+
+showPair : forall a b. Show a -> Show b -> Show (Pair a b)
+showPair = \ showa showb p. "(" ^ (showa (fst p)) ^ ", " ^ (showb (snd p)) ^ ")"

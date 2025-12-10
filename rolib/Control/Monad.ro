@@ -1,4 +1,4 @@
-import Data.Functor, Control.Applicative
+import Data.Functor, Control.Applicative , Data.List
 
 type Monad : (* -> *) -> *
 type Monad = \t. Pi { 'Applicative := Applicative t,

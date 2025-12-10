@@ -1,0 +1,19 @@
+import Control.Monad , Control.Applicative
+
+
+fmapList : Functor List 
+fmapList = fix (\ fmap f xs. match (out xs)
+  ( (case #'Nil (const nil)) 
+  | (case #'Cons (\ p. cons (f (fst p)) (fmap f (snd p))))))
+
+apList : forall a b. List (a -> b) -> List a -> List b 
+apList = \ fs xs. foldr (\ f ys. append (fmapList f xs) ys) nil fs
+
+applicativeList : Applicative List
+applicativeList = (#'Functor := fmapList , #'pure := sing , #'ap := apList)
+
+bindList : forall a b. List a -> (a -> List b) -> List b
+bindList = \ xs f. concat (fmapList f xs)
+
+monadList : Monad List
+monadList = ( #'Applicative := applicativeList , #'bind := bindList)

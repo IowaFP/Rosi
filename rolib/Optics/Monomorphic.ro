@@ -1,4 +1,4 @@
-import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad
+import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Control.Monad.List
 {- 
 -- reading list & notes:
 
@@ -92,9 +92,9 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.F
 -}
 --------------------------------------------------------------------------------
 -- to run (from home dir):
---   - cabal run Rosi -- -i rolib -i examples Optics.Lenses
+--   - cabal run Rosi -- -i rolib Optics.Monomorphic
 -- to evaluate terms, e.g., showBob:
---   - cabal run Rosi -- -i rolib -i examples Optics.Lenses -e showBob
+--   - cabal run Rosi -- -i rolib Optics.Monomorphic -e showBob
 
 --------------------------------------------------------------------------------
 -- The interface for lenses 
@@ -174,6 +174,7 @@ compPrism = \ l u. (#'get := composeKleisli monadMaybe (get u) (get l) , #'put :
 --------------------------------------------------------------------------------
 -- Adapters
 -- Adapters specialize lenses and prisms
+-- (Adapters are alternatively called Isos or bijective lenses.)
 
 type Adapter : * -> * -> * 
 type Adapter = \ s t. Pi { 'from := s -> t , 'to := t -> s}
@@ -195,6 +196,9 @@ adapterPrism = \ a. (#'get := o Just (from a) , #'put := to a)
 type Traversal : * -> * -> *
 type Traversal = \ s t. Pi {'toListOf := s -> List t , 'over := (t -> t) -> s -> s }
 
+toListOf = sel #'toListOf 
+over = sel #'over
+
 lensTraversal : forall s t. Lens s t -> Traversal s t 
 lensTraversal = \ l. (#'toListOf := o sing (get l)  , #'over := modify l)
 
@@ -206,7 +210,14 @@ prismTraversal = \ p.
     | case #'Just (\ t. put p (f t))))
 
 compTraversal : forall a b c. Traversal a b -> Traversal b c -> Traversal a c 
-compTraversal = \ x y. sorry
+compTraversal = \ x y. 
+  (#'toListOf := composeKleisli monadList (toListOf y) (toListOf x) , 
+   #'over := \ f. over x (over y f))
+
+inOrder : forall s t. Traversal s t -> Traversal (List s) t
+inOrder = \ t. 
+  (#'toListOf := o concat (fmapList (toListOf t)) , 
+   #'over := o fmapList (over t) )
 
 {- -----------------------------------------------------------------------------
 # The lattice of optics
@@ -284,17 +295,6 @@ branchPrism = (#'get := o Just Left | o Just Right , #'put := case #'Left inj | 
 branchLens : forall x y z : R[*], t : *. x + y ~ z => 
               Lens (Pair (Sigma x -> t) (Sigma y -> t)) (Sigma z -> t)
 branchLens = bijective (\ p. fst p | snd p) (\ t. pair (o t inj) (o t inj))
-
---------------------------------------------------------------------------------
--- Joining is a lens (TODO)
--- (Do I care?)
-
-innerJoin : forall l : L , t : * , a b c d : R[*]. 
-       {l := t} < a , {l := t} < b , 
-        (a - {l := t}) + (b - {l := t}) ~ c , {l := t} + c ~ d => 
-       #l -> (t -> t -> Bool) -> 
-       List (Pi a) -> List (Pi b) -> List (Pi d)
-innerJoin = \ l eq xs ys. sorry
 
 --------------------------------------------------------------------------------
 -- A Pi to Sigma lens
