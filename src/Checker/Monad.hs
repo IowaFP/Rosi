@@ -61,10 +61,24 @@ lookupV n (_ : ts) = lookupV (n - 1) ts
 shiftE :: TCtxt -> TCtxt
 shiftE = map (shiftTN 0 1)
 
-newtype TCSt = TCSt { next :: Int }
+data Update where
+  U :: IORef a -> a -> Update
+
+data Mark = Mark Int
+  deriving Eq
+
+perform :: MonadIO m => Update -> m ()
+perform (U ref val) = liftIO $ writeIORef ref val
+
+data TCSt = TCSt { updates :: [(Mark, [Update])], next :: Int }
+
+pushUpdate :: IORef a -> a -> TCSt -> TCSt
+pushUpdate v x st
+  | [] <- updates st = st
+  | (m, us) : rest <- updates st = st { updates = (m, U v x : us) : rest}
 
 emptyTCSt :: TCSt
-emptyTCSt = TCSt 0
+emptyTCSt = TCSt [] 0
 
 data TCIn = TCIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt, level :: Int, ectxt :: Error -> Error }
 
@@ -91,7 +105,10 @@ instance MonadFail CheckM where
 instance MonadRef CheckM where
   newRef = liftIO . newIORef
   readRef = liftIO . readIORef
-  writeRef r = liftIO . writeIORef r
+  writeRef r new =
+    do old <- liftIO (readIORef r)
+       modify (pushUpdate r old)
+       liftIO (writeIORef r new)
 
 class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => MonadCheck m where
   bindTy :: Kind -> m a -> m a
@@ -121,6 +138,9 @@ class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => Monad
   theLevel :: m Int
   theLevel = asks level
 
+  mark :: m Mark
+  reset :: Mark -> m ()
+
 instance MonadCheck CheckM where
   require p r =
     do cin <- ask
@@ -134,6 +154,18 @@ instance MonadCheck CheckM where
                modify (\st -> st { next = i + 1 })
                return ((takeWhile ('#' /=) x) ++ '#' : show i)
 
+  mark = do st <- get
+            let m = Mark (next st)
+            put (st { updates = (m, []) : updates st, next = next st + 1})
+            return m
+
+  reset m = gets updates >>= resetLoop where
+    resetLoop [] =
+      do modify (\st -> st { updates = [] })
+         return ()
+    resetLoop ((m', us) : rest) =
+      do mapM_ perform us
+         when (m /= m') $ resetLoop rest
 
 collect :: CheckM a -> CheckM (a, TCOut)
 collect m = censor (const (TCOut [])) $ listen m
@@ -143,50 +175,49 @@ upLevel m = do l <- theLevel
 
 --
 
-
-data Update where
-  U :: IORef a -> a -> Update
-
-perform :: MonadIO m => Update -> m ()
-perform (U ref val) = liftIO $ writeIORef ref val
-
 type Eqn = (Ty, (Ty, Evid))
 
 type UR = [Eqn]
 type US = Maybe [Dynamic]
-type UW = ([Update], [(TCIn, Pred, IORef (Maybe Evid))])
+type UW = [(TCIn, Pred, IORef (Maybe Evid))]
 newtype UnifyM a = UM { runUnifyM :: ExceptT (Ty, Ty) (StateT US (WriterT UW (ReaderT UR CheckM))) a }
   deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO, MonadState US)
 
+liftToUnifyM :: CheckM a -> UnifyM a
+liftToUnifyM = UM . lift . lift . lift . lift
+
+
 instance MonadRef UnifyM where
   newRef v = UM $ ExceptT $ StateT $ \checking -> WriterT (body checking) where
-    body Nothing = do r <- liftIO (newIORef v)
-                      return ((Right r, Nothing), ([], []))
-    body (Just rs) = do r <- liftIO (newIORef v)
-                        return ((Right r, Just (toDyn r : rs)), ([], []))
-  readRef = liftIO . readIORef
-  writeRef r v =
-    do v' <- readRef r
-       tell ([U r v'], [])
-       liftIO (writeIORef r v)
+    body Nothing = do r <- lift (newRef v)
+                      return ((Right r, Nothing), [])
+    body (Just rs) = do r <- lift (newRef v)
+                        return ((Right r, Just (toDyn r : rs)), [])
+  readRef = liftToUnifyM . readRef
+  writeRef r v = liftToUnifyM (writeRef r v)
+
 
 instance MonadReader TCIn UnifyM where
-  ask = UM (lift (lift (lift (lift ask))))
+  ask = liftToUnifyM ask
   local f r = UM $ ExceptT $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> local f (runReaderT (runWriterT (runStateT (runExceptT (runUnifyM r)) checking)) eqns))
 
 instance MonadCheck UnifyM where
   require p r =
     do cin <- ask
-       tell ([], [(cin, p, r)])
+       tell [(cin, p, r)]
 
-  typeError e = UM (lift (lift (lift (lift (typeError e)))))
+  mark = liftToUnifyM mark
 
-  fresh = UM . lift . lift . lift . lift . fresh
+  reset = liftToUnifyM . reset
+
+  typeError = liftToUnifyM . typeError
+
+  fresh = liftToUnifyM . fresh
 
 canUpdate :: Typeable a => IORef a -> UnifyM Bool
 canUpdate r = UM (ExceptT $ StateT $ \checking -> WriterT (body checking)) where
-  body Nothing = return ((Right True, Nothing), ([], []))
-  body (Just rs) = return ((Right (any ok rs), Just rs), ([], []))
+  body Nothing = return ((Right True, Nothing), [])
+  body (Just rs) = return ((Right (any ok rs), Just rs), [])
   ok dr = case fromDynamic dr of
             Just r' -> r == r'
             Nothing -> False

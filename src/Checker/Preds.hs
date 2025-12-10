@@ -9,6 +9,10 @@ import Data.Bifunctor
 import Data.Either (isLeft, isRight)
 import Data.IORef
 import Data.List
+import Data.Maybe (catMaybes)
+
+import Control.Monad.IO.Class
+import System.IO
 
 
 import Checker.Monad
@@ -386,6 +390,167 @@ solve (cin, p, r) =
        fmap (VPlusLiftL f) <$> defer (PPlus x y z')
   mapFunApp _ _ = return Nothing
 
+type Guess = CheckM [Problem]
+type Guesser = Problem -> Maybe Guess
+
+guesses :: [Problem] -> CheckM [Guess]
+guesses prs =
+  concat <$> mapM guessAt [0..length prs - 1]
+  where
+
+  dropAt 0 (x : xs) = xs
+  dropAt i (x : xs) = x : dropAt (i - 1) xs
+
+  wrapGuess prs = fmap (++ prs)
+
+  guessAt :: Int -> CheckM [Guess]
+  guessAt i =
+    do p' <- local (const tcin) (normalizeP [] p)
+       let tries = catMaybes $ map ($ (tcin, p', v)) guessers
+       return (map (wrapGuess (dropAt i prs)) tries)
+    where (tcin, p, v) = prs !! i
+
+  guessers :: [Guesser]
+  guessers = [guessInstInst, guessInst, guessAppApp, guessApp]
+
+  guessInstInst, guessInst, guessAppApp, guessApp :: Guesser
+
+  guessInstInst pr@(tcin, PEq (TInst (Unknown {}) (TInst (Unknown _ (Goal (s, r))) _)) _, _) =
+    Just $
+    do trace $ unwords ["guessing", s, ":= {}"]
+       writeRef r (Just (Known []))
+       return [pr]
+  guessInstInst pr@(tcin, PEq _ (TInst (Unknown {}) (TInst (Unknown _ (Goal (s, r))) _)), v) =
+    Just $
+    do trace $ unwords ["guessing", s, ":= {}"]
+       writeRef r (Just (Known []))
+       return [pr]
+  guessInstInst _ = Nothing
+
+  guessInst pr@(tcin, PEq t u, v)
+    | TInst (Unknown {}) _ <- u, TForall {} <- t = Just $ guessInstantiation t u
+    | TInst (Unknown {}) _ <- t, TForall {} <- u = Just $ guessInstantiation u t
+    where -- There is a lot of similarity with the code in unifyInstantiating here...
+          -- Assuming t starts with quantifiers, `u` starts with unknown instantiation
+          guessInstantiation t (TInst (Unknown n (Goal (s, r))) u) =
+            do xs' <- mapM fresh xs
+               refs <- replicateM (length xs) (newRef Nothing)
+               l <- theLevel
+               let us = [TUnif (UV 0 l (Goal (x, r)) k) | x <- xs' | r <- refs | k <- ks ]
+               writeRef r (Just (Known (map TyArg us)))
+               t''' <- instantiate t us
+               trace $ unlines [ unwords ["guessing", s, ":=", show us]
+                               , unwords ["refined goal to", show (PEq t''' u)] ]
+               return [(tcin, PEq t''' u, v)]  -- TODO: is `v` here actually a solution to the original problem?
+
+            where (qus, t') = quants t
+                  foralls = takeWhile isForall qus
+                  (xs, ks) = unzip [(x, k) | QuForall x k <- foralls]
+                  t'' = quantify (drop (length foralls) qus) t'
+
+                  isForall (QuForall {}) = True
+                  isForall _             = False
+
+                  instantiate t [] = return t
+                  instantiate (TForall _ _ t) (u : us) =
+                    do t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
+                       instantiate t' us
+  guessInst _ = Nothing
+
+  guessingRefinement tf ta uf ua =
+    unlines
+      [ "guessing refinement:"
+      , "     " ++ renderString (ppr (TApp tf ta)) ++ " ~ " ++ renderString (ppr (TApp uf ua))
+      , "  if " ++ renderString (ppr tf) ++ " ~ " ++ renderString (ppr uf)
+      , " and " ++ renderString (ppr ta) ++ " ~ " ++ renderString (ppr ua)
+      ]
+
+  guessAppApp (tcin, PEq (TApp tf ta) (TApp uf ua), v) =
+    Just $
+    do trace $ guessingRefinement tf ta uf ua
+       r1 <- newRef Nothing
+       r2 <- newRef Nothing
+       v1 <- fresh "v"
+       v2 <- fresh "v"
+       writeRef v (Just (VEqApp (VGoal (Goal (v1, r1))) (VGoal (Goal (v2, r2)))))
+       return [(tcin, PEq tf uf, r1), (tcin, PEq ta ua, r2)]
+  guessAppApp _ = Nothing
+
+  guessApp pr@(tcin, PEq t u, v)
+    | TApp (TUnif v) t' <- t =
+      Just $ guessLam v t' u
+    | TApp (TUnif v) u' <- u =
+      Just $ guessLam v u' t
+
+    where
+
+    guessLam v t' u =
+      do x <- fresh "x"
+         k <- kindOf t'
+         u' <- TLam x (Just k) <$> walk (TVar 0 [x, ""]) t' 0 u
+         trace $
+           "solving " ++ renderString (ppr $ PEq t u) ++ ":\n" ++
+           "by guessing " ++ renderString (ppr v) ++ " := " ++ renderString (ppr u')
+         solveUV v u'
+         return [pr]
+    -- `walk x u m t` builds the body of a function that, applied to `u`,
+    -- returns `t`. There are a couple of pieces:
+    --
+    --  * If we find `u` inside `t`, we want to use the variable, not the
+    --    constant type `t`. (Of course both are valid... we are guessing!)
+    --    The parameter `x` carries the type variable to use in this case
+    --
+    --  * Otherwise, we need to shift (because this will be the body of a
+    --    new function). Because we are shifting, we need to carry around a
+    --    minimum index.
+    --
+    --  * We might as well flatten uvars as we go.
+    --
+    --  * Oops, when we shift, we also need to shift the type `u` that we're
+    --    looking for.
+    --
+    -- I think that's all the concerns for now.
+    walk :: Ty -> Ty -> Int -> Ty -> CheckM Ty
+    walk x u m t
+      | u == t = return x
+    walk x u m (TVar n s)
+      | n < m = return (TVar n s)
+      | otherwise = return (TVar (n + 1) s)
+    walk x u m (TUnif v) =
+      do mt <- readRef (goalRef (uvGoal v))
+         case mt of
+           Nothing -> return (TUnif v { uvShift = uvShift v + 1 })
+           Just t  -> walk x u m (shiftTN 0 (uvShift v) t)
+    walk _ _ _ TFun = return TFun
+    walk x u m (TThen p t) = TThen <$> walkP x u m p <*> walk x u m t
+    walk x u m (TForall s mk t) = TForall s mk <$> walk (shiftTN 0 1 x) (shiftTN 0 1 u) (m + 1) t
+    walk x u m (TLam s mk t) = TLam s mk <$> walk (shiftTN 0 1 x) (shiftTN 0 1 u) (m + 1) t
+    walk x u m (TApp t t') = TApp <$> walk x u m t <*> walk x u m t'
+    walk x u m t@(TLab _) = return t
+    walk x u m (TSing t) = TSing <$> walk x u m t
+    walk x u m (TLabeled l t) = TLabeled <$> walk x u m l <*> walk x u m t
+    walk x u m (TRow ts) = TRow <$> mapM (walk x u m) ts
+    walk x u m (TConApp k t) = TConApp k <$> walk x u m t
+    walk x u m (TMapFun f) = TMapFun <$> walk x u m t
+    walk x u m (TCompl t t') = TCompl <$> walk x u m t <*> walk x u m t'
+    walk x u m (TMapArg r) = TMapArg <$> walk x u m r
+    walk x u m (TInst is t) = TInst <$> walkIs is <*> walk x u m t where
+      walkIs (Known is) = Known <$> mapM walkI is
+      walkIs (Unknown n g) =
+        do mis <- readRef (goalRef g)
+           case mis of
+             Nothing -> return (Unknown n g)
+             Just is' -> walkIs (shiftIsV [] 0 n is')
+      walkI (TyArg t) = TyArg <$> walk x u m t
+      walkI (PrArg v) = return (PrArg v)
+
+    walkP :: Ty -> Ty -> Int -> Pred -> CheckM Pred
+    walkP v u m (PLeq x y)    = PLeq <$> walk v u m x <*> walk v u m y
+    walkP v u m (PEq t t')    = PEq <$> walk v u m t <*> walk v u m t'
+    walkP v u m (PPlus x y z) = PPlus <$> walk v u m x <*> walk v u m y <*> walk v u m z
+
+  guessApp _ = Nothing
+
 guess :: [Problem] -> CheckM (Maybe [Problem])
 guess (pr@(tcin, PEq t u, v) : prs) =
   local (const tcin) $
@@ -425,8 +590,8 @@ guess (pr@(tcin, PEq t u, v) : prs) =
              k <- kindOf t'
              u' <- TLam x (Just k) <$> walk (TVar 0 [x, ""]) t' 0 u
              trace $
-               "solving " ++ show (PEq t'0 u'0) ++ ":\n" ++
-               "by guessing " ++ show v ++ " := " ++ show u'
+               "solving " ++ renderString (ppr $ PEq t'0 u'0) ++ ":\n" ++
+               "by guessing " ++ renderString (ppr v) ++ " := " ++ renderString (ppr u')
              solveUV v u'
              return (Just (pr : prs))
        (u, t@(TApp (TUnif v) t')) ->
@@ -550,16 +715,20 @@ solverLoop ps =
      (b, ps') <- once False [] ps
      if b
      then solverLoop ps'
-     else do mps <- guess ps'
-             case mps of
-               Just ps'' -> solverLoop ps''
-               Nothing -> trace "Solver done" >> return ps'
+     else guessLoop =<< guesses ps'
+            --  mps <- guess ps'
+            --  case mps of
+            --    Just ps'' -> solverLoop ps''
+            --    Nothing -> trace "Solver done" >> return ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
           do (b', TCOut ps') <- collect $ solve p
              once (b || b')
                   (if b' then qs else p : qs)
                   (ps ++ ps')
+        guessLoop [] = return ps
+        guessLoop (g : gs) = solverLoop =<< g
+
 
 andSolve :: CheckM a -> CheckM a
 andSolve m =
