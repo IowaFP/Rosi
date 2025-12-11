@@ -72,6 +72,35 @@ plus = /\ l. sel plusRec (any [ l ])
 ok : Pair Nat Bool
 ok = pair (plus ['nat] [Nat -> Nat -> Nat] 1 2) (plus ['bool] [Bool -> Bool -> Bool] True False)
 
+-- "In conventional closed-world overloading, each overloaded definition must be sufficientlly
+-- monomorphic to resove the overloading statically, but this is not necessary in our system."
+nary : forall b c : *. Pi { 'one := b -> List b , 'two := c -> c -> List c }
+nary = (#'one := \ x. sing x , #'two := \ x y. cons x (sing y))
+
+nlist : forall l : L , a b c : *. {l := a} < { 'one := b -> List b , 'two := c -> c -> List c } => a 
+nlist = /\ l a b c. sel (nary [b] [c]) (any [l])
+
+-- §4.3 Type case 
+-- This is another example where the magic seems to be simply omitting type application annotations.
+-- That is, the magic is to do with type inference and not the calculus.
+-- Moreover, the behavior of this function is ambiguous if it were to truly be used
+-- as type casing, as (a -> b) could occur multiple types in r.
+typecase : forall l : L, r : R[*], a b : *. {l := a -> b} < r => a -> Pi r -> b 
+typecase = /\ l. \ x d. (sel d #l) x
+
+-- §4.3 Type selective functions
+-- (Skipping; more of the same as above.)
+
+-- §5 First-class patterns
+-- Here Rosi really shines, as Leijen must define a primitive "case" that reflects
+-- a record of handlers into a variant eliminator. But we have already derived
+-- this in previous work.
+
+sum : List Nat -> Nat 
+sum = fix (\ sum xs. 
+    match (out xs) 
+    (reflect (#'Nil := \ r. 0 , 
+              #'Cons := \ r. add (fst r) (sum (snd r)))))
 
 
 
