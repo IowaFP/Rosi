@@ -135,6 +135,11 @@ eqS = \ d v. ana #(\X. X)
 eqP : forall z: R[*]. Fold z => Pi (Eq z) -> Eq (Pi z)
 eqP = \ d r. fold (\l x. sel d l (sel r l) x) and True
 
+-- Branching is derivable
+branch : forall x y z : R[*] , t : *. x + y ~ z => 
+            (Sigma x -> t) -> (Sigma y -> t) -> Sigma z -> t 
+branch = \ f g. reflect (reify f ++ reify g)            
+
 -------------------------------------------------------------------------------
 
 eqUnit : Eq Unit
