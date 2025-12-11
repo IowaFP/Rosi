@@ -1,0 +1,18 @@
+import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Control.Monad.List
+
+type Lens : * -> * -> * 
+type Lens = \ x y. forall c. Pi { 
+    'missing := c ,
+    'putr := Pair x c -> Pair y c , 
+    'putl := Pair y c -> Pair x c }
+
+-- law PutRL:
+--  - putr (x , c) = (y , c') -> putl (y , c') = (x , c')
+--  - putl (y , c) = (x , c') -> putr (x , c') = (y , c')
+
+projectLens : forall x y : R[*]. x < y => 
+              Lens (Pi y) (Pi x)
+projectLens = (#'missing := sorry , ...)              
+
+
+
