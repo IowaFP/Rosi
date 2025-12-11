@@ -1,7 +1,7 @@
 import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Control.Monad.List
 
-type Lens : * -> * -> * 
-type Lens = \ x y. forall c. Pi { 
+type Lens : * -> * -> * -> * 
+type Lens = \ x y c. Pi { 
     'missing := c ,
     'putr := Pair x c -> Pair y c , 
     'putl := Pair y c -> Pair x c }
@@ -11,8 +11,12 @@ type Lens = \ x y. forall c. Pi {
 --  - putl (y , c) = (x , c') -> putr (x , c') = (y , c')
 
 projectLens : forall x y : R[*]. x < y => 
-              Lens (Pi y) (Pi x)
-projectLens = (#'missing := sorry , ...)              
+              Pi (y - x) ->
+              Lens (Pi y) (Pi x) (Pi (y - x))
+projectLens = \ r. 
+    (#'missing := r , 
+     #'putr := \ p. pair (prj (fst p)) (snd p) ,
+     #'putl := \ p. pair (fst p ++ snd p) (snd p) )              
 
 
 
