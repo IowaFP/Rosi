@@ -50,30 +50,27 @@ implementation = (#'eval := eval , #'print := print)
 -------------------------------------------------------------------------------
 -- For my next trick, I will need some plumbing.
 
--- First, we will sadly rely on (Mendler-style) algebras.
-type MendlerAlg : (* -> *) -> * -> * 
-type MendlerAlg = \ f b. forall a : *. (a -> b) -> f a -> b
-
-evalAlg : MendlerAlg (Sigma ExprF) Nat 
+-- We will sadly rely on (Mendler-style) algebras.
+evalAlg : MAlg (Sigma ExprF) Nat 
 evalAlg = \ eval e . match e  
  ( case #'Lit id 
  | case #'Add (\ p. add (eval (fst p)) (eval (snd p))) 
  | case #'Mult (\ p. mult (eval (fst p)) (eval (snd p))))
 
-printAlg : MendlerAlg (Sigma ExprF) String
+printAlg : MAlg (Sigma ExprF) String
 printAlg = \ print e.  match e
  ( case #'Lit showNat
  | case #'Add  (\ p. (print (fst p)) ^ " + " ^ (print (snd p))) 
  | case #'Mult (\ p. (print (fst p)) ^ " * " ^ (print (snd p))))
 
 -- Now we again have a record of implementation.
-implementation : Pi (MendlerAlg (Sigma ExprF) ExprInterface)
+implementation : Pi (MAlg (Sigma ExprF) ExprInterface)
 implementation = (#'eval := evalAlg , #'print := printAlg)
 
 -- The punchline: we may *invert* from a variant implementation to a record implementation. 
 -- Stated first generically:
 invert : forall Cases : R[* -> *], Interface : R[*]. 
-         Pi (MendlerAlg (Sigma Cases) Interface) -> Pi ((Cases (Pi Interface)) -> Pi Interface)
+         Pi (MAlg (Sigma Cases) Interface) -> Pi ((Cases (Pi Interface)) -> Pi Interface)
 invert = /\ Cases. /\ Interface. \ d. 
     syn #(\t. t (Pi Interface) -> Pi Interface) (\ caseLabel e.
         syn #(\t. t) (\ interfaceLabel. sel d interfaceLabel (\ v. sel v interfaceLabel) (con caseLabel e)))
