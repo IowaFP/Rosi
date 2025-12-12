@@ -1,0 +1,17 @@
+import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
+
+{- 
+Reading:
+
+# Compositional Programming & Object Algebras
+- Compositional Programming, Zhang, Sun, and Oliveira.
+  - https://dl.acm.org/doi/pdf/10.1145/3460228
+- Feature-Oriented Programming with Object Algebras.
+  - https://www.cs.utexas.edu/~wcook/Drafts/2012/FOPwOA.pdf     
+- Compositional Embeddings of Domain-Specific Languages, Sun, Dhandhania, Oliveira
+  - https://dl.acm.org/doi/pdf/10.1145/3563294      
+
+# Family polymorphism
+- Persimmon: Nested Family Polymorphism with Extensible Variant Types
+  - https://dl.acm.org/doi/10.1145/3649836     
+-}

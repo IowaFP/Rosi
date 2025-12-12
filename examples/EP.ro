@@ -1,0 +1,91 @@
+import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
+
+-------------------------------------------------------------------------------
+-- Let's start with the expression problem in OOP-fashion
+
+-- An interface for expressions
+type ExprInterface : R[*]
+type ExprInterface = {'eval := Nat , 'print := String}
+
+Lit : Nat -> Pi ExprInterface 
+Lit = \n. (#'eval := n , #'print := showNat n)
+
+Add : Pi ExprInterface -> Pi ExprInterface -> Pi ExprInterface
+Add = \ l r. (#'eval  := add (sel l #'eval) (sel r #'eval),
+              #'print := (sel l #'print) ^ " + " ^ (sel r #'print))
+
+-- As the ep goes, It is easy to add new cases when we fix the behaviors.
+Mult : Pi ExprInterface -> Pi ExprInterface -> Pi ExprInterface
+Mult = \ l r. (#'eval  := mult (sel l #'eval) (sel r #'eval),
+               #'print := (sel l #'print) ^ " * " ^ (sel r #'print))
+
+-------------------------------------------------------------------------------
+-- One thing I find interesting is that, through row mapping, we can succinctly 
+-- express both *cases* and *behaviors* in Rosi.
+
+-- First, reiterate the variant EP
+type ExprF : R[* -> *]
+type ExprF = {'Lit := Const Nat , 'Add := \ x. Pair x x , 'Mult := \x. Pair x x }
+
+type Expr : *
+type Expr = Mu (Sigma ExprF)
+
+eval : Expr -> Nat 
+eval = fix (\ eval e. match (out e)  
+ ( case #'Lit id 
+ | case #'Add (\ p. add (eval (fst p)) (eval (snd p))) 
+ | case #'Mult (\ p. mult (eval (fst p)) (eval (snd p)))))
+
+-- As the EP goes, it is easy to add new behaviors when we fix the cases.
+print : Expr -> String
+print = fix (\ print e. match (out e)
+ ( case #'Lit showNat
+ | case #'Add  (\ p. (print (fst p)) ^ " + " ^ (print (snd p))) 
+ | case #'Mult (\ p. (print (fst p)) ^ " * " ^ (print (snd p)))))
+
+-- Now an implementation of the interface is expressed succinctly as:
+implementation : Pi (Expr -> ExprInterface)
+implementation = (#'eval := eval , #'print := print)
+
+-------------------------------------------------------------------------------
+-- For my next trick, I will need some plumbing.
+
+-- First, we will sadly rely on (Mendler-style) algebras.
+type MendlerAlg : (* -> *) -> * -> * 
+type MendlerAlg = \ f b. forall a : *. (a -> b) -> f a -> b
+
+evalAlg : MendlerAlg (Sigma ExprF) Nat 
+evalAlg = \ eval e . match e  
+ ( case #'Lit id 
+ | case #'Add (\ p. add (eval (fst p)) (eval (snd p))) 
+ | case #'Mult (\ p. mult (eval (fst p)) (eval (snd p))))
+
+printAlg : MendlerAlg (Sigma ExprF) String
+printAlg = \ print e.  match e
+ ( case #'Lit showNat
+ | case #'Add  (\ p. (print (fst p)) ^ " + " ^ (print (snd p))) 
+ | case #'Mult (\ p. (print (fst p)) ^ " * " ^ (print (snd p))))
+
+-- Now we again have a record of implementation.
+implementation : Pi (MendlerAlg (Sigma ExprF) ExprInterface)
+implementation = (#'eval := evalAlg , #'print := printAlg)
+
+-- The punchline: we may *invert* from a variant implementation to a record implementation. 
+-- Stated first generically:
+invert : forall Cases : R[* -> *], Interface : R[*]. 
+         Pi (MendlerAlg (Sigma Cases) Interface) -> Pi ((Cases (Pi Interface)) -> Pi Interface)
+invert = /\ Cases. /\ Interface. \ d. 
+    syn #(\t. t (Pi Interface) -> Pi Interface) (\ caseLabel e.
+        syn #(\t. t) (\ interfaceLabel. sel d interfaceLabel (\ v. sel v interfaceLabel) (con caseLabel e)))
+
+-- When Cases = ExprF and Interface = ExprInterface, the return type of `invert` has
+-- the structure:
+--  { 'Lit  := Nat -> Pi {'eval := Nat , 'print := Nat} ,
+--    'Add  := Pair (Pi ExprInterface) (Pi ExprInterface) -> Pi ExprInterface ,
+--    'Mult := Pair (Pi ExprInterface) (Pi ExprInterface) -> Pi ExprInterface
+--  }
+-- precisely the set of constructors we set out with.
+
+-- Sadly, the concrete case does not type check :(
+invertExpr : Pi ((ExprF (Pi ExprInterface)) -> Pi ExprInterface)
+invertExpr = invert [ExprF] [ExprInterface] implementation

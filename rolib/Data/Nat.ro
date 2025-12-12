@@ -20,6 +20,9 @@ decr = \n. (case #'Zero (\ u. in (con #'Zero u)) | case #'Succ id) (out n)
 add : Nat -> Nat -> Nat
 add = \m. fix (\add n. (case #'Zero (\u. m) | case #'Succ (\nn. succ (add nn))) (out n))
 
+mult : Nat -> Nat -> Nat 
+mult = \m. fix (\mult n. (case #'Zero (const zero) | case #'Succ (\nn. add m (mult nn))) (out n))
+
 monus : Nat -> Nat -> Nat
 monus = fix (\ monus m n. (case #'Zero (\u. m) | case #'Succ (\nn. monus (decr m) nn)) (out n))
 
@@ -53,7 +56,6 @@ showNat = fix (\showNat n.
   match (out n) 
       ((case #'Zero (\ u. "Zero"))
     | (case #'Succ (\ n. "Succ (" ^ (showNat n) ^ ")" ))))
-
 --
 
 one : Nat
