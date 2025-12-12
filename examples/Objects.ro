@@ -10,11 +10,11 @@ import Ro.Base , Ro.Show , Data.Nat , Data.Tuple
 --     - https://www.cs.utexas.edu/~wcook/papers/InheritanceSubtyping90/CookPOPL90.pdf
 
 --------------------------------------------------------------------------------
--- An example from Cook et al with class methods, mixed variant recursive types,
+-- An example from Cook et al with class methods, mixed-variant recursive records,
 -- and inheritance.
 
 -- Record types serve as interfaces. An object permits references to "this"
--- (or "self"), which can be viewed as a recursive reference. Hence
+-- (or "self"), which can be viewed as a recursive placeholder. Hence
 -- we declare the type of a Point as a functor.
 type PointF : R[* -> *]
 type PointF = {
@@ -66,14 +66,15 @@ p1eqp2 : String
 p1eqp2 = showBool (sel (out p2) #'equal (sel (out p1) #'move (pair 2 2)))
 
 --------------------------------------------------------------------------------
-{- The definition of CartPoint above has tied the knot too soon. To illustrate,
-   let 
+{- The definition of CartPoint above has tied the recursive knot too soon. 
+    To illustrate, let 
      type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
-     type ColorPointInterface = PointF + {'color := Const Color}
-   and consider this definition of a color point, which extends CartPoint:
+     type ColorPointF = PointF + {'color := Const Color}
+     type ColorPointI = Mu (Pi ColorPointF)
+   and consider this definition of a color point class, which extends CartPoint:
      class ColorPoint (x : Nat, y : Nat, c : Color) 
        extends CartPoint
-       implements ColorPointInterface:
+       implements ColorPointF:
          method color : Color
            return c 
          method equal (p : ColorPoint) : Bool 
@@ -81,10 +82,39 @@ p1eqp2 = showBool (sel (out p2) #'equal (sel (out p1) #'move (pair 2 2)))
              (self.color = p.color)
   We have two issues:
     - The extension of CartPoint implies we will use the parent method CartPoint
-      to initialize the ColorPoint. However,         
-
+      to initialize the ColorPoint. Something like:
+        ColorPoint : (x : Nat, y : Nat, c : Color) -> ColorPoint
+        ColorPoint = \ p. newCartPoint p ++ (#'color := p.c)
+      However, (newCartPoint p) has subdata at type Mu (Pi PointF), and *not*
+      at type Mu (Pi ColorPointF). This suggests we would need to map over 
+      (out (newCartPoint p)) : (Pi PointF) (Mu (Pi PointF)). But we cannot!
+        1. PointF is mixed-variant and hence *not* functorial
+        2. We have no Mu (Pi PointF) -> Mu (Pi ColorPointF) function.
+  Just as when we face this problem when writing recursive variant eliminators,
+  the answer will be to rewrite CartPoint over generic type. 
 -}
 
+
+-- WIP. I find this solution unsatisfactory.
+CartPoint' : forall z : R [ * -> * ]. PointF < z => 
+            (Pair Nat Nat -> (Pi z) (Mu (Pi z)) -> (Pi z) (Mu (Pi z))) -> 
+            Pair Nat Nat -> (Pi z) (Mu (Pi z)) -> Pi (PointF (Mu (Pi z)))    
+CartPoint' = \ init p self.
+    (#'x := fst p , 
+     #'y := snd p ,
+     #'move := \ q.
+        fix (init (pair 
+            (add (sel self #'x) (fst q))
+            (add (sel self #'y) (snd q)))) ,
+     #'equal := sorry)
+        -- and (equal (sel (out self) #'x) (sel (out q) #'x))
+        --     (equal (sel (out self) #'y) (sel (out q) #'y)))
+
+
+
+--------------------------------------------------------------------------------
+-- With CartPoint made suitably generic, we can define a ColorPoint that inherits
+-- from CartPoint.
 
 type Byte : *
 type Byte = Nat
@@ -103,5 +133,8 @@ type ColorPoint = Mu (Pi ColorPointF)
 -- colorPoint = \ init p self. 
 --     (CartPoint ( \ q. rprj (fix (init (prj p ++ prj q)))) (prj p) self)
 --     ++ (#'color := thd p)
+
+--------------------------------------------------------------------------------
+-- Mixin modules
 
 
