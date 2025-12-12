@@ -21,13 +21,14 @@ type PointF = {
     'x     := Const Nat , 
     'y     := Const Nat , 
     'move  :=  \ Point. Pair Nat Nat -> Point , 
-    'equal :=  \ Point. Point -> Bool }
+    'equal :=  \ Point. Point -> Bool ,
+    'get   := Const (Pair Nat Nat) }
 
 type Point : *
 type Point = Mu (Pi PointF)
 
-printPoint : forall z : R[*]. {'x := Nat , 'y := Nat} < z => Pi z -> String
-printPoint = \ p. showPair showNat showNat (pair (sel p #'x) (sel p #'y))
+printPoint : forall z : R[*]. {'get := Pair Nat Nat } < z => Pi z -> String
+printPoint = \ p. showPair showNat showNat (sel p #'get)
 
 -- A class can be seen as an implementation of the interface with:
 --  - A class method initializing the object (and possibly more class methods)
@@ -43,7 +44,8 @@ CartPoint = \ init p self. in
             (add (sel (out self) #'y) (snd q)))) ,
      #'equal := \ q.
         and (equal (sel (out self) #'x) (sel (out q) #'x))
-            (equal (sel (out self) #'y) (sel (out q) #'y)))
+            (equal (sel (out self) #'y) (sel (out q) #'y)) ,
+     #'get := pair (sel (out self) #'x) (sel (out self) #'y))
 
 -- We tie the knot to get the object initializer
 newCartPoint : Pair Nat Nat -> Point
@@ -51,10 +53,10 @@ newCartPoint = \ p. fix (fix CartPoint p)
 
 -- some examples
 p1 : Point
-p1 = newCartPoint (pair 0 1)
+p1 = newCartPoint (pair 0 0)
 
 p2 : Point 
-p2 = newCartPoint (pair 2 3)
+p2 = newCartPoint (pair 1 1)
 
 p3 : Point 
 p3 = sel (out p1) #'move (pair 3 4)
@@ -65,37 +67,47 @@ p3str = printPoint (out p3)
 p1eqp2 : String
 p1eqp2 = showBool (sel (out p2) #'equal (sel (out p1) #'move (pair 2 2)))
 
---------------------------------------------------------------------------------
-{- The definition of CartPoint above has tied the recursive knot too soon. 
-    To illustrate, let 
-     type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
-     type ColorPointF = PointF + {'color := Const Color}
-     type ColorPointI = Mu (Pi ColorPointF)
-   and consider this definition of a color point class, which extends CartPoint:
-     class ColorPoint (x : Nat, y : Nat, c : Color) 
-       extends CartPoint
-       implements ColorPointF:
-         method color : Color
-           return c 
-         method equal (p : ColorPoint) : Bool 
-           return super.equal(p) and 
-             (self.color = p.color)
-  We have two issues:
-    - The extension of CartPoint implies we will use the parent method CartPoint
-      to initialize the ColorPoint. Something like:
-        ColorPoint : (x : Nat, y : Nat, c : Color) -> ColorPoint
-        ColorPoint = \ p. newCartPoint p ++ (#'color := p.c)
-      However, (newCartPoint p) has subdata at type Mu (Pi PointF), and *not*
-      at type Mu (Pi ColorPointF). This suggests we would need to map over 
-      (out (newCartPoint p)) : (Pi PointF) (Mu (Pi PointF)). But we cannot!
-        1. PointF is mixed-variant and hence *not* functorial
-        2. We have no Mu (Pi PointF) -> Mu (Pi ColorPointF) function.
-  Just as when we face this problem when writing recursive variant eliminators,
-  the answer will be to rewrite CartPoint over generic type. 
--}
+-- testing that self links correctly.
+p4 : Point 
+p4 = in (prj (out p1) ++ (#'x := 1 , #'y := 1))
+
+test0 : String 
+test0 = printPoint (out p4)
+
+test1 : String 
+test1 = showPair showNat showNat (pair (sel (out p4) #'x) (sel (out p4) #'y))
+
+-- --------------------------------------------------------------------------------
+-- {- The definition of CartPoint above has tied the recursive knot too soon. 
+--     To illustrate, let 
+--      type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
+--      type ColorPointF = PointF + {'color := Const Color}
+--      type ColorPointI = Mu (Pi ColorPointF)
+--    and consider this definition of a color point class, which extends CartPoint:
+--      class ColorPoint (x : Nat, y : Nat, c : Color) 
+--        extends CartPoint
+--        implements ColorPointF:
+--          method color : Color
+--            return c 
+--          method equal (p : ColorPoint) : Bool 
+--            return super.equal(p) and 
+--              (self.color = p.color)
+--   We have two issues:
+--     - The extension of CartPoint implies we will use the parent method CartPoint
+--       to initialize the ColorPoint. Something like:
+--         ColorPoint : (x : Nat, y : Nat, c : Color) -> ColorPoint
+--         ColorPoint = \ p. newCartPoint p ++ (#'color := p.c)
+--       However, (newCartPoint p) has subdata at type Mu (Pi PointF), and *not*
+--       at type Mu (Pi ColorPointF). This suggests we would need to map over 
+--       (out (newCartPoint p)) : (Pi PointF) (Mu (Pi PointF)). But we cannot!
+--         1. PointF is mixed-variant and hence *not* functorial
+--         2. We have no Mu (Pi PointF) -> Mu (Pi ColorPointF) function.
+--   Just as when we face this problem when writing recursive variant eliminators,
+--   the answer will be to rewrite CartPoint over generic type. 
+-- -}
 
 
--- WIP. I find this solution unsatisfactory.
+-- -- WIP. I find this solution unsatisfactory.
 CartPoint' : forall z : R [ * -> * ]. PointF < z => 
             (Pair Nat Nat -> Mu (Pi z) -> Mu (Pi z)) -> 
             Pair Nat Nat -> Mu (Pi z) -> Pi (PointF (Mu (Pi z)))    
@@ -108,7 +120,8 @@ CartPoint' = \ init p self.
             (add (sel (out self) #'y) (snd q)))) ,
      #'equal := \ q.
         and (equal (sel (out self) #'x) (sel (out q) #'x))
-            (equal (sel (out self) #'y) (sel (out q) #'y)))
+            (equal (sel (out self) #'y) (sel (out q) #'y)) ,
+     #'get := pair (sel (out self) #'x) (sel (out self) #'y))
 
 -- This encoding types in Cook et al because they rely on subtyping
 -- for in-time coercions: their development relies on the annotation 
@@ -118,36 +131,37 @@ CartPoint' = \ init p self.
 --     (Nat, Nat) -> t -> f t 
 -- which permits one to take the fixed-point of CartPoint', as the return types
 -- are convertible. Won't work here---need to think.
-newPoint : Pair Nat Nat -> Point 
-newPoint = \ p. in (fix (fix (CartPoint' [PointF]) p))
 
-tieKnot : forall z : R [ * -> * ]. PointF < z => Pair Nat Nat -> Mu (Pi z)
-tieKnot = sorry
+-- newPoint : Pair Nat Nat -> Point 
+-- newPoint = \ p. in (fix (fix (CartPoint' [PointF]) p))
+
+-- tieKnot : forall z : R [ * -> * ]. PointF < z => Pair Nat Nat -> Mu (Pi z)
+-- tieKnot = sorry
 
 
---------------------------------------------------------------------------------
--- With CartPoint made suitably generic, we can define a ColorPoint that inherits
--- from CartPoint.
+-- --------------------------------------------------------------------------------
+-- -- With CartPoint made suitably generic, we can define a ColorPoint that inherits
+-- -- from CartPoint.
 
-type Byte : *
-type Byte = Nat
+-- type Byte : *
+-- type Byte = Nat
 
-type Color : *
-type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
+-- type Color : *
+-- type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
 
-type ColorPointF : R[* -> *]
-type ColorPointF = forall z : R[* -> *]. PointF + {'color := Const Color} ~ z => z
+-- type ColorPointF : R[* -> *]
+-- type ColorPointF = forall z : R[* -> *]. PointF + {'color := Const Color} ~ z => z
 
-type ColorPoint : *
-type ColorPoint = Mu (Pi ColorPointF)
+-- type ColorPoint : *
+-- type ColorPoint = Mu (Pi ColorPointF)
 
--- colorPoint : (Triple Nat Nat Color -> ColorPoint -> ColorPoint) -> 
---              Triple Nat Nat Color -> ColorPoint -> ColorPoint
--- colorPoint = \ init p self. 
---     (CartPoint ( \ q. rprj (fix (init (prj p ++ prj q)))) (prj p) self)
---     ++ (#'color := thd p)
+-- -- colorPoint : (Triple Nat Nat Color -> ColorPoint -> ColorPoint) -> 
+-- --              Triple Nat Nat Color -> ColorPoint -> ColorPoint
+-- -- colorPoint = \ init p self. 
+-- --     (CartPoint ( \ q. rprj (fix (init (prj p ++ prj q)))) (prj p) self)
+-- --     ++ (#'color := thd p)
 
---------------------------------------------------------------------------------
--- Mixin modules
+-- --------------------------------------------------------------------------------
+-- -- Mixin modules
 
 
