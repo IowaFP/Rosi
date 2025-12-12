@@ -1,0 +1,107 @@
+import Ro.Base , Ro.Show , Data.Nat , Data.Tuple
+
+--------------------------------------------------------------------------------
+-- Simulating objects with recursive records
+-- using a standard encoding from Wand:
+--   - Type inference for record concatenation and multiple inheritance
+--     - https://www.cs.tufts.edu/~nr/cs257/archive/mitch-wand/types-simple-objects.pdf
+-- and Cook et al:
+--   - Inheritance is not Subtyping
+--     - https://www.cs.utexas.edu/~wcook/papers/InheritanceSubtyping90/CookPOPL90.pdf
+
+--------------------------------------------------------------------------------
+-- An example from Cook et al with class methods, mixed variant recursive types,
+-- and inheritance.
+
+-- Record types serve as interfaces. An object permits references to "this"
+-- (or "self"), which can be viewed as a recursive reference. Hence
+-- we declare the type of a Point as a functor.
+type PointF : R[* -> *]
+type PointF = {
+    'x     := Const Nat , 
+    'y     := Const Nat , 
+    'move  :=  \ Point. Pair Nat Nat -> Point , 
+    'equal :=  \ Point. Point -> Bool }
+
+type Point : *
+type Point = Mu (Pi PointF)
+
+printPoint : forall z : R[*]. {'x := Nat , 'y := Nat} < z => Pi z -> String
+printPoint = \ p. showPair showNat showNat (pair (sel p #'x) (sel p #'y))
+
+-- A class can be seen as an implementation of the interface with:
+--  - A class method initializing the object (and possibly more class methods)
+--  - A set of initial values
+CartPoint : (Pair Nat Nat -> Point -> Point) -> 
+            Pair Nat Nat -> Point -> Point
+CartPoint = \ init p self. in
+    (#'x := fst p , 
+     #'y := snd p ,
+     #'move := \ q. 
+        fix (init (pair 
+            (add (sel (out self) #'x) (fst q))
+            (add (sel (out self) #'y) (snd q)))) ,
+     #'equal := \ q.
+        and (equal (sel (out self) #'x) (sel (out q) #'x))
+            (equal (sel (out self) #'y) (sel (out q) #'y)))
+
+-- We tie the knot to get the object initializer
+newCartPoint : Pair Nat Nat -> Point
+newCartPoint = \ p. fix (fix CartPoint p)
+
+-- some examples
+p1 : Point
+p1 = newCartPoint (pair 0 1)
+
+p2 : Point 
+p2 = newCartPoint (pair 2 3)
+
+p3 : Point 
+p3 = sel (out p1) #'move (pair 3 4)
+
+p3str : String 
+p3str = printPoint (out p3)
+
+p1eqp2 : String
+p1eqp2 = showBool (sel (out p2) #'equal (sel (out p1) #'move (pair 2 2)))
+
+--------------------------------------------------------------------------------
+{- The definition of CartPoint above has tied the knot too soon. To illustrate,
+   let 
+     type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
+     type ColorPointInterface = PointF + {'color := Const Color}
+   and consider this definition of a color point, which extends CartPoint:
+     class ColorPoint (x : Nat, y : Nat, c : Color) 
+       extends CartPoint
+       implements ColorPointInterface:
+         method color : Color
+           return c 
+         method equal (p : ColorPoint) : Bool 
+           return super.equal(p) and 
+             (self.color = p.color)
+  We have two issues:
+    - The extension of CartPoint implies we will use the parent method CartPoint
+      to initialize the ColorPoint. However,         
+
+-}
+
+
+type Byte : *
+type Byte = Nat
+
+type Color : *
+type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
+
+type ColorPointF : R[* -> *]
+type ColorPointF = forall z : R[* -> *]. PointF + {'color := Const Color} ~ z => z
+
+type ColorPoint : *
+type ColorPoint = Mu (Pi ColorPointF)
+
+-- colorPoint : (Triple Nat Nat Color -> ColorPoint -> ColorPoint) -> 
+--              Triple Nat Nat Color -> ColorPoint -> ColorPoint
+-- colorPoint = \ init p self. 
+--     (CartPoint ( \ q. rprj (fix (init (prj p ++ prj q)))) (prj p) self)
+--     ++ (#'color := thd p)
+
+

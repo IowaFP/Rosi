@@ -4,28 +4,29 @@ import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
 Reading:
 
 # Compositional Programming & Object Algebras
-- Compositional Programming, Zhang, Sun, and Oliveira
-  - https://dl.acm.org/doi/pdf/10.1145/3460228
-- Feature-Oriented Programming with Object Algebras
-  - https://www.cs.utexas.edu/~wcook/Drafts/2012/FOPwOA.pdf     
-- Compositional Embeddings of Domain-Specific Languages, Sun, Dhandhania, Oliveira
-  - https://dl.acm.org/doi/pdf/10.1145/3563294      
-- Extensibility for the Masses: Practical Extensibility with Object Algebras
+- Extensibility for the Masses: Practical Extensibility with Object Algebras. ECOOP 2012
   - https://www.cs.utexas.edu/~wcook/Drafts/2012/ecoop2012.pdf 
-- Scrap your boilerplate with object algebras
-  - https://i.cs.hku.hk/~bruno/papers/oopsla2015.pdf
+- Feature-Oriented Programming with Object Algebras. ECOOP 2013
+  - https://www.cs.utexas.edu/~wcook/Drafts/2012/FOPwOA.pdf      
+- Scrap your boilerplate with object algebras. OOPSLA 2015
+  - https://i.cs.hku.hk/~bruno/papers/oopsla2015.pdf  
+- Compositional Programming, Zhang, Sun, and Oliveira. TOPLAS 2021
+  - https://dl.acm.org/doi/pdf/10.1145/3460228 
+- Compositional Embeddings of Domain-Specific Languages. OOPSLA 2022
+  - https://dl.acm.org/doi/pdf/10.1145/3563294      
 
 # Family polymorphism
-- Persimmon: Nested Family Polymorphism with Extensible Variant Types
+- Persimmon: Nested Family Polymorphism with Extensible Variant Types. OOPSLA 2024
   - https://dl.acm.org/doi/10.1145/3649836     
 
 # Tagless final
 - A number of papers cited here.
   - https://okmij.org/ftp/tagless-final/index.html
 - Typed Tagless Final Interpreters.
-  Perhaps the most important citation, as EP.ro shows that we can invert
-  the initial representation to the final.
-  - https://okmij.org/ftp/tagless-final/course/lecture.pdf
+  - Published paper: 
+    - https://www.cambridge.org/core/services/aop-cambridge-core/content/view/7B2DC44A2127EBBA71ADE63809D9425F/S0956796809007205a.pdf/finally-tagless-partially-evaluated-tagless-staged-interpreters-for-simpler-typed-languages.pdf
+  - additional lecture notes:
+    - https://okmij.org/ftp/tagless-final/course/lecture.pdf
 # Questions
   - Are object algebras dual to F-Algebras? That is, co-F-algebras.
     Some answers:

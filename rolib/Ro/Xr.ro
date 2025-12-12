@@ -21,6 +21,9 @@ cata = \ map a. fix (\ cata x. a (map cata (out x)))
 rinj : forall f g : R[* -> *]. f < g => Pi (Functor f) -> Mu (Sigma f) -> Mu (Sigma g)
 rinj = \d. cata (fmapS d) (o in inj)
 
+rprj : forall f g : R[* -> *]. f < g => Pi (Functor f) -> Mu (Pi g) -> Mu (Pi f)
+rprj = sorry
+
 -------------------------------------------------------------------------------
 -- Bounded algebras
 
