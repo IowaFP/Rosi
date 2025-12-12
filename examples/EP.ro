@@ -80,7 +80,7 @@ invert = /\ Cases. /\ Interface. \ d.
 
 -- When Cases = ExprF and Interface = ExprInterface, the return type of `invert` has
 -- the structure:
---  { 'Lit  := Nat -> Pi {'eval := Nat , 'print := Nat} ,
+--  { 'Lit  := Nat -> Pi ExprInterface ,
 --    'Add  := Pair (Pi ExprInterface) (Pi ExprInterface) -> Pi ExprInterface ,
 --    'Mult := Pair (Pi ExprInterface) (Pi ExprInterface) -> Pi ExprInterface
 --  }
