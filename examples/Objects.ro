@@ -97,19 +97,32 @@ p1eqp2 = showBool (sel (out p2) #'equal (sel (out p1) #'move (pair 2 2)))
 
 -- WIP. I find this solution unsatisfactory.
 CartPoint' : forall z : R [ * -> * ]. PointF < z => 
-            (Pair Nat Nat -> (Pi z) (Mu (Pi z)) -> (Pi z) (Mu (Pi z))) -> 
-            Pair Nat Nat -> (Pi z) (Mu (Pi z)) -> Pi (PointF (Mu (Pi z)))    
+            (Pair Nat Nat -> Mu (Pi z) -> Mu (Pi z)) -> 
+            Pair Nat Nat -> Mu (Pi z) -> Pi (PointF (Mu (Pi z)))    
 CartPoint' = \ init p self.
     (#'x := fst p , 
      #'y := snd p ,
      #'move := \ q.
         fix (init (pair 
-            (add (sel self #'x) (fst q))
-            (add (sel self #'y) (snd q)))) ,
-     #'equal := sorry)
-        -- and (equal (sel (out self) #'x) (sel (out q) #'x))
-        --     (equal (sel (out self) #'y) (sel (out q) #'y)))
+            (add (sel (out self) #'x) (fst q))
+            (add (sel (out self) #'y) (snd q)))) ,
+     #'equal := \ q.
+        and (equal (sel (out self) #'x) (sel (out q) #'x))
+            (equal (sel (out self) #'y) (sel (out q) #'y)))
 
+-- This encoding types in Cook et al because they rely on subtyping
+-- for in-time coercions: their development relies on the annotation 
+-- t < f t in the type:
+--   forall t. t < f t.
+--     ((Nat, Nat) -> t -> t) ->
+--     (Nat, Nat) -> t -> f t 
+-- which permits one to take the fixed-point of CartPoint', as the return types
+-- are convertible. Won't work here---need to think.
+newPoint : Pair Nat Nat -> Point 
+newPoint = \ p. in (fix (fix (CartPoint' [PointF]) p))
+
+tieKnot : forall z : R [ * -> * ]. PointF < z => Pair Nat Nat -> Mu (Pi z)
+tieKnot = sorry
 
 
 --------------------------------------------------------------------------------
