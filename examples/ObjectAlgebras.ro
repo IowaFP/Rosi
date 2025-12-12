@@ -4,14 +4,21 @@ import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
 Reading:
 
 # Compositional Programming & Object Algebras
-- Compositional Programming, Zhang, Sun, and Oliveira.
+- Compositional Programming, Zhang, Sun, and Oliveira
   - https://dl.acm.org/doi/pdf/10.1145/3460228
-- Feature-Oriented Programming with Object Algebras.
+- Feature-Oriented Programming with Object Algebras
   - https://www.cs.utexas.edu/~wcook/Drafts/2012/FOPwOA.pdf     
 - Compositional Embeddings of Domain-Specific Languages, Sun, Dhandhania, Oliveira
   - https://dl.acm.org/doi/pdf/10.1145/3563294      
+- Extensibility for the Masses: Practical Extensibility with Object Algebras
+  - https://www.cs.utexas.edu/~wcook/Drafts/2012/ecoop2012.pdf 
+- Scrap your boilerplate with object algebras
+  - https://i.cs.hku.hk/~bruno/papers/oopsla2015.pdf
 
 # Family polymorphism
 - Persimmon: Nested Family Polymorphism with Extensible Variant Types
   - https://dl.acm.org/doi/10.1145/3649836     
+
+# Questions
+  - Are object algebras dual to F-Algebras? That is, co-algebras.
 -}
