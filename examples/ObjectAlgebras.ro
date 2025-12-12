@@ -19,6 +19,17 @@ Reading:
 - Persimmon: Nested Family Polymorphism with Extensible Variant Types
   - https://dl.acm.org/doi/10.1145/3649836     
 
+# Tagless final
+- A number of papers cited here.
+  - https://okmij.org/ftp/tagless-final/index.html
+
 # Questions
-  - Are object algebras dual to F-Algebras? That is, co-algebras.
+  - Are object algebras dual to F-Algebras? That is, co-F-algebras.
+    Some answers:
+    - Final Algebra Semantics is Observational Equivalence
+      - https://prl.khoury.northeastern.edu/blog/2017/09/27/final-algebra-semantics-is-observational-equivalence/
+    - Wand has a paper "Final Algebra Semantics and Data Type Extension", whose pdf I cannot find.    
+  - How are object algebras and final-tagless related
+  - What limitations of object algebras have been overcome by recent publications,
+    and what is the state of the art
 -}
