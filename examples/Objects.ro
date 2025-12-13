@@ -191,6 +191,28 @@ p3Str = printPoint (out p3')
 -- --     ++ (#'color := thd p)
 
 -- --------------------------------------------------------------------------------
--- -- Mixin modules
+-- Generalization
 
+type Class : R[* -> *] -> R[*] -> *
+type Class = \ f args. forall z : R [ * -> * ]. f < z => 
+            (Pi args -> (Mu (Pi z)) -> (Mu (Pi z))) -> 
+             Pi args -> (Mu (Pi z)) -> (Pi f) (Mu (Pi z))
 
+new : forall f : R[* -> *], args : R[*].  
+      Class f args ->
+      Pi args -> Mu (Pi f)
+new = /\ f. \ class args. fix (fixC 
+    (\ f p d. in (f p d)) (class [f]) args) 
+
+extend : forall f g z : R[* -> *], fargs , gargs : R[*].
+         f < g , z < g => 
+         (Pi fargs -> Mu (Pi g) -> Mu (Pi g)) -> 
+         (Pi gargs -> Pi fargs) ->
+         Class f gargs -> 
+         ((Pi f) (Mu (Pi g)) -> (Pi z) (Mu (Pi g))) ->
+         Class g gargs 
+extend = \ construct transformArgs super overrides init gargs self. 
+  prj (super construct (transformArgs gargs) self) 
+  ++ overrides (prj (super construct (transformArgs gargs) self))
+
+          
