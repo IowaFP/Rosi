@@ -1,4 +1,4 @@
-import Ro.Base , Ro.Show , Data.Nat , Data.Tuple
+import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.Functor
 
 --------------------------------------------------------------------------------
 -- Simulating objects with recursive records
@@ -23,6 +23,16 @@ type PointF = {
     'move  :=  \ Point. Pair Nat Nat -> Point , 
     'equal :=  \ Point. Point -> Bool ,
     'get   := Const (Pair Nat Nat) }
+
+-- (For the categorically minded: yes, it is not really a *functor*, as it is mixed-variant.)
+fmapPointF : Pi (Functor PointF)
+fmapPointF = 
+    (#'x := /\ a b. \ f x. x , 
+     #'y := /\ a b. \ f y. y , 
+     #'move := /\ a b. \ f move p. f (move p)  , 
+     #'equal := /\ a b. \ f equal. sorry , -- <-- Negative occurrence in #'equal
+     #'get := /\ a b. \ f p. p
+     )
 
 type Point : *
 type Point = Mu (Pi PointF)
@@ -78,62 +88,69 @@ test1 : String
 test1 = showPair showNat showNat (pair (sel (out p4) #'x) (sel (out p4) #'y))
 
 -- --------------------------------------------------------------------------------
--- {- The definition of CartPoint above has tied the recursive knot too soon. 
---     To illustrate, let 
---      type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
---      type ColorPointF = PointF + {'color := Const Color}
---      type ColorPointI = Mu (Pi ColorPointF)
---    and consider this definition of a color point class, which extends CartPoint:
---      class ColorPoint (x : Nat, y : Nat, c : Color) 
---        extends CartPoint
---        implements ColorPointF:
---          method color : Color
---            return c 
---          method equal (p : ColorPoint) : Bool 
---            return super.equal(p) and 
---              (self.color = p.color)
---   We have two issues:
---     - The extension of CartPoint implies we will use the parent method CartPoint
---       to initialize the ColorPoint. Something like:
---         ColorPoint : (x : Nat, y : Nat, c : Color) -> ColorPoint
---         ColorPoint = \ p. newCartPoint p ++ (#'color := p.c)
---       However, (newCartPoint p) has subdata at type Mu (Pi PointF), and *not*
---       at type Mu (Pi ColorPointF). This suggests we would need to map over 
---       (out (newCartPoint p)) : (Pi PointF) (Mu (Pi PointF)). But we cannot!
---         1. PointF is mixed-variant and hence *not* functorial
---         2. We have no Mu (Pi PointF) -> Mu (Pi ColorPointF) function.
---   Just as when we face this problem when writing recursive variant eliminators,
---   the answer will be to rewrite CartPoint over generic type. 
--- -}
+{- The definition of CartPoint above has tied the recursive knot too soon. 
+    To illustrate, let 
+     type Color = Pi {'r := Byte , 'g := Byte , 'b := Byte}
+     type ColorPointF = PointF + {'color := Const Color}
+     type ColorPointI = Mu (Pi ColorPointF)
+   and consider this definition of a color point class, which extends CartPoint:
+     class ColorPoint (x : Nat, y : Nat, c : Color) 
+       extends CartPoint
+       implements ColorPointF:
+         method color : Color
+           return c 
+         method equal (p : ColorPoint) : Bool 
+           return super.equal(p) and 
+             (self.color = p.color)
+  We have two issues:
+    - The extension of CartPoint implies we will use the parent method CartPoint
+      to initialize the ColorPoint. Something like:
+        ColorPoint : (x : Nat, y : Nat, c : Color) -> ColorPoint
+        ColorPoint = \ p. in (out (newCartPoint (prj p)) ++ (#'color := p.c))
+      However, (out (newCartPoint p)) has subdata at type Mu (Pi PointF), and *not*
+      at type Mu (Pi ColorPointF). This suggests we would need to map over 
+      (out (newCartPoint p)) : (Pi PointF) (Mu (Pi PointF)). But we cannot!
+        1. PointF is mixed-variant and hence *not* functorial
+        2. We have no Mu (Pi PointF) -> Mu (Pi ColorPointF) function.
+
+  The encoding in Cook et al types because they rely on "F bounded polymorphism",
+  a form of polymorphism that identifies records structurally equivalent to one another
+  but not necessarily in a subtyping relationship, for in-time coercions. 
+  The annotation t < f t in the type:
+    C : forall t. t < f t.
+        ((Nat, Nat) -> t -> t) ->
+        (Nat, Nat) -> t -> f t 
+  where t < f t implies that t and f t are convertible modulo projection, 
+  permits one to take the fixed-point of C. 
+-}
 
 
--- -- WIP. I find this solution unsatisfactory.
+-- Broken. One thought is to take in the complement:
+--   Pi (z - PointF) (Mu (Pi z))
+-- so that we may change the input/return type to Mu (Pi z).
+-- Alternatively...
 CartPoint' : forall z : R [ * -> * ]. PointF < z => 
-            (Pair Nat Nat -> Mu (Pi z) -> Mu (Pi z)) -> 
-            Pair Nat Nat -> Mu (Pi z) -> Pi (PointF (Mu (Pi z)))    
-CartPoint' = \ init p self.
+            (Pair Nat Nat -> (Mu (Pi z)) -> (Mu (Pi z))) -> 
+             Pair Nat Nat -> (Mu (Pi z)) -> (Pi PointF) (Mu (Pi z))
+CartPoint' = \ init p self. 
     (#'x := fst p , 
      #'y := snd p ,
      #'move := \ q.
         fix (init (pair 
             (add (sel (out self) #'x) (fst q))
             (add (sel (out self) #'y) (snd q)))) ,
-     #'equal := \ q.
+     #'equal := \ q. 
         and (equal (sel (out self) #'x) (sel (out q) #'x))
             (equal (sel (out self) #'y) (sel (out q) #'y)) ,
      #'get := pair (sel (out self) #'x) (sel (out self) #'y))
 
--- This encoding types in Cook et al because they rely on subtyping
--- for in-time coercions: their development relies on the annotation 
--- t < f t in the type:
---   forall t. t < f t.
---     ((Nat, Nat) -> t -> t) ->
---     (Nat, Nat) -> t -> f t 
--- which permits one to take the fixed-point of CartPoint', as the return types
--- are convertible. Won't work here---need to think.
+theProblem : forall x y : R[* -> *], a : *. x < y => 
+        ((a -> Mu (Pi y) -> Mu (Pi y)) -> (a -> Mu (Pi y) -> Pi x (Mu (Pi y)))) -> 
+        Pair (a -> Mu (Pi y) -> Mu (Pi y)) (Mu (Pi y))
+theProblem = sorry     
 
 -- newPoint : Pair Nat Nat -> Point 
--- newPoint = \ p. in (fix (fix (CartPoint' [PointF]) p))
+-- newPoint = \ p. fix (fix CartPoint' p) 
 
 -- tieKnot : forall z : R [ * -> * ]. PointF < z => Pair Nat Nat -> Mu (Pi z)
 -- tieKnot = sorry
