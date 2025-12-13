@@ -34,6 +34,12 @@ nth = fix (\f l n.
             | case #'Succ (f (tail l))
             ))
 
+map : forall a b. (a -> b) -> List a -> List b
+map = fix (\ map f xs.
+              match (out xs)
+                ( case #'Nil (const nil)
+                | case #'Cons (\ ys. cons (f (fst ys)) (map f (snd ys)))))
+
 foldr : forall a b. (a -> b -> b) -> b -> List a -> b 
 foldr = fix (\ foldr f b xs. match (out xs) 
           ((case #'Nil (const b))

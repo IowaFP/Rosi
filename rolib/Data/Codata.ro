@@ -1,0 +1,83 @@
+import Ro.Base , Data.List , Data.Nat
+
+-- --------------------------------------------------------------------------------
+-- Streams
+
+type StreamF : * -> R[ * -> * ]
+type StreamF = \ a. {'hd := Const a , 'tl := \ x. x }
+
+type Stream : * -> *
+type Stream = \ a. Mu (Pi (StreamF a))
+
+hd : forall a. Stream a -> a
+hd = \ d. sel (out d) #'hd 
+
+tl : forall a. Stream a -> Stream a
+tl = \ d. sel (out d) #'tl
+
+-- Convert a sequence of nats into a Stream, starting at n
+seq : (Nat -> Nat) -> Nat -> Stream Nat 
+seq = \ f. fix (\ seq n. in (#'hd := n , #'tl := seq (succ n)))
+
+-- Return only the even elements of a stream
+even : forall a. Stream a -> Stream a 
+even = fix (\ even xs. in
+    (#'hd := hd xs, 
+     #'tl := even (tl (tl xs))))
+
+-- the odd
+odd : forall a. Stream a -> Stream a 
+odd = \ xs. even (tl xs)
+
+-- grab n elements from a stream
+grab : forall a. Nat -> Stream a -> List a 
+grab = fix (\ grab n xs. match (out n)
+    ( case #'Zero (const nil)
+    | case #'Succ (\ m. cons (hd xs) (grab m (tl xs)))))
+
+-- example
+firstTen : String
+firstTen = showList showNat (grab 10  (even (seq id 0)))
+
+-- --------------------------------------------------------------------------------
+-- Or a rose by another other name
+
+type RoseF : * -> R[* -> *]
+type RoseF = \ a. {'node := Const a , 'children := List }
+
+type Rose : * -> *
+type Rose = \ a. Mu (Pi (RoseF a))
+
+node : forall x : R[* -> *] , t : *. {'node := Const t} < x => Mu (Pi x) -> t
+node     = \ d. sel (out d) #'node 
+
+children : forall x : R[* -> *] , t : *. {'children := List} < x => Mu (Pi x) -> List (Mu (Pi x))
+children = \ d. sel (out d) #'children
+
+prune : forall a. Nat -> Rose a -> Rose a 
+prune = fix (\ prune n t. in
+    (#'node     := node t , 
+     #'children := match (out n)
+        ( (case #'Zero (const nil)) 
+        | (case #'Succ (\ m. map (prune m) (children t))))))
+
+-- --------------------------------------------------------------------------------
+-- Mendler-style coalgebras
+-- For reference: https://arxiv.org/pdf/2005.00199
+
+
+type MCoAlgebra : (* -> *) -> * -> * 
+type MCoAlgebra = \ f x. forall r : *. (x -> r) -> x -> f r
+
+coit : forall f : * -> * , x : *. MCoAlgebra f x -> x -> Mu f
+coit =  fix (\ coit alg x. in (alg (coit alg) x))
+
+corec : forall f : * -> *, x : *. 
+        (forall r : *. (Mu f -> r) -> (x -> r) -> x -> f r) ->
+        x -> Mu f 
+corec = fix (\ corec alg x. in (alg id (corec alg) x))
+
+cov : forall f : * -> *, x : *. 
+      (forall r : *. (f r -> r) -> (x -> r) -> x -> f r) ->
+      x -> Mu f 
+cov = fix (\ cov alg x. in (alg in (cov alg) x))
