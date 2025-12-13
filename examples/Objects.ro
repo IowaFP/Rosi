@@ -120,15 +120,12 @@ test1 = showPair showNat showNat (pair (sel (out p4) #'x) (sel (out p4) #'y))
     C : forall t. t < f t.
         ((Nat, Nat) -> t -> t) ->
         (Nat, Nat) -> t -> f t 
-  where t < f t implies that t and f t are convertible modulo projection, 
-  permits one to take the fixed-point of C. 
+  where t < f t implies that t has a subset of the structure of f t. 
+  When t = f t, we are permitted to take the fixed-point of C. Hence the crux
+  of the problem is that Cook's system has equirecursive types whereas we
+  have isorecursive types.
 -}
 
-
--- Broken. One thought is to take in the complement:
---   Pi (z - PointF) (Mu (Pi z))
--- so that we may change the input/return type to Mu (Pi z).
--- Alternatively...
 CartPoint' : forall z : R [ * -> * ]. PointF < z => 
             (Pair Nat Nat -> (Mu (Pi z)) -> (Mu (Pi z))) -> 
              Pair Nat Nat -> (Mu (Pi z)) -> (Pi PointF) (Mu (Pi z))
@@ -144,17 +141,32 @@ CartPoint' = \ init p self.
             (equal (sel (out self) #'y) (sel (out q) #'y)) ,
      #'get := pair (sel (out self) #'x) (sel (out self) #'y))
 
-theProblem : forall x y : R[* -> *], a : *. x < y => 
-        ((a -> Mu (Pi y) -> Mu (Pi y)) -> (a -> Mu (Pi y) -> Pi x (Mu (Pi y)))) -> 
-        Pair (a -> Mu (Pi y) -> Mu (Pi y)) (Mu (Pi y))
-theProblem = sorry     
+-- A hack to permit fixed-points of heterogeneously-typed
+-- functions is to compose the fixed-point with a conversion.
+-- (This is quite ugly.)
+fixC : forall a b : *. (b -> a) -> (a -> b) -> a
+fixC = \ g f. fix (o g f)
 
--- newPoint : Pair Nat Nat -> Point 
--- newPoint = \ p. fix (fix CartPoint' p) 
+-- We are only able to take the fixed-point when we instantiate
+-- CartPoint' with PointF. 
+newPoint : Pair Nat Nat -> Point 
+newPoint = \ p. fix (fixC 
+    [Pair Nat Nat -> (Mu (Pi PointF)) -> (Mu (Pi PointF))] 
+    [Pair Nat Nat -> (Mu (Pi PointF)) -> (Pi PointF) (Mu (Pi PointF))] 
+    (\ f p d. in (f p d)) (CartPoint' [PointF]) p) 
 
--- tieKnot : forall z : R [ * -> * ]. PointF < z => Pair Nat Nat -> Mu (Pi z)
--- tieKnot = sorry
+-- testing
+p1' : Point
+p1' = newPoint (pair 0 0)
 
+p2' : Point 
+p2' = newPoint (pair 1 1)
+
+p3' : Point 
+p3' = sel (out p1') #'move (pair 3 4)
+
+p3Str : String 
+p3Str = printPoint (out p3')
 
 -- --------------------------------------------------------------------------------
 -- -- With CartPoint made suitably generic, we can define a ColorPoint that inherits
