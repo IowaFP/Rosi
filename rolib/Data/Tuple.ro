@@ -1,13 +1,19 @@
 import Ro.Base , Ro.Show
 
+type PairRow : * -> * -> R[ * ]
+type PairRow = \ t u. {'1 := t , '2 := u}
+
 type Pair : * -> * -> *
-type Pair = \ t u. Pi {'1 := t, '2 := u}
+type Pair = \ t u. Pi (PairRow t u)
 
 pair : forall t u. t -> u -> Pair t u
 pair = \x y. (#'1 := x, #'2 := y)
 
+type TripleRow : * -> * -> * -> R[ * ]
+type TripleRow = \ t u v. {'1 := t , '2 := u , '3 := v}
+
 type Triple : * -> * -> * -> *
-type Triple = \ t u v. Pi {'1 := t, '2 := u, '3 := v}
+type Triple = \ t u v. Pi (TripleRow t u v)
 
 triple : forall t u v. t -> u -> v -> Triple t u v
 triple = \x y z. pair x y ++ (#'3 := z)
