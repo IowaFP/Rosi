@@ -17,6 +17,10 @@ Reading:
 - Compositional Embeddings of Domain-Specific Languages. OOPSLA 2022
   - https://dl.acm.org/doi/pdf/10.1145/3563294      
 
+# The visitor pattern
+- The Visitor Pattern as a Reusable, Generic, Type-Safe Component
+  - https://www.cs.ox.ac.uk/jeremy.gibbons/publications/visitor.pdf
+
 # Other solutions to the extended expression problem
 - super-Charging Object-Oriented Programming Through Precise Typing of Open Recursion
   - https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ECOOP.2023.11
@@ -35,19 +39,100 @@ Reading:
     - https://okmij.org/ftp/tagless-final/course/lecture.pdf
 
 -}
-
 --------------------------------------------------------------------------------
--- Let's start with the visitor pattern, or an *internal visitor*
+-- The usual expression problem in OOP fashion
 
--- IntAlg is an "object algebra"
+type Expr : R[*]
+type Expr = {'eval := Nat}
+
+AddExpr : Pi Expr -> Pi Expr -> Pi Expr 
+AddExpr = \ left right. (#'eval := add (sel left #'eval) (sel right #'eval))
+
+LitExpr : Nat -> Pi Expr
+LitExpr = \ n. (#'eval := n)
+
+-- IntAlg is an "object algebra interface"
 type IntAlg : R[ * -> *]
 type IntAlg = {'lit := \a. Nat -> a , 'add := \a. a -> a -> a}
 
+--------------------------------------------------------------------------------
+-- The visitor pattern, or a *functional internal visitor*, as per 
+-- Oliveira & Cook 2012
+
+-- The visitor pattern defines 'accept and 'visit methods.
 type Exp : R[*]
 type Exp = {'accept := forall a. Pi (IntAlg a) -> a }
 
-Add : Pi Exp -> Pi Exp -> Pi Exp 
-Add = \ left right. (#'accept := \ vis. 
+AddExp : Pi Exp -> Pi Exp -> Pi Exp 
+AddExp = \ left right. (#'accept := \ vis. 
   sel vis #'add
     (sel left  #'accept vis)
     (sel right #'accept vis))
+
+LitExp : Nat -> Pi Exp 
+LitExp = \ n. (#'accept := \ vis. sel vis #'lit n)
+
+EvalVisitor : Pi (IntAlg Nat)
+EvalVisitor = (#'lit := id , #'add := \ l r. add l r)
+
+-- Now it's easy to add new methods, but difficult to add new cases.
+PrintVisitor : Pi (IntAlg String)
+PrintVisitor = (#'lit := showNat , #'add := \ l r. l ^ " + " ^ r)
+
+-- Here is how you invoke the PrintVisitor in the Visitor pattern
+pwinted : String 
+pwinted = sel (AddExp (LitExp 1) (LitExp 2)) #'accept PrintVisitor
+
+evaluated : Nat 
+evaluated = sel (AddExp (LitExp 1) (LitExp 2)) #'accept EvalVisitor
+
+--Adding new cases in the visitor pattern is hard: the accept method has type
+--   forall a. Pi (IntAlg a) -> a
+-- where `a` is parametric, so we may *only* use the input record to construct an `a` value.
+--   Mult : Pi Exp -> Pi Exp -> Pi Exp
+--   Mult = \ l r. (#'accept := \ vis. ?)
+-- Changes to the `Exp` interface will incur changes to all visitors. We have
+-- very effectively traded the EP along one axis to the EP along the other.
+
+--------------------------------------------------------------------------------
+-- Going back to the regular expression problem...
+
+
+-- As the authors call it, we can incur a "retroactive implementation" of printing
+-- for arithmetic expressions.
+type IPrint : R[*]
+type IPrint = {'print := String}
+
+-- ... by using an object algebra
+IntPrint : Pi (IntAlg (Pi IPrint))
+IntPrint = (#'lit := \n. (#'print := showNat n), 
+            #'add := \ a b. (#'print := sel a #'print ^ " + " ^ sel b #'print))
+
+-- The authors advocate for an implementation of an IntAlg as a factory,
+-- calling _this_ the "object algebra" (as it implements the object algebra
+-- interface).
+IntFactory : Pi (IntAlg (Pi Expr))
+IntFactory = (#'lit := LitExpr , #'add := AddExpr)
+
+-- The authors now write:
+--   The difference to the visitor pattern is that we do not add `accept`
+--   methods to Exp. Instead, following the approach presented in Section 3,
+--   we repace uses of concrete constructors in the client code by the 
+--   corresponding methods in the object algebra.
+
+-- (There is a waft of bullshit.) I believe what they are arguing for is:
+Lit : forall a. Pi (IntAlg a) -> Nat -> a 
+Lit = \ d. sel d #'lit 
+
+Add : forall a. Pi (IntAlg a) -> a -> a -> a 
+Add = \ d. sel d #'add
+
+expr : forall a. Pi (IntAlg a) -> a
+expr = \ d. Add d (Lit d 1) (Lit d 2)  
+
+test : Pair Nat String 
+test = pair (sel (expr IntFactory) #'eval) (sel (expr IntPrint) #'print)
+
+--------------------------------------------------------------------------------
+-- It's necessary, to claim a solution to the EP, to also demonstrate
+-- that it is (still) easy to add new cases.
