@@ -1,5 +1,4 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# OPTIONS_GHC -fmax-pmcheck-models=50 #-}
 module Checker.Unify (module Checker.Unify) where
 
 import Control.Monad
