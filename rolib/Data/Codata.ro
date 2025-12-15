@@ -81,3 +81,12 @@ cov : forall f : * -> *, x : *.
       (forall r : *. (f r -> r) -> (x -> r) -> x -> f r) ->
       x -> Mu f 
 cov = fix (\ cov alg x. in (alg in (cov alg) x))
+
+-- --------------------------------------------------------------------------------
+-- Programming with co-algebras
+
+mapAlg : forall a b. (a -> b) -> MCoAlgebra (Pi (StreamF b)) (Stream a)
+mapAlg = \ f map xs. (#'hd := f (hd xs) , #'tl := map (tl xs))
+
+streamMap : forall a b. (a -> b) -> Stream a -> Stream b
+streamMap = \f. coit (mapAlg f)

@@ -44,8 +44,8 @@ print = fix (\ print e. match (out e)
  | case #'Mult (\ p. (print (fst p)) ^ " * " ^ (print (snd p)))))
 
 -- Now an implementation of the interface is expressed succinctly as:
-implementation : Pi (Expr -> ExprInterface)
-implementation = (#'eval := eval , #'print := print)
+implementation' : Pi (Expr -> ExprInterface)
+implementation' = (#'eval := eval , #'print := print)
 
 -------------------------------------------------------------------------------
 -- For my next trick, I will need some plumbing.
@@ -67,15 +67,15 @@ printAlg = \ print e.  match e
 implementation : Pi (MAlg (Sigma ExprF) ExprInterface)
 implementation = (#'eval := evalAlg , #'print := printAlg)
 
--- The punchline: we may *invert* from a variant implementation to a record implementation. 
+-- The punchline: we may *dualize* from a variant implementation to a record implementation. 
 -- Stated first generically:
-invert : forall Cases : R[* -> *], Interface : R[*]. 
+dualize : forall Cases : R[* -> *], Interface : R[*]. 
          Pi (MAlg (Sigma Cases) Interface) -> Pi ((Cases (Pi Interface)) -> Pi Interface)
-invert = /\ Cases. /\ Interface. \ d. 
+dualize = /\ Cases. /\ Interface. \ d. 
     syn #(\t. t (Pi Interface) -> Pi Interface) (\ caseLabel e.
         syn #(\t. t) (\ interfaceLabel. sel d interfaceLabel (\ v. sel v interfaceLabel) (con caseLabel e)))
 
--- When Cases = ExprF and Interface = ExprInterface, the return type of `invert` has
+-- When Cases = ExprF and Interface = ExprInterface, the return type of `dualize` has
 -- the structure:
 --  { 'Lit  := Nat -> Pi ExprInterface ,
 --    'Add  := Pair (Pi ExprInterface) (Pi ExprInterface) -> Pi ExprInterface ,
@@ -83,6 +83,9 @@ invert = /\ Cases. /\ Interface. \ d.
 --  }
 -- precisely the set of constructors we set out with.
 
--- Sadly, the concrete case does not type check :(
-invertExpr : Pi ((ExprF (Pi ExprInterface)) -> Pi ExprInterface)
-invertExpr = invert [ExprF] [ExprInterface] implementation
+dualizeExpr : Pi ((ExprF (Pi ExprInterface)) -> Pi ExprInterface)
+dualizeExpr = dualize [ExprF] [ExprInterface] implementation
+
+
+
+

@@ -209,14 +209,14 @@ type ColorPoint = Mu (Pi ColorPointF)
 -- (cartPoint) to construct `super`, then overwrites super's `equal` method.
 colorPoint : Class ColorPointF (TripleRow Nat Nat Color)
 colorPoint = /\ t. \ init p self.
-  ( \ super. prj super ++ 
+  let super = (cartPoint [t]
+                (\ q. init (triple (fst q) (snd q) (thd p))) 
+                (pair (fst p) (snd p)) 
+                self) ;
+  (prj super ++ 
     (#'color := (thd p) , 
      #'equal := \ q. and (sel super #'equal q) 
                          (equalColor (sel (out self) #'color) (sel (out q) #'color)))) 
-  (cartPoint [t]
-    (\ q. init (triple (fst q) (snd q) (thd p))) 
-    (pair (fst p) (snd p)) 
-    self)
 
 c1 : ColorPoint 
 c1 = new colorPoint (triple 1 2 black)

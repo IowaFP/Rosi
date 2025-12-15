@@ -8,12 +8,18 @@ Reading:
   - https://www.cs.utexas.edu/~wcook/Drafts/2012/ecoop2012.pdf 
 - Feature-Oriented Programming with Object Algebras. ECOOP 2013
   - https://www.cs.utexas.edu/~wcook/Drafts/2012/FOPwOA.pdf      
+- From Object Algebras to Attribute Grammars. OOPSLA 2014
+  - https://www.informatik.uni-marburg.de/~rendel/oa2ag/rendel14object.pdf
 - Scrap your boilerplate with object algebras. OOPSLA 2015
   - https://i.cs.hku.hk/~bruno/papers/oopsla2015.pdf  
 - Compositional Programming, Zhang, Sun, and Oliveira. TOPLAS 2021
   - https://dl.acm.org/doi/pdf/10.1145/3460228 
 - Compositional Embeddings of Domain-Specific Languages. OOPSLA 2022
   - https://dl.acm.org/doi/pdf/10.1145/3563294      
+
+# Other solutions to the extended expression problem
+- super-Charging Object-Oriented Programming Through Precise Typing of Open Recursion
+  - https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ECOOP.2023.11
 
 # Family polymorphism
 - Persimmon: Nested Family Polymorphism with Extensible Variant Types. OOPSLA 2024
@@ -27,13 +33,21 @@ Reading:
     - https://www.cambridge.org/core/services/aop-cambridge-core/content/view/7B2DC44A2127EBBA71ADE63809D9425F/S0956796809007205a.pdf/finally-tagless-partially-evaluated-tagless-staged-interpreters-for-simpler-typed-languages.pdf
   - additional lecture notes:
     - https://okmij.org/ftp/tagless-final/course/lecture.pdf
-# Questions
-  - Are object algebras dual to F-Algebras? That is, co-F-algebras.
-    Some answers:
-    - Final Algebra Semantics is Observational Equivalence
-      - https://prl.khoury.northeastern.edu/blog/2017/09/27/final-algebra-semantics-is-observational-equivalence/
-    - Wand has a paper "Final Algebra Semantics and Data Type Extension", whose pdf I cannot find.    
-  - How are object algebras and final-tagless related
-  - What limitations of object algebras have been overcome by recent publications,
-    and what is the state of the art
+
 -}
+
+--------------------------------------------------------------------------------
+-- Let's start with the visitor pattern, or an *internal visitor*
+
+-- IntAlg is an "object algebra"
+type IntAlg : R[ * -> *]
+type IntAlg = {'lit := \a. Nat -> a , 'add := \a. a -> a -> a}
+
+type Exp : R[*]
+type Exp = {'accept := forall a. Pi (IntAlg a) -> a }
+
+Add : Pi Exp -> Pi Exp -> Pi Exp 
+Add = \ left right. (#'accept := \ vis. 
+  sel vis #'add
+    (sel left  #'accept vis)
+    (sel right #'accept vis))
