@@ -106,9 +106,5 @@ declName (TyDecl x _ _) = x
 
 scopeProg :: [Decl] -> ScopeM [Decl]
 scopeProg [] = return []
-scopeProg (d@(TmDecl x _ _) : ds)
-  | x `elem` map declName ds = throwError (ErrDuplicateDefinition x)
-  | otherwise = (:) <$> scope d <*> bindGVar x (scopeProg ds)
-scopeProg (d@(TyDecl x _ _) : ds)
-  | x `elem` map declName ds = throwError (ErrDuplicateDefinition x)
-  | otherwise = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)
+scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindGVar x (scopeProg ds)
+scopeProg (d@(TyDecl x _ _) : ds) = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)

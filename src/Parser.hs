@@ -381,7 +381,12 @@ defns moduleNames tls
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
-  | otherwise = return (Prog (concat imports, map mkDecl names))
+  | otherwise =
+    do ds <- mapM mkDecl names
+       return (Prog (concat imports, ds))
+
+
+    -- return (Prog (concat imports, map mkDecl names))
   where -- TODO: Why would not we *not* traverse this list four times?
         termDefs = [(x, t) | (x, TermDef t) <- tls]
         typeSigs = [(x, t) | (x, TypeSig t) <- tls]
@@ -402,13 +407,30 @@ defns moduleNames tls
         unmatchedTypeDefs = filter (`notElem` map fst kindSigs) (map fst typeDefs)
         unmatchedKindSigs = filter (`notElem` map fst typeDefs) (map fst kindSigs)
 
-        mkDecl x = fromMaybe (error $ "in building declaration of " ++ x) decl where
-          decl = do tm <- lookup x termDefs
-                    return (TmDecl (x : moduleNames) (lookup x typeSigs) tm)
-                 `mplus`
-                 do k <- lookup x kindSigs
-                    ty <- lookup x typeDefs
-                    return (TyDecl (x : moduleNames) k ty)
+        lookups x = map snd . filter ((x ==) . fst)
+
+        mkDecl x =
+          case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs) of
+            (tm : tms, [], [], [])
+              | null tms -> return (TmDecl (x : moduleNames) Nothing tm)
+              | otherwise -> fail $ "too many definitions for " ++ x
+            (tm : tms, ty : tys, [], [])
+              | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm)
+              | not (null tms) -> fail $ "too many definitions for " ++ x
+              | otherwise -> fail $ "too many type signatures for " ++ x
+            ([], [], ty : tys, k : ks)
+              | null tys, null ks -> return (TyDecl (x : moduleNames) k ty)
+              | not (null tys) -> fail $ "too many definitions for " ++ x
+              | otherwise -> fail $ "too many kind signatures for " ++ x
+            _ -> fail $ "too much definition of " ++ x
+
+        -- mkDecl x = fromMaybe (error $ "in building declaration of " ++ x) decl where
+        --   decl = do tm <- lookup x termDefs
+        --             return (TmDecl (x : moduleNames) (lookup x typeSigs) tm)
+        --          `mplus`
+        --          do k <- lookup x kindSigs
+        --             ty <- lookup x typeDefs
+        --             return (TyDecl (x : moduleNames) k ty)
 
 parse :: String -> [String] -> String -> IO Program
 parse fileName moduleNames s =
