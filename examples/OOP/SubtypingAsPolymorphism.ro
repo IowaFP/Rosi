@@ -1,0 +1,11 @@
+-- Exploring subtyping as parametric polymorphism.
+-- Reading:
+-- - Structural subtyping as parametric polymorphism. OOPSLA 23
+--   - https://arxiv.org/pdf/2304.08267
+-- - Parametric Subtyping for Structural Parametric Polymorphism. POPL 24
+--   - https://dl.acm.org/doi/pdf/10.1145/3632932     
+--
+-- Tang et al show that full record and variant subtyping cannot embed into rank-1 row
+-- polymorphism. This should not apply to Rosi, which permits higher rank polymorphism.
+-- Let's confirm this suspicion.
+-- --------------------------------------------------------------------------------
