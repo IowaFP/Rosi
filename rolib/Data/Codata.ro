@@ -16,8 +16,8 @@ tl : forall a. Stream a -> Stream a
 tl = \ d. sel (out d) #'tl
 
 -- Convert a sequence of nats into a Stream, starting at n
-seq : (Nat -> Nat) -> Nat -> Stream Nat 
-seq = \ f. fix (\ seq n. in (#'hd := n , #'tl := seq (succ n)))
+seq : forall a. (Nat -> a) -> Nat -> Stream a
+seq = \ f. fix (\ seq n. in (#'hd := f n , #'tl := seq (succ n)))
 
 -- Return only the even elements of a stream
 even : forall a. Stream a -> Stream a 
