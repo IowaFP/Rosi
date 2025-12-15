@@ -369,11 +369,14 @@ unify0 t u0@(TConApp (TCUnif g) u) =
                             unificationFails t u0
 unify0 TString TString =
   return VEqRefl
-unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
-  do q <- unify' f g
-     case q of
-       VEqRefl -> return (VEqRefl)  -- shouldn't this be handled by flattenV?
-       q       -> return (VEqMapCong q)
+
+unify0 a@(TMapFun f) x@(TMapFun g) =
+  do mq <- try $ checking $ unify' f g
+     case mq of
+       Just VEqRefl -> return (VEqRefl)  -- shouldn't this be handled by flattenV?
+       Just q       -> return (VEqMapCong q)
+       Nothing      -> do q' <- requireEq f g
+                          return (VEqMapCong q')
 
 unify0 t@(TCompl x y) u@(TCompl x' y') =
   do mq <- try $ checking $ unify' x x'
