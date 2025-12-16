@@ -67,6 +67,22 @@ normalize' eqns t =
        _       -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
                      return (u, q)
 
+-- etaExpand :: (HasCallStack, MonadCheck m) => Ty -> Kind -> m (Ty, Evid)
+-- etaExpand t@(TVar i s) (KFun KType KType) = do 
+--   trace $ "t : " ++ show t 
+--   return (TLam "dunno" (Just KType) (TApp (TVar (i + 1) s) (TVar 0 ["dunno"])) , VEqEta)
+-- -- etaExpand t@(TVar i s) (KFun k1 k2) = do 
+-- --   (t' , q) <- etaExpand (TApp (TVar (i + 1) s) (TVar 0 ["noIdea"])) k2
+-- --   return (TLam "noIdea" (Just k1) t' , VEqTrans VEqEta q)
+-- -- etaExpand t@(TApp t1 t2) (KFun k1 k2) = do   
+-- --   (t' , q) <- etaExpand (t1 )
+-- etaExpand t _ = return (t , VEqRefl)  
+
+etaContract :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, Evid)
+etaContract (TLam s1 (Just k) (TApp (TVar i s2) (TVar 0 s3))) = 
+    return (TVar (i - 1) s2 , VEqEta)
+etaContract t = return (t , VEqRefl)
+
 normalize :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
 normalize eqns t
   | Just (u, v) <- lookup t eqns =
@@ -75,7 +91,7 @@ normalize eqns t
 normalize eqns t@(TVar i _) =
   do kb <- asks ((!! i) . kctxt)
      case kb of
-       KBVar _ _ -> return (t, VEqRefl)
+       KBVar k _ -> return (t, VEqRefl)
        KBDefn _ def -> do (t', q) <- normalize eqns (shiftTN 0 (i + 1) def)
                           return (t', VEqTrans VEqDefn q)
 normalize eqns t0@(TApp (TLam x (Just k) t) u) =
@@ -165,8 +181,12 @@ normalize eqns (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize eqns t)
      return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)
 normalize eqns (TLam x (Just k) t) =
-  do (t', q) <- bindTy k (normalize eqns t)
-     return (TLam x (Just k) t', VEqLambda q)
+  -- This isn't quite right.
+  -- Consider
+  --   \ x y. f x y ~ f 
+  do (t',  q1) <- bindTy k (normalize eqns t)
+     (t'', q2) <- etaContract (TLam x (Just k) t')
+     return (t'', VEqTrans (VEqLambda q1) q2)
 normalize eqns (TMapFun t) =
   do (t', q) <- normalize eqns t
      return (TMapFun t', q)
