@@ -1,138 +1,42 @@
-import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
-
-{- 
-Reading:
-
-# Compositional Programming & Object Algebras
-- Extensibility for the Masses: Practical Extensibility with Object Algebras. ECOOP 2012
-  - https://www.cs.utexas.edu/~wcook/Drafts/2012/ecoop2012.pdf 
-- Feature-Oriented Programming with Object Algebras. ECOOP 2013
-  - https://www.cs.utexas.edu/~wcook/Drafts/2012/FOPwOA.pdf      
-- From Object Algebras to Attribute Grammars. OOPSLA 2014
-  - https://www.informatik.uni-marburg.de/~rendel/oa2ag/rendel14object.pdf
-- Scrap your boilerplate with object algebras. OOPSLA 2015
-  - https://i.cs.hku.hk/~bruno/papers/oopsla2015.pdf  
-- Compositional Programming, Zhang, Sun, and Oliveira. TOPLAS 2021
-  - https://dl.acm.org/doi/pdf/10.1145/3460228 
-- Compositional Embeddings of Domain-Specific Languages. OOPSLA 2022
-  - https://dl.acm.org/doi/pdf/10.1145/3563294      
-
-# The visitor pattern
-- The Visitor Pattern as a Reusable, Generic, Type-Safe Component
-  - https://www.cs.ox.ac.uk/jeremy.gibbons/publications/visitor.pdf
-
-# Other solutions to the extended expression problem
-- super-Charging Object-Oriented Programming Through Precise Typing of Open Recursion
-  - https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ECOOP.2023.11
-
-# Family polymorphism
-- Persimmon: Nested Family Polymorphism with Extensible Variant Types. OOPSLA 2024
-  - https://dl.acm.org/doi/10.1145/3649836     
-
-# Tagless final
-- A number of papers cited here.
-  - https://okmij.org/ftp/tagless-final/index.html
-- Typed Tagless Final Interpreters.
-  - Published paper: 
-    - https://www.cambridge.org/core/services/aop-cambridge-core/content/view/7B2DC44A2127EBBA71ADE63809D9425F/S0956796809007205a.pdf/finally-tagless-partially-evaluated-tagless-staged-interpreters-for-simpler-typed-languages.pdf
-  - additional lecture notes:
-    - https://okmij.org/ftp/tagless-final/course/lecture.pdf
-
--}
---------------------------------------------------------------------------------
--- The usual expression problem in OOP fashion
-
-type Expr : R[*]
-type Expr = {'eval := Nat}
-
-AddExpr : Pi Expr -> Pi Expr -> Pi Expr 
-AddExpr = \ left right. (#'eval := add (sel left #'eval) (sel right #'eval))
-
-LitExpr : Nat -> Pi Expr
-LitExpr = \ n. (#'eval := n)
-
--- IntAlg is an "object algebra interface"
-type IntAlg : R[ * -> *]
-type IntAlg = {'lit := \a. Nat -> a , 'add := \a. a -> a -> a}
+import Ro.Base , Ro.Xr , Ro.Show , Data.Nat , Data.Tuple , Data.List
 
 --------------------------------------------------------------------------------
--- The visitor pattern, or a *functional internal visitor*, as per 
--- Oliveira & Cook 2012
+-- An "object algebra" is an F-Algebra in disguise. 
+--   (Defined in Ro.Xr)
+--   type FAlg : (* -> *) -> * -> *
+--   type FAlg = \ f a. f a -> a
+-- An F-Algebra of type F a -> a usually assumes F to be a sum
+--   F(x) = t1 + t2 + ... + tn
+-- and hence an F-Algebra is of the form
+--   (t1 + t2 + ... + tn) -> a.
+-- Object algebras observe that the type above is isomorphic to a product of arrows:
+--   (t1 + t2 + ... + tn) -> a \simeq (t1 -> a) * (t2 -> a) * ... * (tn -> a)
+-- An example F-Algebra for arithmetric expressions might have type:
+--   f : forall a. Sigma {'lit := String , 'add := (a , a)} -> a
+-- And an example object algebra:
+--   interface g<a> {
+--      a lit(s : String); 
+--      a add(x : a , y : a);
+--   }
+-- We see clearly that `f` has type 
+--   FAlg (Sigma {'lit := \x. String , 'add := \ x. (x , x)}) a 
+-- and `g` has type:
+--   Pi ({'lit := \x. String , 'add := \ x. (x , x)} -> a) 
+--
+-- Rosi's generic programming capabilities make it very easy to translate
+-- from an F-Algebra to an object-algebra and back again. it's just reify and reflect!
+-- This is also demonstrated (as metatheory) in Downen et al's "Codata in Action":
+--   - https://www.microsoft.com/en-us/research/wp-content/uploads/2020/01/CoDataInAction.pdf?msockid=204eae218676650527f9bd2e871464e2
 
--- The visitor pattern defines 'accept and 'visit methods.
-type Exp : R[*]
-type Exp = {'accept := forall a. Pi (IntAlg a) -> a }
+toObjectAlg : forall z : R[ * -> * ], t : *. (Sigma z t -> t) -> Pi (z t -> t)
+toObjectAlg = reify 
 
-AddExp : Pi Exp -> Pi Exp -> Pi Exp 
-AddExp = \ left right. (#'accept := \ vis. 
-  sel vis #'add
-    (sel left  #'accept vis)
-    (sel right #'accept vis))
+toFAlg : forall z : R[ * -> * ], t : *.  Pi (z t -> t) -> Sigma z t -> t
+toFAlg = reflect 
 
-LitExp : Nat -> Pi Exp 
-LitExp = \ n. (#'accept := \ vis. sel vis #'lit n)
-
-EvalVisitor : Pi (IntAlg Nat)
-EvalVisitor = (#'lit := id , #'add := \ l r. add l r)
-
--- Now it's easy to add new methods, but difficult to add new cases.
-PrintVisitor : Pi (IntAlg String)
-PrintVisitor = (#'lit := showNat , #'add := \ l r. l ^ " + " ^ r)
-
--- Here is how you invoke the PrintVisitor in the Visitor pattern
-pwinted : String 
-pwinted = sel (AddExp (LitExp 1) (LitExp 2)) #'accept PrintVisitor
-
-evaluated : Nat 
-evaluated = sel (AddExp (LitExp 1) (LitExp 2)) #'accept EvalVisitor
-
---Adding new cases in the visitor pattern is hard: the accept method has type
---   forall a. Pi (IntAlg a) -> a
--- where `a` is parametric, so we may *only* use the input record to construct an `a` value.
---   Mult : Pi Exp -> Pi Exp -> Pi Exp
---   Mult = \ l r. (#'accept := \ vis. ?)
--- Changes to the `Exp` interface will incur changes to all visitors. We have
--- very effectively traded the EP along one axis to the EP along the other.
-
---------------------------------------------------------------------------------
--- Going back to the regular expression problem...
-
-
--- As the authors call it, we can incur a "retroactive implementation" of printing
--- for arithmetic expressions.
-type IPrint : R[*]
-type IPrint = {'print := String}
-
--- ... by using an object algebra
-IntPrint : Pi (IntAlg (Pi IPrint))
-IntPrint = (#'lit := \n. (#'print := showNat n), 
-            #'add := \ a b. (#'print := sel a #'print ^ " + " ^ sel b #'print))
-
--- The authors advocate for an implementation of an IntAlg as a factory,
--- calling _this_ the "object algebra" (as it implements the object algebra
--- interface).
-IntFactory : Pi (IntAlg (Pi Expr))
-IntFactory = (#'lit := LitExpr , #'add := AddExpr)
-
--- The authors now write:
---   The difference to the visitor pattern is that we do not add `accept`
---   methods to Exp. Instead, following the approach presented in Section 3,
---   we repace uses of concrete constructors in the client code by the 
---   corresponding methods in the object algebra.
-
--- (There is a waft of bullshit.) I believe what they are arguing for is:
-Lit : forall a. Pi (IntAlg a) -> Nat -> a 
-Lit = \ d. sel d #'lit 
-
-Add : forall a. Pi (IntAlg a) -> a -> a -> a 
-Add = \ d. sel d #'add
-
-expr : forall a. Pi (IntAlg a) -> a
-expr = \ d. Add d (Lit d 1) (Lit d 2)  
-
-test : Pair Nat String 
-test = pair (sel (expr IntFactory) #'eval) (sel (expr IntPrint) #'print)
-
---------------------------------------------------------------------------------
--- It's necessary, to claim a solution to the EP, to also demonstrate
--- that it is (still) easy to add new cases.
+-- I am not sure there is much more to say. Two thoughts:
+-- - there is quite a lot one can do with more exotic algebras.
+--   Have these been reproduced in the object algebra / OOP literature?
+-- - Conversely, what nonsense in the object algebra / OOP literature
+--   can we trivialize with Rosi?
+-- I do wonder if there is a functional pearl buried here.

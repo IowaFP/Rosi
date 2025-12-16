@@ -10,6 +10,14 @@ Reading list.
 - Inheritance is not Subtyping. Cook et al POPL 1990
   - https://www.cs.utexas.edu/~wcook/papers/InheritanceSubtyping90/CookPOPL90.pdf
 
+## The visitor pattern
+- The Visitor Pattern as a Reusable, Generic, Type-Safe Component
+  - https://www.cs.ox.ac.uk/jeremy.gibbons/publications/visitor.pdf
+
+## Other solutions to the extended expression problem
+- super-Charging Object-Oriented Programming Through Precise Typing of Open Recursion
+  - https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ECOOP.2023.11
+
 ## Compositional Programming & Object Algebras
 - Extensibility for the Masses: Practical Extensibility with Object Algebras. ECOOP 2012
   - https://www.cs.utexas.edu/~wcook/Drafts/2012/ecoop2012.pdf 

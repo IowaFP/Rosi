@@ -1,0 +1,216 @@
+import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
+
+--------------------------------------------------------------------------------
+-- We follow Oliveira and Cook's Extensibility for the Masses: Practical Extensibility with Object Algebras.
+-- - https://www.cs.utexas.edu/~wcook/Drafts/2012/ecoop2012.pdf
+-- The authors start with the usual expression problem in OOP fashion.
+
+-- N.b. Oliveira and Cook describe a Value type of:
+--   interface Value {
+--     Integer getInt();
+--     Boolean getBool();
+--   }
+--   class VInt implements Value {...}
+--   class VBool implements Value {...}
+-- which is plain wrong, although Java does not seem to have
+-- a viable implementation of sum types with mixed constructor types.
+-- (Or, it did not in 2012.) It is clear that the authors choose
+-- to ignore this complication, writing e.g.:
+--   class Add implements Exp {
+--     Exp l, r;
+--     public Add(Exp l, Exp r) { this.l = l; this.r = r; }
+--     public Value eval() {
+--       return new VInt(l.eval().getInt() + r.eval().getInt());
+--     }}
+-- Edit: the authors address extensible return types at the end of the paper.
+
+type Value : R[*]
+type Value = {'Nat := Nat , 'Bool := Bool , 'Err := Unit}
+
+as : forall l : L, t : *,  z : R[*]. { l := t } < z, { 'Err :=  Unit } < z =>
+     #l -> Sigma z -> (t -> Sigma z) -> Sigma z
+as = \l w f.
+      match w
+      ( case l f
+      | const (con #'Err tt))
+
+type Expr : R[*]
+type Expr = {'eval := Sigma Value}
+
+eval = \ d. sel d #'eval
+
+AddExpr : Pi Expr -> Pi Expr -> Pi Expr 
+AddExpr = \ left right. (#'eval := 
+  as #'Nat (eval left)
+    (\ n. as #'Nat (eval right)
+    (\ m. con #'Nat (add n m))))
+
+LitExpr : Nat -> Pi Expr
+LitExpr = \ n. (#'eval := con #'Nat n)
+
+-- IntAlg is an "object algebra interface"
+type IntAlg : R[ * -> *]
+type IntAlg = {'lit := \a. Nat -> a , 'add := \a. a -> a -> a}
+
+--------------------------------------------------------------------------------
+-- The visitor pattern, or a *functional internal visitor*, as per 
+-- Oliveira & Cook 2012
+
+-- The visitor pattern defines 'accept and 'visit methods.
+type Exp : R[*]
+type Exp = {'accept := forall a. Pi (IntAlg a) -> a }
+
+AddExp : Pi Exp -> Pi Exp -> Pi Exp 
+AddExp = \ left right. (#'accept := \ vis. 
+  sel vis #'add
+    (sel left  #'accept vis)
+    (sel right #'accept vis))
+
+LitExp : Nat -> Pi Exp 
+LitExp = \ n. (#'accept := \ vis. sel vis #'lit n)
+
+EvalVisitor : Pi (IntAlg (Sigma Value))
+EvalVisitor = (
+  #'lit := con #'Nat , 
+  #'add := \ l r. as #'Nat l (\ n. as #'Nat r (\ m. con #'Nat (add n m))))
+
+-- Now it's easy to add new methods, but difficult to add new cases.
+PrintVisitor : Pi (IntAlg String)
+PrintVisitor = (#'lit := showNat , #'add := \ l r. l ^ " + " ^ r)
+
+-- Here is how you invoke the PrintVisitor in the Visitor pattern
+pwinted : String 
+pwinted = sel (AddExp (LitExp 1) (LitExp 2)) #'accept PrintVisitor
+
+evaluated : Sigma Value
+evaluated = sel (AddExp (LitExp 1) (LitExp 2)) #'accept EvalVisitor
+
+--Adding new cases in the visitor pattern is hard: the accept method has type
+--   forall a. Pi (IntAlg a) -> a
+-- where `a` is parametric, so we may *only* use the input record to construct an `a` value.
+--   Mult : Pi Exp -> Pi Exp -> Pi Exp
+--   Mult = \ l r. (#'accept := \ vis. ?)
+-- Changes to the `Exp` interface will incur changes to all visitors. We have
+-- very effectively traded the EP along one axis to the EP along the other.
+
+--------------------------------------------------------------------------------
+-- Going back to the regular expression problem...
+
+-- As the authors call it, we can incur a "retroactive implementation" of printing
+-- for arithmetic expressions.
+type IPrint : R[*]
+type IPrint = {'print := String}
+
+-- ... by using an object algebra
+IntPrint : Pi (IntAlg (Pi IPrint))
+IntPrint = (#'lit := \n. (#'print := showNat n), 
+            #'add := \ a b. (#'print := sel a #'print ^ " + " ^ sel b #'print))
+
+-- The authors advocate for an implementation of an IntAlg as a factory,
+-- calling _this_ the "object algebra" (as it implements the object algebra
+-- interface).
+IntFactory : Pi (IntAlg (Pi Expr))
+IntFactory = (#'lit := LitExpr , #'add := AddExpr)
+
+-- The authors now write:
+--   The difference to the visitor pattern is that we do not add `accept`
+--   methods to Exp. Instead, following the approach presented in Section 3,
+--   we repace uses of concrete constructors in the client code by the 
+--   corresponding methods in the object algebra.
+
+-- (There is a waft of bullshit.) I believe what they are arguing for is:
+
+Lit : forall z t. {'lit := t} < z => Pi z -> t 
+Lit = \ d. sel d #'lit 
+
+Add : forall z t. {'add := t} < z => Pi z -> t 
+Add = \ d. sel d #'add
+
+expr : forall z t u. {'add := u -> u -> t, 'lit := Nat -> u} < z => Pi z -> t
+expr = \ d. Add d (Lit d 1) (Lit d 2)  
+
+test : Pair (Sigma Value) String 
+test = pair (sel (expr IntFactory) #'eval) (sel (expr IntPrint) #'print)
+
+-- --------------------------------------------------------------------------------
+-- It's necessary, to claim a solution to the EP, to also demonstrate
+-- that it is (still) easy to add new cases.
+
+type IntBoolAlg : R[ * -> *]
+type IntBoolAlg = {
+  'lit := \a. Nat -> a , 
+  'add := \a. a -> a -> a , 
+  'bool := \a. Bool -> a , 
+  'iff  := \a. a -> a -> a -> a }
+
+IffExpr : Pi Expr -> Pi Expr -> Pi Expr -> Pi Expr 
+IffExpr = \ e1 e2 e3. (#'eval := 
+  as #'Bool (eval e1)
+    (\ b. ite b (eval e2) (eval e3)))
+
+BoolExpr : Bool -> Pi Expr
+BoolExpr = \ b. (#'eval := con #'Bool b)
+
+IntBoolFactory : Pi (IntBoolAlg (Pi Expr))
+IntBoolFactory = 
+  IntFactory ++ (#'bool := BoolExpr , #'iff := IffExpr)
+
+IntBoolPrint : Pi (IntBoolAlg String)
+IntBoolPrint = PrintVisitor ++ 
+  (#'bool := showBool , 
+   #'iff := \ e1 e2 e3. "if " ^ e1 ^ " then " ^ e2 ^ " else " ^ e3)
+
+-- The point is that, as we pass Pi (IntBoolAlg a) to `expr`,
+-- it constructs an expression at a compatible type. In the case of Rosi,
+-- We achieve this through row polymorphism and not* subtyping: 
+-- the principal type  of `expr` is:
+--   expr : forall z t u. {'add := u -> u -> t, 'lit := Nat -> u} < z => Pi z -> t
+expr2 : forall a. Pi (IntBoolAlg a) -> a 
+expr2 = \ v. sel v #'iff 
+  (sel v #'bool False) (expr v) (sel v #'lit 0)
+
+-- --------------------------------------------------------------------------------
+-- The rest of the paper is fairly nonsense. Section 6.1 describes
+-- the need for multiple (potentially mutually recursive) types,
+-- yielding "multi-sorted" algebra with two carriers e (for expressions)
+-- and s (for statements).
+-- I don't know if there's anything particularly interesting about this.
+
+type StmtAlg : R[ * -> * -> *]
+type StmtAlg =   {
+  'lit := \e s. Nat -> e , 
+  'add := \e s. e -> e -> e , 
+  'bool := \e s. Bool -> e , 
+  'iff  := \e s. e -> e -> e -> e ,
+  'var  := \ e s. String -> e , 
+  'assign := \ e s. String -> e -> e ,
+  'expr := \ e s. e -> s ,
+  'compl := \ e s. s -> s -> s }
+
+--------------------------------------------------------------------------------
+-- Section 7.2 laments that Java supports multiple interface inheritance
+-- but not multiple implementation inheritance (that is, for classes).
+-- Hence the authors need to use an encoding of a union type to combine
+-- instances of a BoolAlg with instances of an IntAlg:
+-- class Union<A> implements IntBoolAlg<A> {
+--   BoolAlg<A> v1;
+--   IntAlg<A> v2;
+--   Union(BoolAlg<A> v1, IntAlg<A> v2) { this.v1 = v1; this.v2 = v2; }
+--   public A lit(int x) { return v2.lit(x); }
+--   public A add(A e1, A e2) { return v2.add(e1, e2); }
+--   public A bool(Boolean b) { return v1.bool(b); }
+--   public A iff(A e1, A e2, A e3) { return v1.iff(e1, e2, e3); }
+-- }
+-- We can write the following, however:
+
+type BoolAlg : R[ * -> *]
+type BoolAlg = { 
+  'bool := \a. Bool -> a , 
+  'iff  := \a. a -> a -> a -> a }
+
+both : forall z : R[ * -> * ], a : *. BoolAlg + IntAlg ~ z => Pi (BoolAlg a) -> Pi (IntAlg a) -> Pi z a
+both = (++)
+
+-- in the concrete case:
+IntBoolFactory' : Pi (IntBoolAlg (Pi Expr))
+IntBoolFactory' = both (prj IntBoolFactory) IntFactory
