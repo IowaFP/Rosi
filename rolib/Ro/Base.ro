@@ -125,12 +125,8 @@ reify = /\ z t. \f. syn #(\X. X -> t) (\l x. f (con l x))
 decompose : forall z : R[*] , t. Pi (t -> z) -> (t -> Pi z)
 decompose = \ d t. syn #(\ X. X) (\ l. sel d l t)
 
--- Hack.
-type arrow : * -> * -> *
-type arrow = \ x y. x -> y
-
-recompose : forall z : R[*] , t. (t -> Pi z) -> Pi (arrow t z) 
-recompose = /\ z t. \ f. syn #(arrow t) (\ l. \ u : t. sel (f u) l)
+recompose : forall z : R[*] , t. (t -> Pi z) -> Pi (t -> z) 
+recompose = /\ z t. \ f. syn #(\ X. t -> X) (\ l. \ u : t. sel (f u) l)
 
 every : forall a : *, z : R[*]. a -> Pi (Const a z)
 every = /\a. \x. syn #(\X. a) (\l. x)

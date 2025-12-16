@@ -78,9 +78,10 @@ normalize' eqns t =
 -- --   (t' , q) <- etaExpand (t1 )
 -- etaExpand t _ = return (t , VEqRefl)  
 
+--   (\ x (\ y. f x y)) ~ f 
 etaContract :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, Evid)
-etaContract (TLam s1 (Just k) (TApp (TVar i s2) (TVar 0 s3))) = 
-    return (TVar (i - 1) s2 , VEqEta)
+etaContract (TLam s1 (Just k) (TApp t (TVar 0 s3))) = 
+    return (shiftTN 0 (-1) t , VEqEta)
 etaContract t = return (t , VEqRefl)
 
 normalize :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
@@ -180,12 +181,17 @@ normalize eqns (TConApp Mu z) =
 normalize eqns (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize eqns t)
      return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)
-normalize eqns (TLam x (Just k) t) =
-  -- This isn't quite right.
-  -- Consider
-  --   \ x y. f x y ~ f 
-  do (t',  q1) <- bindTy k (normalize eqns t)
+normalize eqns ty@(TLam x (Just k) t) =
+-- An issue:
+--   \ a. ((-> (f a)) a)
+--   About to eta contract TLam "a" (Just KType) (TApp (TApp TFun (TApp (TVar 1 ["f",""]) (TVar 0 ["a",""]))) (TVar 0 ["a",""]))
+-- Variable escape occurs because a occurs free of the body of the left applicand.
+-- Need to check for free variables before contracting.
+  do 
+     (t',  q1) <- bindTy k (normalize eqns t)
+     trace $  "About to eta contract " ++ show (TLam x (Just k) t')
      (t'', q2) <- etaContract (TLam x (Just k) t')
+     trace $  "normalized " ++ show ty ++ " to " ++ show t''
      return (t'', VEqTrans (VEqLambda q1) q2)
 normalize eqns (TMapFun t) =
   do (t', q) <- normalize eqns t
