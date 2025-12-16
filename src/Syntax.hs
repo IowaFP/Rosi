@@ -340,6 +340,7 @@ data Evid =
   | VEqRefl | VEqTrans Evid Evid
   | VEqSym Evid
   | VEqBeta                         -- (λ α : κ. τ) υ ~ τ [υ / α]
+  | VEqEta                          -- f ~ (λ α : κ. f α)
   | VEqMap                          -- ^f {t1, ..., tn} ~ {f t1, ..., f tn}
   | VEqCompl                        -- complement of known rows
   | VEqRowPermute [Int]             -- reordering of rows

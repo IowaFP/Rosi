@@ -1,0 +1,23 @@
+import Ro.Base 
+
+--------------------------------------------------------------------------------
+-- Testing applications of eta-contraction type normalization rule
+--   (\ x. f x) ~ f 
+
+test0 : forall f : * -> *. {'l := \ x. f x} < {'l := f}  => Unit -> Unit
+test0 = \ x. x
+
+test0' : forall f : * -> *. Unit
+test0' = /\ f. test0 [f] tt
+
+test1 : forall f : (* -> *) -> *. {'l := \ x. f x} < {'l := f}  => Unit -> Unit
+test1 = \ x. x
+
+test1' : forall f : (* -> *) -> *. Unit
+test1' = /\ f. test1 [f] tt
+
+test2 : forall f : * -> * -> *. {'l := \ x y. f y x} < {'l := f}  => Unit -> Unit
+test2 = \ x. x
+
+test2' : forall f : * -> * -> *. Unit
+test2' = /\ f. test2 [f] tt
