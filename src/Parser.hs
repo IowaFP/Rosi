@@ -280,16 +280,20 @@ term = prefixes typedTerm where
          Nothing -> rest
          Just f -> f <$> prefixes rest
 
+  op :: String -> Parser a -> Parser a
   op s k = symbol s >> k
 
+  typedTerm :: Parser Term
   typedTerm =
     do t <- branchTerm
        maybe t (ETyped t) <$> optional (symbol ":" >> ty)
 
+  ebinary :: Const -> Parser (Term -> Term -> Term)
   ebinary k = return (\e1 e2 -> EApp (EApp (EConst k) e1) e2)
 
   branchTerm = chainl1 labTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
 
+  labTerm :: Parser Term
   labTerm =
     do t <- catTerm
        choice
@@ -308,14 +312,18 @@ data AppTerm = Type Ty | Term Term
 appTerm :: Parser Term
 appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
              app t ts where
+
+  app :: AppTerm -> [AppTerm] -> Parser Term
   app (Term t) [] = return t
   app (Type _) _ = unexpected (Label $ fromList "type argument")
   app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
   app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
+
   goal s = Goal . (s,) <$> newIORef Nothing
 
   -- builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)", "in", "out", "fix"]) where
 
+  aterm :: Parser Term
   aterm = choice [ EConst <$> const
                  , EVar (-1) <$> qidentifier
                  , ESing <$> (char '#' >> atype)
@@ -329,9 +337,11 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                           (_, Nothing) -> unexpected $ Label (fromList "unlabeled term"))
                  ]
 
+  labeledTerm :: Term -> Maybe Term
   labeledTerm t@(ELabel _ _ _) = Just t
   labeledTerm _                = Nothing
 
+  const :: Parser Const
   const = choice [reserved s >> return k | (s, k) <-
                    [("prj", CPrj),
                     ("inj", CInj),
@@ -345,6 +355,7 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                     ("fix", CFix),
                     ("(^)", CStringCat)]]
 
+  buildNumber :: Int -> Term
   buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
   buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
 

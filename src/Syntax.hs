@@ -79,7 +79,7 @@ data TyCon = Pi | Sigma | Mu | TCUnif (Goal TyCon)
   deriving (Data, Eq, Show, Typeable)
 
 data Ty =
-    TVar Int [String]
+    TVar Int QName
   | TUnif UVar
     -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
@@ -270,7 +270,7 @@ data Const =
     -- TODO: can treat label and unlabel as constants with provided type argument?
 
 data Term =
-    EVar Int [String] | ELam String (Maybe Ty) Term | EApp Term Term
+    EVar Int QName | ELam String (Maybe Ty) Term | EApp Term Term
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const
