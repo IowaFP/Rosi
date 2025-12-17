@@ -67,22 +67,10 @@ normalize' eqns t =
        _       -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
                      return (u, q)
 
--- etaExpand :: (HasCallStack, MonadCheck m) => Ty -> Kind -> m (Ty, Evid)
--- etaExpand t@(TVar i s) (KFun KType KType) = do 
---   trace $ "t : " ++ show t 
---   return (TLam "dunno" (Just KType) (TApp (TVar (i + 1) s) (TVar 0 ["dunno"])) , VEqEta)
--- -- etaExpand t@(TVar i s) (KFun k1 k2) = do 
--- --   (t' , q) <- etaExpand (TApp (TVar (i + 1) s) (TVar 0 ["noIdea"])) k2
--- --   return (TLam "noIdea" (Just k1) t' , VEqTrans VEqEta q)
--- -- etaExpand t@(TApp t1 t2) (KFun k1 k2) = do   
--- --   (t' , q) <- etaExpand (t1 )
--- etaExpand t _ = return (t , VEqRefl)  
-
---   (\ x (\ y. f x y)) ~ f 
-etaContract :: (HasCallStack, MonadCheck m) => Ty -> m (Ty, Evid)
-etaContract (TLam s1 (Just k) (TApp t (TVar 0 s3))) = 
-    return (shiftTN 0 (-1) t , VEqEta)
-etaContract t = return (t , VEqRefl)
+etaContract :: Ty -> (Ty, Evid)
+etaContract ty@(TLam s1 (Just k) (TApp t (TVar 0 s3)))
+  | not (tvFreeIn 0 t) = (shiftTN 0 (-1) t , VEqEta)
+etaContract t = (t , VEqRefl)
 
 normalize :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
 normalize eqns t
@@ -182,16 +170,9 @@ normalize eqns (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize eqns t)
      return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)
 normalize eqns ty@(TLam x (Just k) t) =
--- An issue:
---   \ a. ((-> (f a)) a)
---   About to eta contract TLam "a" (Just KType) (TApp (TApp TFun (TApp (TVar 1 ["f",""]) (TVar 0 ["a",""]))) (TVar 0 ["a",""]))
--- Variable escape occurs because a occurs free of the body of the left applicand.
--- Need to check for free variables before contracting.
   do 
      (t',  q1) <- bindTy k (normalize eqns t)
-     trace $  "About to eta contract " ++ show (TLam x (Just k) t')
-     (t'', q2) <- etaContract (TLam x (Just k) t')
-     trace $  "normalized " ++ show ty ++ " to " ++ show t''
+     (t'', q2) <- return $ etaContract (TLam x (Just k) t')
      return (t'', VEqTrans (VEqLambda q1) q2)
 normalize eqns (TMapFun t) =
   do (t', q) <- normalize eqns t
