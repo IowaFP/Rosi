@@ -170,9 +170,8 @@ normalize eqns (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize eqns t)
      return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)
 normalize eqns ty@(TLam x (Just k) t) =
-  do 
-     (t',  q1) <- bindTy k (normalize eqns t)
-     (t'', q2) <- return $ etaContract (TLam x (Just k) t')
+  do (t',  q1) <- bindTy k (normalize eqns t)
+     let (t'', q2) = etaContract (TLam x (Just k) t')
      return (t'', VEqTrans (VEqLambda q1) q2)
 normalize eqns (TMapFun t) =
   do (t', q) <- normalize eqns t
