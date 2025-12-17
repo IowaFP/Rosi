@@ -1,7 +1,0 @@
-import Ro.Base , Data.Functor
-
-type r2 : (* -> *) -> *
-type r2 = \ f. Pi { 'fmap := Functor f , 'top := Unit }
-
-maybeFunctor' : r2 Maybe
-maybeFunctor' = (#'fmap := /\ a b. \ f. \ x : Maybe a. sorry , #'top := tt)
