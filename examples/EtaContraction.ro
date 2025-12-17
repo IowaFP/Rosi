@@ -24,3 +24,12 @@ test2 = \ x. x
 
 test2' : forall f : * -> * -> *. Pi {}
 test2' = /\ f. test2 [f] tt
+
+-- avoiding variable escape:
+-- The type (\ a. f a -> a) looks like an eta-contractum:
+--   (\ a. ((->) f a) a)
+-- but *is not* because a occurs free in the body. Contracting this type yields
+--   (-> f a)
+-- which means `a` escapes its scope.
+test3 : forall f : * -> *. {'l := \ a. (f a -> a)} < {'l := f}  => Pi {} -> Pi {}
+test3 = \ x. x
