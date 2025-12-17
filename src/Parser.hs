@@ -31,6 +31,7 @@ import Debug.Trace
 
 terminal p = p <* eof
 
+chainr1 :: Parser a -> Parser (a -> a -> a) -> Parser a
 chainr1 p op =
   do lhs <- p
      rhss <- many (do f <- op
@@ -40,6 +41,7 @@ chainr1 p op =
   where down lhs [] = lhs
         down lhs ((op, rhs) : rhss) = op lhs (down rhs rhss)
 
+chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
 chainl1 p op =
   do lhs <- p
      rhss <- many (do f <- op
@@ -232,7 +234,7 @@ atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
                , TConApp Mu <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
                , const TString <$> symbol "String"
-               , (\x -> TVar (-1) x) <$> qidentifier
+               , TVar (-1) <$> qidentifier
                , parens ty ]
 
 pr :: Parser Pred
@@ -291,7 +293,11 @@ term = prefixes typedTerm where
   ebinary :: Const -> Parser (Term -> Term -> Term)
   ebinary k = return (\e1 e2 -> EApp (EApp (EConst k) e1) e2)
 
-  branchTerm = chainl1 labTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
+  branchTerm = chainl1 composeTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
+
+  
+  composeTerm :: Parser Term
+  composeTerm = chainr1 labTerm (op "." (return (\ e1 e2 -> ELam "x" Nothing (EApp e1 (EApp e2 (EVar 0 ["x"]))))))
 
   labTerm :: Parser Term
   labTerm =
