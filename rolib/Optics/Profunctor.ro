@@ -1,4 +1,4 @@
-import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Optics.Polymorphic
+import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Optics.Monomorphic
 
 --------------------------------------------------------------------------------
 -- Optics 
@@ -34,8 +34,8 @@ arrowP : Cartesian (\ x y. x -> y)
 arrowP = 
   (#'dimap := /\ a a' b b'. 
     \ f : a -> a'. \ g. \ h. \ x. g (h (f x)) ,
-   #'first := /\ a b c. \ f : a -> b. \ p. pair (f (fst p)) (snd p) , 
-   #'second := /\ a b c. \ f : a -> b. \ p. pair (fst p) (f (snd p)))
+   #'first := /\ a b. \ f : a -> b. \ p. pair (f (fst p)) (snd p) , 
+   #'second := /\ a b. \ f : a -> b. \ p. pair (fst p) (f (snd p)))
 
 -- And lenses are Cartesian profunctors 
 lensCartesian : Cartesian Lens
@@ -79,6 +79,6 @@ modify' = \ l. l [\ x y. x -> y] arrowP
 -- The function below builds a Lens t t -> Lens s s function,
 -- whereas we need it to build a Lens a b a b -> Lens a b s t function.
 
-pToLens : forall a b s t : *. LensP a b s t -> Lens s t
-pToLens = \ p. p [Lens] lensCartesian (#'get := id , #'put := sorry)
+-- pToLens : forall a b s t : *. LensP a b s t -> Lens s t
+-- pToLens = \ p. p [Lens] lensCartesian (#'get := id , #'put := sorry)
 

@@ -86,5 +86,5 @@ adapterPrism = \ a. (#'get := o Left (from a) , #'put := to a)
 -- type FunList  : * -> * -> * -> * 
 -- type FunList = \ a b t. Mu (FunListF a b t)
 
-type Traversal : * -> * -> * -> * 
-type Traversal = \ a b s t. Pi {'over := (a -> b) -> s -> t , 'toListOf := s -> List a }
+-- type Traversal : * -> * -> * -> * 
+-- type Traversal = \ a b s t. Pi {'over := (a -> b) -> s -> t , 'toListOf := s -> List a }
