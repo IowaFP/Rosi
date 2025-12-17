@@ -1,5 +1,4 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# OPTIONS_GHC -fmax-pmcheck-models=50 #-}
 module Checker.Unify (module Checker.Unify) where
 
 import Control.Monad
@@ -58,44 +57,47 @@ types). How bad are the error messages?
 unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either (Ty, Ty) Evid)
 unify eqns actual expected =
   do trace ("1 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
+     m <- mark
+     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
      case result of
        Right q ->
          do tell (TCOut preds)
             return (Right q)
        Left err ->
-         do mapM_ perform undoes
+         do reset m
             return (Left err)
 
 check eqns actual expected =
   do trace ("2 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) (Just [])) eqns
+     m <- mark
+     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) (Just [])) eqns
      case result of
        Right q ->
          do tell (TCOut preds)
             return (Right q)
        Left err ->
-         do mapM_ perform undoes
+         do reset m
             return (Left err)
 
 data ProductiveUnification = Productive Evid | Unproductive | UnificationFails (Ty, Ty)
 
 unifyProductive eqns actual expected =
   do trace ("3 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     (result, (undoes, preds)) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
+     m <- mark
+     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
      case result of
        Right q ->
          do q' <- flattenV q
             case q' of
               VGoal _ ->
-                do mapM_ perform undoes
+                do reset m
                    return Unproductive
               _ ->
                 do tell (TCOut preds)
                    return (Productive q')
        Left err ->
-         do mapM_ perform undoes
-            return (UnificationFails err)
+         do reset m
+            return  (UnificationFails err)
 
 checking :: UnifyM t -> UnifyM t
 checking m =
@@ -370,11 +372,14 @@ unify0 t u0@(TConApp (TCUnif g) u) =
                             unificationFails t u0
 unify0 TString TString =
   return VEqRefl
-unify0 a@(TMapFun f) x@(TMapFun g) =  -- note: wrong
-  do q <- unify' f g
-     case q of
-       VEqRefl -> return (VEqRefl)  -- shouldn't this be handled by flattenV?
-       q       -> return (VEqMapCong q)
+
+unify0 a@(TMapFun f) x@(TMapFun g) =
+  do mq <- try $ checking $ unify' f g
+     case mq of
+       Just VEqRefl -> return (VEqRefl)  -- shouldn't this be handled by flattenV?
+       Just q       -> return (VEqMapCong q)
+       Nothing      -> do q' <- requireEq f g
+                          return (VEqMapCong q')
 
 unify0 t@(TCompl x y) u@(TCompl x' y') =
   do mq <- try $ checking $ unify' x x'

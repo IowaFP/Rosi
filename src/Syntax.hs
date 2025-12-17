@@ -103,6 +103,24 @@ funTy = TApp . TApp TFun
 
 infixr 5 `funTy`
 
+-- Does De Bruijn index n occur free in type t?
+tvFreeIn :: Int -> Ty -> Bool 
+tvFreeIn n (TVar i _) = i == n
+tvFreeIn n (TUnif u) = False
+tvFreeIn n TFun = False
+tvFreeIn n (TThen p t) = tvFreeIn n t
+tvFreeIn n (TForall s _ t) = tvFreeIn (n + 1) t
+tvFreeIn n (TLam s _ t) = tvFreeIn (n + 1) t
+tvFreeIn n (TApp t u) = tvFreeIn n t || tvFreeIn n u
+tvFreeIn n (TLab s) = False
+tvFreeIn n (TSing t) = tvFreeIn n t
+tvFreeIn n (TLabeled t u) = tvFreeIn n t || tvFreeIn n u 
+tvFreeIn n (TRow ts) = any (tvFreeIn n) ts 
+tvFreeIn n (TConApp c t) = tvFreeIn n t 
+tvFreeIn n (TMapFun t) = tvFreeIn n t 
+tvFreeIn n (TCompl t u) = tvFreeIn n t || tvFreeIn n u
+tvFreeIn n TString = False 
+
 label, labeled :: Ty -> Maybe Ty
 concreteLabel :: Ty -> Maybe String
 
@@ -340,6 +358,7 @@ data Evid =
   | VEqRefl | VEqTrans Evid Evid
   | VEqSym Evid
   | VEqBeta                         -- (λ α : κ. τ) υ ~ τ [υ / α]
+  | VEqEta                          -- f ~ (λ α : κ. f α)
   | VEqMap                          -- ^f {t1, ..., tn} ~ {f t1, ..., f tn}
   | VEqCompl                        -- complement of known rows
   | VEqRowPermute [Int]             -- reordering of rows

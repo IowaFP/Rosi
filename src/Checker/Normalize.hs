@@ -67,6 +67,11 @@ normalize' eqns t =
        _       -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
                      return (u, q)
 
+etaContract :: Ty -> (Ty, Evid)
+etaContract ty@(TLam s1 (Just k) (TApp t (TVar 0 s3)))
+  | not (tvFreeIn 0 t) = (shiftTN 0 (-1) t , VEqEta)
+etaContract t = (t , VEqRefl)
+
 normalize :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
 normalize eqns t
   | Just (u, v) <- lookup t eqns =
@@ -75,7 +80,7 @@ normalize eqns t
 normalize eqns t@(TVar i _) =
   do kb <- asks ((!! i) . kctxt)
      case kb of
-       KBVar _ _ -> return (t, VEqRefl)
+       KBVar k _ -> return (t, VEqRefl)
        KBDefn _ def -> do (t', q) <- normalize eqns (shiftTN 0 (i + 1) def)
                           return (t', VEqTrans VEqDefn q)
 normalize eqns t0@(TApp (TLam x (Just k) t) u) =
@@ -164,9 +169,10 @@ normalize eqns (TConApp Mu z) =
 normalize eqns (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize eqns t)
      return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)
-normalize eqns (TLam x (Just k) t) =
-  do (t', q) <- bindTy k (normalize eqns t)
-     return (TLam x (Just k) t', VEqLambda q)
+normalize eqns ty@(TLam x (Just k) t) =
+  do (t',  q1) <- bindTy k (normalize eqns t)
+     let (t'', q2) = etaContract (TLam x (Just k) t')
+     return (t'', VEqTrans (VEqLambda q1) q2)
 normalize eqns (TMapFun t) =
   do (t', q) <- normalize eqns t
      return (TMapFun t', q)

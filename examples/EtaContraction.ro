@@ -1,0 +1,35 @@
+-- import Ro.Base 
+
+--------------------------------------------------------------------------------
+-- Testing applications of eta-contraction type normalization rule
+--   (\ x. f x) ~ f 
+
+tt : Pi {} 
+tt = prj (#'l := #'l)
+
+test0 : forall f : * -> *. {'l := \ x. f x} < {'l := f}  => Pi {} -> Pi {}
+test0 = \ x. x
+
+test0' : forall f : * -> *. Pi {}
+test0' = /\ f. test0 [f] tt
+
+test1 : forall f : (* -> *) -> *. {'l := \ x. f x} < {'l := f}  => Pi {} -> Pi {}
+test1 = \ x. x
+
+test1' : forall f : (* -> *) -> *. Pi {}
+test1' = /\ f. test1 [f] tt
+
+test2 : forall f : (* -> *) -> * -> * -> *. {'l := \ x y z. f x y z} < {'l := f}  => Pi {} -> Pi {}
+test2 = \ x. x
+
+test2' : forall f : * -> * -> *. Pi {}
+test2' = /\ f. test2 [f] tt
+
+-- avoiding variable escape:
+-- The type (\ a. f a -> a) looks like an eta-contractum:
+--   (\ a. ((->) f a) a)
+-- but *is not* because a occurs free in the body. Contracting this type yields
+--   (-> f a)
+-- which means `a` escapes its scope.
+test3 : forall f : * -> *. {'l := \ a. (f a -> a)} < {'l := f}  => Pi {} -> Pi {}
+test3 = \ x. x
