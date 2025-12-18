@@ -19,10 +19,10 @@ cata : forall f a. Functor f -> FAlg f a -> Mu f -> a
 cata = \ map a. fix (\ cata x. a (map cata (out x)))
 
 rinj : forall f g : R[* -> *]. f < g => Pi (Functor f) -> Mu (Sigma f) -> Mu (Sigma g)
-rinj = \d. cata (fmapS d) (o in inj)
+rinj = \d. cata (fmapS d) (in . inj)
 
 rprj : forall f g : R[* -> *]. f < g => Pi (Functor g) -> Mu (Pi g) -> Mu (Pi f)
-rprj = \ d. cata (fmapP d) (o in prj)
+rprj = \ d. cata (fmapP d) (in . prj)
 
 -------------------------------------------------------------------------------
 -- Mendler catamorphisms
@@ -31,7 +31,7 @@ type MAlg : (* -> *) -> * -> *
 type MAlg = \f c. forall a. (a -> c) -> f a -> c
 
 mcata : forall a f. MAlg f a -> Mu f -> a
-mcata = \ alg. fix (\ mcata x. alg mcata (out x))
+mcata = \ alg. fix (\ mcata. alg mcata . out)
 
 -------------------------------------------------------------------------------
 -- Bounded algebras

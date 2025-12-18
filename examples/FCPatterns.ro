@@ -1,0 +1,41 @@
+import Ro.Base , Data.Nat
+{- 
+reading:
+
+  - First Class Patterns? Mark Tullsen 
+    - Can't find pdf. https://link.springer.com/chapter/10.1007/3-540-46584-7_1
+    - https://www.cambridge.org/core/services/aop-cambridge-core/content/view/968C982CA9B727A2C04D216EEF4E6CFC/S0956796808007144a.pdf/first-class-patterns.pdf
+  - Views: a way for pattern matching to cohabit with data abstraction. Wadler, 1987
+    - https://dl.acm.org/doi/10.1145/41625.41653
+  - The view from the left. McBride and mcKinna, 2004
+    - https://cs.ru.nl/~freek/courses/tt-2010/tvftl/conor-james-views.pdf    
+  - Extensible Programming with First-Class Cases. Matthias Blume, Umut A. Acar, Wonseok Chae. 2006
+    - https://www.brinckerhoff.org/clements/csc530-sp08/Readings/blume-2006.pdf    
+  - Pattern Synonyms. Matthew Pickering, Gergo Erdi, Simon Peyton Jones, Richard Eisenberg. 2016
+    - https://dl.acm.org/doi/pdf/10.1145/2976002.2976013    
+  - First Class Patterns. Barry Jay, Delia Kesner, 2008
+    - https://www.irif.fr/~kesner/papers/fcp.pdf    
+  - Optimising First-Class Pattern Matching. Jeff Smits, Toine Hartman, Jesper Cockx, 2022
+    - https://dl.acm.org/doi/pdf/10.1145/3567512.3567519
+Thoughts:    
+  - A quote from Pickering et al (Profunctor Optics: Modular Data Accessors):
+    - "Prisms are an implementation of first-class patterns, unlike other proposals; for example, Tullsen
+    [37] recognised the close connection between data constructors and pattern matching.
+    Pattern matching is the method which is used to deconstruct values constructed by
+    data constructors; first-class patterns should also be able to re-build the values that
+    they match."
+-}
+
+--------------------------------------------------------------------------------
+-- Deep pattern matching in Rosi is a little awkward...
+-- (although I suspect most (all?) improvements are syntactic sugar.)
+
+isEven : Nat -> Bool 
+isEven = fix (\ isEven n. match (out n) 
+    ( case #'Zero (const True) 
+    | case #'Succ (( case #'Zero (const False)
+                   | case #'Succ isEven) . out)))
+
+--------------------------------------------------------------------------------
+-- View patterns.
+---   https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/view_patterns.html

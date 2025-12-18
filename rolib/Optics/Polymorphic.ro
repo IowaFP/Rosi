@@ -43,13 +43,13 @@ type Prism = \ a b s t. Pi { 'get := s -> Either a t , 'put := b -> t }
 -- each label creates a prism
 prism : forall l : L , a b : * , c x y : R[*]. {l := a} + c ~ x , {l := b} + c ~ y => 
         #l -> Prism a b (Sigma x) (Sigma y)
-prism = \ l. (#'get := case l Left | (o Right inj) , #'put := con l)
+prism = \ l. (#'get := case l Left | Right . inj , #'put := con l)
 
 -- Prisms may be composed
 compPrism : forall a a' b b' s t : *. Prism a b s t -> Prism a' b'  a b -> Prism a' b' s t
 compPrism = \ x y. 
   (#'get := \ s. match (get x s) 
-       (either (\ a. match (get y a) (either Left (o Right (put x)))) Right) , 
+       (either (\ a. match (get y a) (either Left (Right . (put x)))) Right) , 
    #'put := o (put x) (put y))
 
 --------------------------------------------------------------------------------

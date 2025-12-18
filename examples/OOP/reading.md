@@ -4,11 +4,17 @@ Reading list.
 - Codata in action. Downen, Sullivan, Ariola, and SPJ 2019
   - https://www.microsoft.com/en-us/research/wp-content/uploads/2020/01/CoDataInAction.pdf?msockid=204eae218676650527f9bd2e871464e2
 
-## Basic encodings of classes as recursive types
+## Basic encodings of classes & objects
 - Type inference for record concatenation and multiple inheritance. Wand 89
   - https://www.cs.tufts.edu/~nr/cs257/archive/mitch-wand/types-simple-objects.pdf
 - Inheritance is not Subtyping. Cook et al POPL 1990
   - https://www.cs.utexas.edu/~wcook/papers/InheritanceSubtyping90/CookPOPL90.pdf
+- An Efficient Class and Object Encoding
+  - https://web.cs.ucla.edu/~palsberg/course/purdue/cs661/F01/papers/glew-oopsla00.pdf
+- Comparing Object Encodings, Kim B. Bruce, Luca Cardelli & Benjamin C. Pierce, 1997
+  - (Can't find a pdf)
+- Objects and Object-Oriented Programming (lecture notes, Harvard)
+  - https://groups.seas.harvard.edu/courses/cs152/2013sp/lectures/lec21.pdf
 
 ## The visitor pattern
 - The Visitor Pattern as a Reusable, Generic, Type-Safe Component

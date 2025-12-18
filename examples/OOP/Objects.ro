@@ -173,8 +173,8 @@ type Class = \ f args. forall z : R [ * -> * ]. f < z =>
 new : forall f : R[* -> *], args : R[*].  
       Class f args ->
       Pi args -> Mu (Pi f)
-new = /\ f. \ class args. fix (fix
-    (\ f p d. in (class [f] f p d)) args) 
+new = \ class args. fix (fix
+    (\ f p d. in (class f p d)) args) 
 
 -- --------------------------------------------------------------------------------
 -- -- With CartPoint made suitably generic, we can define a ColorPoint that inherits

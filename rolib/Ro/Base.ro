@@ -53,7 +53,7 @@ otherwise : forall a b. a -> b -> a
 otherwise = const
 
 brnl : forall x z t. x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
-brnl = \ f g. f | (o g (\x. inj x))
+brnl = \ f g. f | (g . inj)
 
 relabelS : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
            #l0 -> #l1 -> Sigma y0 -> Sigma y1
@@ -79,7 +79,6 @@ upd : forall x' y z z'.
         Labels (z - y) < Labels x' =>
         Pi x' -> Pi z -> Pi z'
 upd = \r s. r ++ prj s
-
 
 --------------------------------------------------------------------------------
 -- The Bool type
