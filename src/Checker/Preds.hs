@@ -407,7 +407,7 @@ guesses prs =
   guessAt i =
     do p' <- local (const tcin) (normalizeP [] p)
        let tries = catMaybes $ map ($ (tcin, p', v)) guessers
-       return (map (wrapGuess (dropAt i prs)) tries)
+       return (map (wrapGuess (dropAt i prs) . local (const tcin)) tries)
     where (tcin, p, v) = prs !! i
 
   guessers :: [Guesser]
@@ -476,11 +476,11 @@ guesses prs =
        return [(tcin, PEq tf uf, r1), (tcin, PEq ta ua, r2)]
   guessAppApp _ = Nothing
 
-  guessApp pr@(tcin, PEq t u, v)
-    | TApp (TUnif v) t' <- t =
-      Just $ guessLam v t' u
-    | TApp (TUnif v) u' <- u =
-      Just $ guessLam v u' t
+  guessApp pr@(tcin, PEq t0 u0, v)
+    | TApp (TUnif v) t' <- t0 =
+      Just $ guessLam v t' u0
+    | TApp (TUnif v) u' <- u0 =
+      Just $ guessLam v u' t0
 
     where
 
@@ -489,10 +489,11 @@ guesses prs =
          k <- kindOf t'
          u' <- TLam x (Just k) <$> walk (TVar 0 [x, ""]) t' 0 u
          trace $
-           "solving " ++ renderString (ppr $ PEq t u) ++ ":\n" ++
+           "solving " ++ renderString (ppr $ PEq t0 u0) ++ ":\n" ++
            "by guessing " ++ renderString (ppr v) ++ " := " ++ renderString (ppr u')
          solveUV v u'
          return [pr]
+
     -- `walk x u m t` builds the body of a function that, applied to `u`,
     -- returns `t`. There are a couple of pieces:
     --
@@ -531,7 +532,7 @@ guesses prs =
     walk x u m (TLabeled l t) = TLabeled <$> walk x u m l <*> walk x u m t
     walk x u m (TRow ts) = TRow <$> mapM (walk x u m) ts
     walk x u m (TConApp k t) = TConApp k <$> walk x u m t
-    walk x u m (TMapFun f) = TMapFun <$> walk x u m t
+    walk x u m (TMapFun f) = TMapFun <$> walk x u m f
     walk x u m (TCompl t t') = TCompl <$> walk x u m t <*> walk x u m t'
     walk x u m (TMapArg r) = TMapArg <$> walk x u m r
     walk x u m (TInst is t) = TInst <$> walkIs is <*> walk x u m t where
@@ -599,8 +600,8 @@ guess (pr@(tcin, PEq t u, v) : prs) =
              k <- kindOf t'
              u' <- TLam x (Just k) <$> walk (TVar 0 [x, ""]) t' 0 u
              trace $
-               "solving " ++ show (PEq t'0 u'0) ++ ":\n" ++
-               "by guessing " ++ show v ++ " := " ++ show u'
+               "solving " ++ renderString (ppr $ PEq t'0 u'0) ++ ":\n" ++
+               "by guessing " ++ renderString (ppr v) ++ " := " ++ renderString (ppr u')
              solveUV v u'
              return (Just (pr : prs))
        (TApp f@(TMapFun _) a, TApp f'@(TMapFun _) a') ->
@@ -716,10 +717,10 @@ solverLoop ps =
      if b
      then solverLoop ps'
      else guessLoop =<< guesses ps'
-            --  mps <- guess ps'
-            --  case mps of
-            --    Just ps'' -> solverLoop ps''
-            --    Nothing -> trace "Solver done" >> return ps'
+          -- do mps <- guess ps'
+          --    case mps of
+          --      Just ps'' -> solverLoop ps''
+          --      Nothing -> trace "Solver done" >> return ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
           do (b', TCOut ps') <- collect $ solve p

@@ -7,7 +7,7 @@ import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.F
 --   - cabal run Rosi -- -i rolib Optics.Monomorphic -e showBob
 
 --------------------------------------------------------------------------------
--- The interface for lenses 
+-- The interface for lenses
 --
 -- N.b. there are handful of equivalent representations one could use.
 -- I follow the simplest and original, as proposed by Foster et al (2007).
@@ -19,22 +19,22 @@ sel = \ l r. prj r / l
 type Lens : * -> * -> *
 type Lens =  \ s t. Pi { 'get := s -> t , 'put := s -> t -> s }
 
-get = sel #'get 
+get = sel #'get
 put = sel #'put
 
 modify : forall s t. Lens s t -> (t -> t) -> s -> s
 modify = \ l f s. put l s (f (get l s))
 
--- Each label forms a lens 
+-- Each label forms a lens
 lens : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Lens (Pi z) t
 lens = \ l. (#'get := sel l , #'put := \ s t. (l := t) ++ prj s)
 
 -- lenses may be composed
-comp : forall a b c : *. Lens a b -> Lens b c -> Lens a c 
+comp : forall a b c : *. Lens a b -> Lens b c -> Lens a c
 comp = \ x y. (#'get := (get y) . (get x) , #'put := \ a c. put x a (put y (get x a) c) )
 
 -- Bijective lenses are lenses that ignore the source during a putback
-bijective : forall s t : *. (s -> t) -> (t -> s) -> Lens s t 
+bijective : forall s t : *. (s -> t) -> (t -> s) -> Lens s t
 bijective = \ get put. (#'get := get , #'put := \ s. put)
 
 {- --------------------------------------------------------------------------
@@ -63,14 +63,14 @@ particular type of lens you are working with. Because Rosi is not dependently ty
 we cannot prove any law directly in the theory of Rosi. Just as with e.g. functor
 laws in Haskell, these must be verified by hand.
 
------------------------------------------------------------------------------ -} 
+----------------------------------------------------------------------------- -}
 
 
 
 --------------------------------------------------------------------------------
 -- Prisms
 
-type Prism : * -> * -> * 
+type Prism : * -> * -> *
 type Prism = \ s t. Pi { 'get := s -> Maybe t , 'put := t -> s }
 
 -- each label creates a prism
@@ -78,24 +78,24 @@ prism : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Prism (Sigma z) t
 prism = \ l. (#'get := case l Just | otherwise Nothing , #'put := con l)
 
 -- Prisms may be composed
-compPrism : forall a b c : *. Prism a b -> Prism b c -> Prism a c 
-compPrism = /\ a b c. \ l u. (#'get := composeKleisli [Maybe] [a] [b] [c] monadMaybe (get u) (get l) , #'put := o (put l) (put u) )
+compPrism : forall a b c : *. Prism a b -> Prism b c -> Prism a c
+compPrism = \ l u. (#'get := composeKleisli monadMaybe (get u) (get l) , #'put := o (put l) (put u) )
 
 --------------------------------------------------------------------------------
 -- Adapters
 -- Adapters specialize lenses and prisms
 -- (Adapters are alternatively called Isos or bijective lenses.)
 
-type Adapter : * -> * -> * 
+type Adapter : * -> * -> *
 type Adapter = \ s t. Pi { 'from := s -> t , 'to := t -> s}
 
-from = sel #'from 
+from = sel #'from
 to   = sel #'to
 
-adapterLens : forall s t. Adapter s t -> Lens s t 
+adapterLens : forall s t. Adapter s t -> Lens s t
 adapterLens = \ a. (#'get := from a , #'put := \ s t. to a t)
 
-adapterPrism : forall s t. Adapter s t -> Prism s t 
+adapterPrism : forall s t. Adapter s t -> Prism s t
 adapterPrism = \ a. (#'get := Just . (from a) , #'put := to a)
 
 
@@ -106,40 +106,40 @@ adapterPrism = \ a. (#'get := Just . (from a) , #'put := to a)
 type Traversal : * -> * -> *
 type Traversal = \ s t. Pi {'toListOf := s -> List t , 'over := (t -> t) -> s -> s }
 
-toListOf = sel #'toListOf 
+toListOf = sel #'toListOf
 over = sel #'over
 
-lensTraversal : forall s t. Lens s t -> Traversal s t 
+lensTraversal : forall s t. Lens s t -> Traversal s t
 lensTraversal = \ l. (#'toListOf := sing . (get l)  , #'over := modify l)
 
 prismTraversal : forall s t. Prism s t -> Traversal s t
-prismTraversal = \ p. 
-  (#'toListOf := o (maybe nil sing) (get p)  , 
-   #'over := \f s. match (get p s) 
+prismTraversal = \ p.
+  (#'toListOf := o (maybe nil sing) (get p)  ,
+   #'over := \f s. match (get p s)
     ( case #'Nothing (const s)
     | case #'Just (put p . f)))
 
-compTraversal : forall a b c. Traversal a b -> Traversal b c -> Traversal a c 
-compTraversal = /\ a b c. \ x y. 
-  (#'toListOf := composeKleisli [List] [a] [b] [c] monadList (toListOf y) (toListOf x) , 
+compTraversal : forall a b c. Traversal a b -> Traversal b c -> Traversal a c
+compTraversal = \ x y.
+  (#'toListOf := composeKleisli monadList (toListOf y) (toListOf x) ,
    #'over := \ f. over x (over y f))
 
 inOrder : forall s t. Traversal s t -> Traversal (List s) t
-inOrder = \ t. 
-  (#'toListOf := concat . (fmapList (toListOf t)) , 
+inOrder = \ t.
+  (#'toListOf := concat . (fmapList (toListOf t)) ,
    #'over := fmapList . (over t) )
 
 {- -----------------------------------------------------------------------------
 # The lattice of optics
 -----------------------
 
-      Traversals 
+      Traversals
       /       \
      /         \
    Lens        Prisms
      \         /
       \       /
-       Adapters 
+       Adapters
 
 -}
 
@@ -157,11 +157,11 @@ inOrder = \ t.
 --        get projectLens (put projectLens zs xs)
 --      = prj [x] [z] (put projectLens zs xs)
 --      = prj [x] [z] (xs ++ prj [y] [z] zs)
---      = xs 
+--      = xs
 --   as desired.
-projectLens : forall x y : R[*]. x < y => 
+projectLens : forall x y : R[*]. x < y =>
               Lens (Pi y) (Pi x)
-projectLens = /\ x y. (#'get := prj [x] [y] , #'put := \ zs xs. xs ++ prj [y - x] [y] zs)      
+projectLens = /\ x y. (#'get := prj [x] [y] , #'put := \ zs xs. xs ++ prj [y - x] [y] zs)
 
 
 --------------------------------------------------------------------------------
@@ -183,33 +183,33 @@ projectLens = /\ x y. (#'get := prj [x] [y] , #'put := \ zs xs. xs ++ prj [y - x
 --      = fst (pair (prj [x] [z] zs) (prj [y] [z] zs)) ++ snd (pair (prj [x] [z] zs) (prj [y] [z] zs))
 --      = (prj [x] [z] zs) ++ (prj [y] [z] zs)
 --      = zs
-concatLens : forall x y z : R[ * ]. x + y ~ z => 
+concatLens : forall x y z : R[ * ]. x + y ~ z =>
              Lens (Pair (Pi x) (Pi y)) (Pi z)
 concatLens = /\ x y z. (#'get := \ p.  fst p ++ snd p , #'put := \ p zs. pair (prj [x] [z] zs) (prj [y] [z] zs))
 
 --------------------------------------------------------------------------------
 -- Injection is a prism
 
-injectPrism : forall x y : R[*]. x < y => 
+injectPrism : forall x y : R[*]. x < y =>
               Prism (Sigma y) (Sigma x)
 injectPrism = (#'get := Just | otherwise Nothing , #'put := inj)
 
 --------------------------------------------------------------------------------
 -- Branching is a prism
 
-branchPrism : forall x y z : R[*]. x + y ~ z => 
+branchPrism : forall x y z : R[*]. x + y ~ z =>
               Prism (Sigma z) (Either (Sigma x) (Sigma y))
-branchPrism = (#'get := Just . Left | Just . Right , #'put := case #'Left inj | case #'Right inj)      
+branchPrism = (#'get := Just . Left | Just . Right , #'put := case #'Left inj | case #'Right inj)
 
 -- and a lens on eliminators
-branchLens : forall x y z : R[*], t : *. x + y ~ z => 
+branchLens : forall x y z : R[*], t : *. x + y ~ z =>
               Lens (Pair (Sigma x -> t) (Sigma y -> t)) (Sigma z -> t)
 branchLens = bijective (\ p. fst p | snd p) (\ t. pair (t . inj) (t . inj))
 
 --------------------------------------------------------------------------------
 -- A Pi to Sigma lens
 
-toS : forall l : L , t : *, r : R[*]. {l := t} < r => #l -> Pi r -> Sigma r 
+toS : forall l : L , t : *, r : R[*]. {l := t} < r => #l -> Pi r -> Sigma r
 toS = \ l d. inj (l := sel l d)
 
 patch : forall r: R[*]. Pi r -> Sigma r -> Pi r

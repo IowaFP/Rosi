@@ -5,8 +5,8 @@ type Monad = \t. Pi { 'Applicative := Applicative t,
                       'bind := forall a b. t a -> (a -> t b) -> t b }
 
 
-composeKleisli : forall t : * -> *, a b c : *. 
-                 Monad t -> 
+composeKleisli : forall t : * -> *, a b c : *.
+                 Monad t ->
                  (b -> t c) -> (a -> t b) -> (a -> t c)
 composeKleisli = \ m f g a. sel m #'bind (g a) f
 
@@ -19,15 +19,6 @@ monadMaybe : Monad Maybe
 monadMaybe = ( #'Applicative := applicativeMaybe
              , #'bind := bindMaybe )
 
--- broken
--- composeMaybe : forall a b c. (b -> Maybe c) -> (a -> Maybe b) -> a -> Maybe c
--- composeMaybe = composeKleisli monadMaybe             
 
--- also broken
--- composeMaybe : forall a b c. (b -> Maybe c) -> (a -> Maybe b) -> a -> Maybe c
--- composeMaybe = composeKleisli sorry       
-
--- 
--- fixed
--- composeMaybe : forall a b c. (b -> Maybe c) -> (a -> Maybe b) -> a -> Maybe c
--- composeMaybe = /\ a b c. composeKleisli [Maybe] [a] [b] [c] monadMaybe
+composeMaybe : forall a b c. (b -> Maybe c) -> (a -> Maybe b) -> a -> Maybe c
+composeMaybe = composeKleisli monadMaybe
