@@ -41,7 +41,7 @@ class Monad m => MonadRef m where
   newRef :: Typeable a => a -> m (IORef a)
 
 data KBinding =
-    KBVar { kbKind :: Kind, kbLevel :: Int }
+    KBVar { kbKind :: Kind, kbLevel :: Level }
   | KBDefn { kbKind :: Kind, kbDefn :: Ty }
   deriving (Eq, Show)
 
@@ -80,7 +80,7 @@ pushUpdate v x st
 emptyTCSt :: TCSt
 emptyTCSt = TCSt [] 0
 
-data TCIn = TCIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt, level :: Int, ectxt :: Error -> Error }
+data TCIn = TCIn { kctxt :: KCtxt, tctxt :: TCtxt, pctxt :: PCtxt, level :: Level, ectxt :: Error -> Error }
 
 emptyTCIn :: TCIn
 emptyTCIn = TCIn [] [] [] 0 id
@@ -132,10 +132,10 @@ class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => Monad
 
   fresh :: String -> m String
 
-  atLevel :: Int -> m t -> m t
+  atLevel :: Level -> m t -> m t
   atLevel l = local (\st -> st { level = l })
 
-  theLevel :: m Int
+  theLevel :: m Level
   theLevel = asks level
 
   mark :: m Mark

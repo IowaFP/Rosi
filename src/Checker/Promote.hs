@@ -6,6 +6,7 @@ import Control.Monad.Reader
 import Checker.Monad
 import Checker.Types hiding (trace)
 import Checker.Utils
+import Printer
 import Syntax
 
 import GHC.Stack
@@ -53,11 +54,14 @@ promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k
          Just t' -> promoteN v m (shiftTN 0 n' t')
          Nothing
            | n' < m ->
-             return (Just t)
+             do trace $ "promoteN 1: " ++ show n' ++ " < " ++ show m
+                return (Just t)
            | n' >= m + n && l >= l' ->
-             return (Just $ TUnif (v' { uvShift = n' - n }))
+             do trace "promoteN 2"
+                return (Just $ TUnif (v' { uvShift = n' - n }))
            | otherwise ->
-             do r'' <- newRef Nothing
+             do trace "promoteN 3"
+                r'' <- newRef Nothing
                 uvar'' <- fresh uvar'
                 let newT n = TUnif (UV n l (Goal (uvar'', r'')) k')
                 writeRef r' (Just (newT ((m + n) - n')))
@@ -77,7 +81,7 @@ promoteN v n (TConApp k t) = liftM (TConApp k) <$> promoteN v n t
 promoteN v n TString = return (Just TString)
 promoteN v n (TMapFun t) = liftM TMapFun <$> promoteN v n t
 promoteN v n (TCompl y z) = liftM2 TCompl <$> promoteN v n y <*> promoteN v n z
-promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promoteN v n t
+promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promoteN v m t
   where promoteIs :: MonadCheck m => Insts -> m (Maybe Insts)
         promoteIs is@(Unknown n' g@(Goal (s, r))) =
           do mis <- readRef r
@@ -108,6 +112,7 @@ solveUV v t =
   do k <- kindOf t
      -- next line is arguably wrong: should just make unification fail, not immediately signal a type error
      expectK t k (uvKind v)
+     let tString = renderString (ppr t)
      --
      mt' <- promote v t
      case mt' of
@@ -115,7 +120,7 @@ solveUV v t =
         do trace $ unwords ["9 incoming unification failure: unable to promote ", show t, " to match ", show v ]
            return Nothing
        Just t' ->
-         do trace ("1 promoted " ++ show t ++ " to " ++ show t')
-            trace ("1 instantiating " ++ goalName (uvGoal v) ++ " to " ++ show t') --  renderString (ppr t'))
+         do trace ("1 promoted " ++ tString ++ " to " ++ renderString (ppr t'))
+            trace ("1 instantiating " ++ goalName (uvGoal v) ++ "@" ++ show (uvLevel v) ++ " to " ++ renderString (ppr  t')) --  renderString (ppr t'))
             writeRef (goalRef (uvGoal v)) (Just t')
             return (Just VEqRefl)
