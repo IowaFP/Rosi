@@ -31,7 +31,7 @@ lens = \ l. (#'get := sel l , #'put := \ s t. (l := t) ++ prj s)
 
 -- lenses may be composed
 comp : forall a b c : *. Lens a b -> Lens b c -> Lens a c 
-comp = \ x y. (#'get :=  o (get y) (get x) , #'put := \ a c. put x a (put y (get x a) c) )
+comp = \ x y. (#'get := (get y) . (get x) , #'put := \ a c. put x a (put y (get x a) c) )
 
 -- Bijective lenses are lenses that ignore the source during a putback
 bijective : forall s t : *. (s -> t) -> (t -> s) -> Lens s t 
@@ -96,7 +96,7 @@ adapterLens : forall s t. Adapter s t -> Lens s t
 adapterLens = \ a. (#'get := from a , #'put := \ s t. to a t)
 
 adapterPrism : forall s t. Adapter s t -> Prism s t 
-adapterPrism = \ a. (#'get := o Just (from a) , #'put := to a)
+adapterPrism = \ a. (#'get := Just . (from a) , #'put := to a)
 
 
 --------------------------------------------------------------------------------
@@ -110,14 +110,14 @@ toListOf = sel #'toListOf
 over = sel #'over
 
 lensTraversal : forall s t. Lens s t -> Traversal s t 
-lensTraversal = \ l. (#'toListOf := o sing (get l)  , #'over := modify l)
+lensTraversal = \ l. (#'toListOf := sing . (get l)  , #'over := modify l)
 
 prismTraversal : forall s t. Prism s t -> Traversal s t
 prismTraversal = \ p. 
   (#'toListOf := o (maybe nil sing) (get p)  , 
    #'over := \f s. match (get p s) 
     ( case #'Nothing (const s)
-    | case #'Just (\ t. put p (f t))))
+    | case #'Just (put p . f)))
 
 compTraversal : forall a b c. Traversal a b -> Traversal b c -> Traversal a c 
 compTraversal = /\ a b c. \ x y. 
@@ -126,8 +126,8 @@ compTraversal = /\ a b c. \ x y.
 
 inOrder : forall s t. Traversal s t -> Traversal (List s) t
 inOrder = \ t. 
-  (#'toListOf := o concat (fmapList (toListOf t)) , 
-   #'over := o fmapList (over t) )
+  (#'toListOf := concat . (fmapList (toListOf t)) , 
+   #'over := fmapList . (over t) )
 
 {- -----------------------------------------------------------------------------
 # The lattice of optics
@@ -199,12 +199,12 @@ injectPrism = (#'get := Just | otherwise Nothing , #'put := inj)
 
 branchPrism : forall x y z : R[*]. x + y ~ z => 
               Prism (Sigma z) (Either (Sigma x) (Sigma y))
-branchPrism = (#'get := o Just Left | o Just Right , #'put := case #'Left inj | case #'Right inj)      
+branchPrism = (#'get := Just . Left | Just . Right , #'put := case #'Left inj | case #'Right inj)      
 
 -- and a lens on eliminators
 branchLens : forall x y z : R[*], t : *. x + y ~ z => 
               Lens (Pair (Sigma x -> t) (Sigma y -> t)) (Sigma z -> t)
-branchLens = bijective (\ p. fst p | snd p) (\ t. pair (o t inj) (o t inj))
+branchLens = bijective (\ p. fst p | snd p) (\ t. pair (t . inj) (t . inj))
 
 --------------------------------------------------------------------------------
 -- A Pi to Sigma lens
