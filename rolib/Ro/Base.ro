@@ -115,6 +115,7 @@ impossible = fix (\x. x)
 -------------------------------------------------------------------------------
 -- Basic analysis / synthesis
 
+
 reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t
 reflect = \ d w. ana #(\X. X) (\ l u. sel d l u) w
 
@@ -194,6 +195,3 @@ either = \ f g. (case #'Left f | case #'Right g)
 
 sorry : forall a. a
 sorry = fix (\x. x)
-
-
-

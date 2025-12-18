@@ -1,0 +1,11 @@
+t0 : forall a b c d. (d -> b -> c) -> (d -> a -> b) -> d -> a -> c 
+t0 = \ f g x. (f x) . (g x)
+
+t1 : forall a b c d. (c -> d) -> (b -> c) -> (a -> b) -> a -> d
+t1 = \ f g h. f . g . h
+
+t2 : forall a b c d. (c -> d) -> (b -> c) -> (a -> b) -> a -> d
+t2 = \ f g h. (f . g) . h
+
+t3 : forall a b c d. (c -> d) -> (b -> c) -> (a -> b) -> a -> d
+t3 = \ f g h. f . (g . h)

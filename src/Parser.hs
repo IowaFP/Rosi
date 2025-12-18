@@ -296,8 +296,16 @@ term = prefixes typedTerm where
   branchTerm = chainl1 composeTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
 
   
+  -- ELam "x" Nothing (EApp e1 (EApp e2 (EVar 0 ["x"])))
+  o :: Term 
+  o = ELam "f" Nothing 
+     (ELam "g" Nothing 
+     (ELam "x" Nothing 
+       (EApp (EVar (-1) ["f"]) 
+         (EApp (EVar (-1) ["g"]) (EVar (-1) ["x"])))))
+
   composeTerm :: Parser Term
-  composeTerm = chainr1 labTerm (op "." (return (\ e1 e2 -> ELam "x" Nothing (EApp e1 (EApp e2 (EVar 0 ["x"]))))))
+  composeTerm = chainr1 labTerm (op "." (return (\ e1 e2 -> EApp (EApp o e1) e2)))
 
   labTerm :: Parser Term
   labTerm =
