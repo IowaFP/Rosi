@@ -18,3 +18,16 @@ bindMaybe =
 monadMaybe : Monad Maybe
 monadMaybe = ( #'Applicative := applicativeMaybe
              , #'bind := bindMaybe )
+
+-- broken
+-- composeMaybe : forall a b c. (b -> Maybe c) -> (a -> Maybe b) -> a -> Maybe c
+-- composeMaybe = composeKleisli monadMaybe             
+
+-- also broken
+-- composeMaybe : forall a b c. (b -> Maybe c) -> (a -> Maybe b) -> a -> Maybe c
+-- composeMaybe = composeKleisli sorry       
+
+-- 
+-- fixed
+-- composeMaybe : forall a b c. (b -> Maybe c) -> (a -> Maybe b) -> a -> Maybe c
+-- composeMaybe = /\ a b c. composeKleisli [Maybe] [a] [b] [c] monadMaybe

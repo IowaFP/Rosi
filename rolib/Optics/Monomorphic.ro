@@ -79,7 +79,7 @@ prism = \ l. (#'get := case l Just | otherwise Nothing , #'put := con l)
 
 -- Prisms may be composed
 compPrism : forall a b c : *. Prism a b -> Prism b c -> Prism a c 
-compPrism = \ l u. (#'get := composeKleisli monadMaybe (get u) (get l) , #'put := o (put l) (put u) )
+compPrism = /\ a b c. \ l u. (#'get := composeKleisli [Maybe] [a] [b] [c] monadMaybe (get u) (get l) , #'put := o (put l) (put u) )
 
 --------------------------------------------------------------------------------
 -- Adapters
@@ -120,8 +120,8 @@ prismTraversal = \ p.
     | case #'Just (\ t. put p (f t))))
 
 compTraversal : forall a b c. Traversal a b -> Traversal b c -> Traversal a c 
-compTraversal = \ x y. 
-  (#'toListOf := composeKleisli monadList (toListOf y) (toListOf x) , 
+compTraversal = /\ a b c. \ x y. 
+  (#'toListOf := composeKleisli [List] [a] [b] [c] monadList (toListOf y) (toListOf x) , 
    #'over := \ f. over x (over y f))
 
 inOrder : forall s t. Traversal s t -> Traversal (List s) t
