@@ -3,7 +3,7 @@ module Syntax (module Syntax) where
 
 import Control.Monad.IO.Class
 import Data.Bifunctor (first)
-import Data.Generics hiding (TyCon(..))
+import Data.Generics hiding (TyCon(..), GT)
 import Data.IORef
 import GHC.Stack
 
@@ -69,7 +69,36 @@ data Pred =
 -- Types
 --------------------------------------------------------------------------------
 
-data UVar = UV { uvShift :: Int, uvLevel :: Int, uvGoal :: Goal Ty, uvKind :: Kind }
+data Level = Top | Lv Int
+  deriving (Eq, Data, Typeable)
+
+instance Ord Level where
+  compare Top Top = EQ
+  compare Top _   = GT
+  compare _ Top   = LT
+  compare (Lv i) (Lv j) = compare i j
+
+tops :: (Int -> Int -> Int) -> Level -> Level -> Level
+tops f Top x = Top
+tops f x Top = Top
+tops f (Lv i) (Lv j) = Lv (f i j)
+
+instance Num Level where
+  (+) = tops (+)
+  (*) = tops (*)
+  abs Top = Top
+  abs (Lv i) = Lv i
+  signum Top = Lv 1
+  signum (Lv x) = Lv (signum x)
+  fromInteger = Lv . fromInteger
+  negate Top = Top
+  negate (Lv i) = Lv (negate i)
+
+instance Show Level where
+  show Top = "T"
+  show (Lv i) = show i
+
+data UVar = UV { uvShift :: Int, uvLevel :: Level, uvGoal :: Goal Ty, uvKind :: Kind }
   deriving (Data, Show, Typeable)
 
 instance Eq UVar where
@@ -104,7 +133,7 @@ funTy = TApp . TApp TFun
 infixr 5 `funTy`
 
 -- Does De Bruijn index n occur free in type t?
-tvFreeIn :: Int -> Ty -> Bool 
+tvFreeIn :: Int -> Ty -> Bool
 tvFreeIn n (TVar i _) = i == n
 tvFreeIn n (TUnif u) = False
 tvFreeIn n TFun = False
@@ -114,12 +143,12 @@ tvFreeIn n (TLam s _ t) = tvFreeIn (n + 1) t
 tvFreeIn n (TApp t u) = tvFreeIn n t || tvFreeIn n u
 tvFreeIn n (TLab s) = False
 tvFreeIn n (TSing t) = tvFreeIn n t
-tvFreeIn n (TLabeled t u) = tvFreeIn n t || tvFreeIn n u 
-tvFreeIn n (TRow ts) = any (tvFreeIn n) ts 
-tvFreeIn n (TConApp c t) = tvFreeIn n t 
-tvFreeIn n (TMapFun t) = tvFreeIn n t 
+tvFreeIn n (TLabeled t u) = tvFreeIn n t || tvFreeIn n u
+tvFreeIn n (TRow ts) = any (tvFreeIn n) ts
+tvFreeIn n (TConApp c t) = tvFreeIn n t
+tvFreeIn n (TMapFun t) = tvFreeIn n t
 tvFreeIn n (TCompl t u) = tvFreeIn n t || tvFreeIn n u
-tvFreeIn n TString = False 
+tvFreeIn n TString = False
 
 label, labeled :: Ty -> Maybe Ty
 concreteLabel :: Ty -> Maybe String

@@ -61,7 +61,7 @@ checkTerm0 (ETyLam v Nothing e) expected =
   do k <- kindGoal "d"
      checkTerm (ETyLam v (Just k) e) expected
 checkTerm0 e0@(ETyLam v (Just k) e) expected =
-  do tcod <- typeGoal "cod"
+  do tcod <- expectedGoal "cod"
      q <- expectT e0 (TForall v (Just k) tcod) expected
      wrap q . ETyLam v (Just k) <$>
        (upLevel $
@@ -75,7 +75,7 @@ checkTerm0 e (TForall v (Just k) t) =
      bindTy k $
        checkTerm (shiftEN 0 1 e) t)
 checkTerm0 e0@(EPrLam p e) expected =
-  do tcod <- typeGoal "cod"
+  do tcod <- expectedGoal "cod"
      q <- expectT e0 (TThen p tcod) expected
      wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
 checkTerm0 e (TThen p t) =
@@ -91,12 +91,12 @@ checkTerm0 (ELam v Nothing e) expected =
   do tdom <- typeGoal "dom"
      checkTerm0 (ELam v (Just tdom) e) expected
 checkTerm0 e0@(ELam v (Just t) e) expected =
-  do tcod <- typeGoal "cod"
+  do tcod <- expectedGoal "cod"
      t' <- fst <$> (normalize' [] =<< checkTy' e0 t KType)
      q <- expectT e0 (funTy t' tcod) expected
      wrap q . ELam v (Just t') <$> bind t' (checkTerm'  e tcod)
 checkTerm0 e0@(EApp f e) expected =
-  do tdom <- typeGoal "dom"
+  do tdom <- expectedGoal "dom"
      elimForm expected $ \expected ->
        EApp <$>
          checkTerm f (funTy tdom expected) <*>
@@ -124,14 +124,14 @@ checkTerm0 e0@(ESing t) expected =
      return (wrap q (ESing t'))
 checkTerm0 e0@(ELabel Nothing el e) expected =
   do k <- ctorGoal "k"
-     tl <- typeGoal' "l" KLabel
-     t <- typeGoal "t"
+     tl <- expectedGoal' "l" KLabel
+     t <- expectedGoal "t"
      q <- expectT e0 (TConApp k (TRow [TLabeled tl t])) expected
      wrap q <$>
        (ELabel (Just k) <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
 checkTerm0 e0@(EUnlabel Nothing e el) expected =
   do k <- ctorGoal "k"
-     tl <- typeGoal' "l" KLabel
+     tl <- expectedGoal' "l" KLabel
      el' <- checkTerm el (TSing tl)
      elimForm expected $ \expected ->
        do e' <- checkTerm' e (TConApp k (TRow [TLabeled tl expected]))
@@ -259,7 +259,7 @@ generalize e =
      (level, t, e', remaining, psThere) <-
        upLevel $
        local (\cin -> cin { pctxt = [] }) $
-       do t <- typeGoal "t"
+       do t <- expectedGoal "t"
           level <- theLevel
           (e', tcout) <- collect $ checkTerm e t
           (psHere, psThere) <- splitProblems level (goals tcout)
@@ -279,7 +279,7 @@ generalize e =
      trace $ "Generalized: " ++ renderString (ppr t')
      return (e''', t'')
 
-  where uvars :: Int -> Ty -> CheckM [UVar]
+  where uvars :: Level -> Ty -> CheckM [UVar]
         uvars _ (TVar {}) = return []
         uvars level (TUnif v@(UV { uvLevel = uvl, uvGoal = Goal (_, r) })) =
           do mt <- readRef r
@@ -307,7 +307,7 @@ generalize e =
         uvars level (TMapArg t) = uvars level t
         uvars _ TString = return []
 
-        puvars :: Int -> Pred -> CheckM [UVar]
+        puvars :: Level -> Pred -> CheckM [UVar]
         puvars level (PEq t u) = cat <$> uvars level t <*> uvars level u
         puvars level (PLeq y z) = cat <$> uvars level y <*> uvars level z
         puvars level (PPlus x y z) = cat <$> (cat <$> uvars level x <*> uvars level y) <*> uvars level z
@@ -320,7 +320,7 @@ generalize e =
         different t u = ref t /= ref u
         same t u = ref t == ref u
 
-        splitProblems :: Int -> [Problem] -> CheckM ([Problem], [Problem])
+        splitProblems :: Level -> [Problem] -> CheckM ([Problem], [Problem])
         splitProblems level [] = return ([], [])
         splitProblems level (pr@(tcin, p, _) : prs) =
           do (here, there) <- splitProblems level prs

@@ -104,6 +104,10 @@ instance Printable Kind where
 -- TODO: fix precedence in printing
 -- TODO: I think the precedence above is not what the parser implements
 
+instance Printable Level where
+  ppr (Lv i) = ppre i
+  ppr Top    = pure "T"
+
 instance Printable UVar where
   ppr (UV n l (Goal (s, rmt)) k) =
     do mt <- liftIO (readIORef rmt)
@@ -111,7 +115,7 @@ instance Printable UVar where
          Just t -> ppr t
          Nothing ->
            do pk <- asks printKinds
-              let name = ppre s <> "@" <> ppre l <>
+              let name = ppre s <> "@" <> ppr l <>
                          if n > 0 then "^" <> ppre n else mempty
               if pk
               then name <:> (P.align <$> ppr k)
