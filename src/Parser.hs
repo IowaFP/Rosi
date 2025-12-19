@@ -270,10 +270,12 @@ term = prefixes typedTerm where
          <|>
            do symbol "let"
               x <- identifier
+              mty <- optional $ symbol ":" >> ty
               symbol "="
               t <- term
               symbol ";"
-              return (ELet x t)
+              let t' = maybe t (ETyped t) mty
+              return (ELet x t')
 
   prefixes :: Parser Term -> Parser Term
   prefixes rest =
@@ -295,13 +297,13 @@ term = prefixes typedTerm where
 
   branchTerm = chainl1 composeTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
 
-  
+
   -- ELam "x" Nothing (EApp e1 (EApp e2 (EVar 0 ["x"])))
-  o :: Term 
-  o = ELam "f" Nothing 
-     (ELam "g" Nothing 
-     (ELam "x" Nothing 
-       (EApp (EVar (-1) ["f"]) 
+  o :: Term
+  o = ELam "f" Nothing
+     (ELam "g" Nothing
+     (ELam "x" Nothing
+       (EApp (EVar (-1) ["f"])
          (EApp (EVar (-1) ["g"]) (EVar (-1) ["x"])))))
 
   composeTerm :: Parser Term
