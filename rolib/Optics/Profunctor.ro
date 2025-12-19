@@ -1,14 +1,14 @@
-import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Optics.Monomorphic
+import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Optics.Polymorphic
 
 --------------------------------------------------------------------------------
 -- Optics 
 -- Optics generalize lenses, adapters, prisms, and traversals
 
--- Polymorphic version:
---   type Optic = \ p a b s t. p a b -> p s t 
 type Optic : (* -> * -> *) -> * -> * -> * -> * -> * 
 type Optic = \ p a b s t. p a b -> p s t
 
+--------------------------------------------------------------------------------
+-- Profunctors are contravariant in their first argument and covariant in their second
 
 type Dimap : (* -> * -> *) -> *
 type Dimap = \ p. forall a a' b b'. (a -> a') -> (b -> b') -> p a' b -> p a b'
@@ -18,9 +18,13 @@ type Profunctor = \ p. Pi {
     'dimap := Dimap p 
   }
 
+-- (->) is a profunctor
 arrowProfunctor : Profunctor (\ x y. x -> y)
 arrowProfunctor = 
   (#'dimap := /\ a a' b b'. \ f : a -> a'. \ g : b -> b'. \ h : a' -> b. \ x : a. g (h (f x)))         
+
+--------------------------------------------------------------------------------
+-- Cartesian profunctors cohere with products
 
 type Cartesian : (* -> * -> *) -> * 
 type Cartesian = \ p. Pi { 
@@ -33,16 +37,59 @@ type Cartesian = \ p. Pi {
 arrowP : Cartesian (\ x y. x -> y)
 arrowP = 
   (#'dimap := /\ a a' b b'. 
-    \ f : a -> a'. \ g. \ h. \ x. g (h (f x)) ,
-   #'first := /\ a b. \ f : a -> b. \ p. pair (f (fst p)) (snd p) , 
-   #'second := /\ a b. \ f : a -> b. \ p. pair (fst p) (f (snd p)))
+    \ f. \ g. \ h. \ x. g (h (f x)) ,
+   #'first := /\ a b c. \ f p. pair (f (fst p)) (snd p) , 
+   #'second := /\ a b c. \ f p. pair (fst p) (f (snd p)))
 
 -- And lenses are Cartesian profunctors 
-lensCartesian : Cartesian Lens
+lensCartesian : forall a b. Cartesian (Lens a b)
 lensCartesian = 
-  (#'dimap := sorry ,
-   #'first := sorry , 
-   #'second := sorry)
+  (#'dimap :=  /\ s s' t t'. \ f g l. 
+      (#'get := \ x. sel #'get l (f x) , 
+       #'put := \ x b. g (sel #'put l (f x) b)  ) ,
+   #'first := /\ s t c. \ l. 
+      (#'get := \ p. sel #'get l (fst p) , 
+       #'put := \ p b. pair (sel #'put l (fst p) b) (snd p))  , 
+   #'second := /\ s t c. \ l. 
+      (#'get := \ p. sel #'get l (snd p) , 
+       #'put := \ p b. pair (fst p) (sel #'put l (snd p) b)) )
+
+--------------------------------------------------------------------------------
+-- Cocartesian profunctors cohere with sums
+
+type CoCartesian : (* -> * -> *) -> * 
+type CoCartesian = \ p. Pi { 
+  'dimap := Dimap p , 
+  'first := forall a b c. p a b -> p (Either a c) (Either b c) ,
+  'second := forall a b c. p a b -> p (Either c a) (Either c b) }
+
+-- Arrow is cocartesian (todo)
+arrowCo : CoCartesian (\ x y. x -> y)
+arrowCo = 
+  (#'dimap := /\ a a' b b'. 
+    \ f. \ g. \ h. \ x. g (h (f x)) ,
+   #'first := /\ a b c. \ f p. sorry , 
+   #'second := /\ a b c. \ f p. sorry)  
+
+--------------------------------------------------------------------------------
+-- Monoidal profunctors
+
+type Monoidal : (* -> * -> *) -> * 
+type Monoidal = \ p. Pi { 
+  'dimap := Dimap p , 
+  'par := forall a b c d. p a b -> p (Pair a c) (Pair b d) ,
+  'empty := p Unit Unit }
+
+-- Arrow is monoidal (todo)
+arrowMon : Monoidal (\ x y. x -> y)
+arrowMon = 
+  (#'dimap := /\ a a' b b'. 
+    \ f. \ g. \ h. \ x. g (h (f x)) ,
+   #'par := /\ a b c d. \ p. sorry , 
+   #'empty := sorry)  
+
+--------------------------------------------------------------------------------
+-- Profunctor lenses
 
 type LensP : * -> * -> * -> * -> * 
 type LensP = \ a b s t. forall p : * -> * -> *. Cartesian p -> Optic p a b s t 
@@ -50,35 +97,45 @@ type LensP = \ a b s t. forall p : * -> * -> *. Cartesian p -> Optic p a b s t
 fork : forall a b c. (a -> b) -> (a -> c) -> a -> Pair b c 
 fork = \ f g x. pair (f x) (g x)
 
--- That this works is breaking my mind
-lensToP : forall s t : *. Lens s t -> LensP t t s s
-lensToP = /\ s t. \ l. /\ p. \ c. \ d : p t t. 
+lensToP : forall a b s t : *. Lens a b s t -> LensP a b s t
+lensToP = /\ a b s t. \ l. /\ p. \ c. \ d : p a b. 
    sel #'dimap c 
-    (fork (get l) id)              -- s -> Pair t s 
-    (uncurry (flip (put l)))       -- Pair t s -> s
-    (sel #'first c d)              -- p (Pair t s) (Pair t s)
+    (fork (get l) id)              -- s -> Pair a s 
+    (uncurry (flip (put l)))       -- Pair b s -> t
+    (sel #'first c d)              -- p (Pair a s) (Pair b s)
 
 
--- Broken.
--- lens' : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> LensP (Pi z) t
--- lens' = /\ l t z. \ ell. lensToP [Pi z] [t] (lens [l] [t] [z] ell) [\ x y. x -> y] arrowP
+-- Every label creates a lens
+lens' : forall l : L , a b : * , c x y : R[*]. {l := a} + c ~ x , {l := b} + c ~ y => 
+       #l -> LensP a b (Pi x) (Pi y)
+lens' = /\ l a b c x y. \ ell. lensToP [a] [b] [Pi x] [Pi y] (lens ell)
 
 -- Because (->) is a profunctor, we can directly apply a lensP by instantiating it
 -- with p = (->). Recall:
---   type Optic = \ p s t. p t t -> p s s
+--  type Optic = \ p a b s t. p a b -> p s t
 -- so 
---   Optic (->) = (t -> t) -> s -> s
+--   Optic (->) = (a -> b) -> s -> t
 -- which is the type of modify.
 modify' : forall a b s t : *. LensP a b s t -> (a -> b) -> s -> t
 modify' = \ l. l [\ x y. x -> y] arrowP
 
--- Pickering et al convert a LensP back to a Lens via 
--- letting p = Lens a b, where Lens is "polymorphic", i.e.,
---   Lens = \ a b s t. Pi {'get := s -> a , 'put := b -> s -> t }
--- I believe this polymorphic business is key to Profunctor optics working.
--- The function below builds a Lens t t -> Lens s s function,
--- whereas we need it to build a Lens a b a b -> Lens a b s t function.
 
--- pToLens : forall a b s t : *. LensP a b s t -> Lens s t
--- pToLens = \ p. p [Lens] lensCartesian (#'get := id , #'put := sorry)
+-- Convert a Profunctor lens to a concrete lens by letting p = Lens
+pToLens : forall a b s t : *. LensP a b s t -> Lens a b s t
+pToLens = /\ a b. \ p. p [Lens a b] lensCartesian (#'get := id , #'put := \ a b. b)
+
+--------------------------------------------------------------------------------
+-- Profunctor prisms
+-- todo: implement prismToP, pToPrism
+
+type PrismP : * -> * -> * -> * -> * 
+type PrismP = \ a b s t. forall p : * -> * -> *. CoCartesian p -> Optic p a b s t 
+
+
+--------------------------------------------------------------------------------
+-- Profunctor traversals
+-- todo: implement traversalToP, pToTraversal
+
+type TraversalP : * -> * -> * -> * -> * 
+type TraversalP = \ a b s t. forall p : * -> * -> *. Monoidal p -> Optic p a b s t 
 
