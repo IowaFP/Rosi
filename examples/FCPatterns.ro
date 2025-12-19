@@ -1,4 +1,4 @@
-import Ro.Base , Data.Nat
+import Ro.Base , Data.Nat , Optics.Monomorphic , Control.Monad
 {- 
 reading:
 
@@ -27,14 +27,30 @@ Thoughts:
 -}
 
 --------------------------------------------------------------------------------
--- Deep pattern matching in Rosi is a little awkward...
--- (although I suspect most (all?) improvements are syntactic sugar.)
+-- Deep pattern matching in Rosi is necessarily nested
 
 isEven : Nat -> Bool 
-isEven = fix (\ isEven n. match (out n) 
+isEven = fix (\ isEven n. match (fmapNatF out (out n))
     ( case #'Zero (const True) 
-    | case #'Succ (( case #'Zero (const False)
-                   | case #'Succ isEven) . out)))
+    | case #'Succ (( case #'Succ isEven
+                   | otherwise False))))
+
+-- There is an interesting comparison to be made between prisms of type:
+--   Pi { 'get := s -> Maybe t , 'put := t -> s }
+-- and Wadler's *views*. We can view 'get as the LHS destructor and 'put
+-- as the corresponding RHS constructor.
+
+-- silly
+caseOf : forall a b t : *. (a -> Maybe t) -> (t -> b) -> b -> a -> b
+caseOf = \ get do b a. maybe b do  (get a)
+
+-- Also silly, but illustrates how one might pattern match on accessors.
+isEven' : Nat -> Bool 
+isEven' = fix ( \ isEven' n.
+  caseOf (is #'Zero) (const True) 
+  (caseOf (composeMaybe (is #'Succ . out) (is #'Succ)) isEven' False (out n))
+  (out n)) 
+
 
 --------------------------------------------------------------------------------
 -- View patterns.

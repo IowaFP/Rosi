@@ -43,11 +43,13 @@ sel = \ r l. prj r / l
 con : forall l t z. {l := t} < z => #l -> t -> Sigma z
 con = \l x. inj (l := x)
 
+
 match : forall a b. a -> (a -> b) -> b
 match = \x f. f x
 
 case : forall l t u. #l -> (t -> u) -> Sigma { l := t } -> u
 case = \ l f x. f (x / l)
+
 
 otherwise : forall a b. a -> b -> a
 otherwise = const
@@ -172,6 +174,9 @@ maybe = \z f.
         ( case #'Nothing (const z)
         | case #'Just f
         )
+
+is : forall l t z. {l := t} < z => #l -> Sigma z -> Maybe t 
+is = \ l. case l Just | otherwise Nothing
 
 fromMaybe : forall a. a -> Maybe a -> a
 fromMaybe = \z. maybe z id

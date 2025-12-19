@@ -1,7 +1,11 @@
-import Ro.Base, Ro.Show
+import Ro.Base, Ro.Show , Data.Functor
 
 type NatF : * -> *
 type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}
+
+fmapNatF : Functor NatF 
+fmapNatF = fmapS (#'Zero := /\ a b. \ f : a -> b,  u : Unit. u , 
+                  #'Succ := /\ a b. \ f : a -> b. f)
 
 type Nat : *
 type Nat = Mu NatF
