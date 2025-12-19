@@ -1,4 +1,4 @@
-import Data.Functor
+import Data.Functor , Control.Monoid
 
 type Applicative : (* -> *) -> *
 type Applicative = \f. Pi { 'Functor := Functor f,
@@ -8,10 +8,22 @@ type Applicative = \f. Pi { 'Functor := Functor f,
 applicativeFunctor : forall z : R[* -> *]. Pi (Applicative z) -> Pi (Functor z)
 applicativeFunctor = mapP #(Applicative) #(Functor) (\l d. sel d #'Functor)
 
---
+--------------------------------------------------------------------------------
+-- The identity and constant functor 
 
-functorMaybe : Functor Maybe
-functorMaybe = (\f. case #'Just (\x. Just (f x)) | case #'Nothing (const Nothing))
+applicativeId : Applicative Id
+applicativeId = (#'Functor := /\ a b. functorId , 
+                 #'pure := /\ a. id , 
+                 #'ap := /\ a b. \ f. f)
+
+-- as GHC defines it---Const m is applicative if m is a monoid.
+applicativeConst : forall m. Monoid m -> Applicative (Const m)
+applicativeConst = \ m. (#'Functor := /\ a b. functorConst ,
+                    #'pure := /\ a. const (sel m #'empty) ,
+                    #'ap := /\ a b. sel m #'append)
+
+--------------------------------------------------------------------------------
+-- The maybe functor 
 
 pureMaybe : forall a. a -> Maybe a
 pureMaybe = con #'Just
@@ -23,6 +35,6 @@ apMaybe = case #'Just (\g x. functorMaybe g x)
 applicativeMaybe : Applicative Maybe
 applicativeMaybe = (#'Functor := functorMaybe,
                     #'pure := pureMaybe,
-                    #'ap := apMaybe)
+                    #'ap := apMaybe)                    
 
 

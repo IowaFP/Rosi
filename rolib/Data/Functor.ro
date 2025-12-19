@@ -27,6 +27,19 @@ fmapP = \ d. /\ a b. \ f.
 
 -- TODO: generalize, but this seems to require kind polymorphism???
 
---
+--------------------------------------------------------------------------------
+-- The maybe functor 
+
+functorMaybe : Functor Maybe
+functorMaybe = (\f. case #'Just (\x. Just (f x)) | case #'Nothing (const Nothing))
+
+--------------------------------------------------------------------------------
+-- The identity and constant functor 
+
+functorId : Functor Id
+functorId = \ f. f 
+
+functorConst : forall a. Functor (Const a)
+functorConst = \ f. id
 
 

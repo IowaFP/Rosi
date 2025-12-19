@@ -2,6 +2,7 @@ import Ro.Base , Data.Nat , Optics.Monomorphic , Control.Monad
 {- 
 reading:
 
+  # First class cases & patterns
   - First Class Patterns? Mark Tullsen 
     - Can't find pdf. https://link.springer.com/chapter/10.1007/3-540-46584-7_1
     - https://www.cambridge.org/core/services/aop-cambridge-core/content/view/968C982CA9B727A2C04D216EEF4E6CFC/S0956796808007144a.pdf/first-class-patterns.pdf
@@ -19,6 +20,15 @@ reading:
     - https://www.irif.fr/~kesner/papers/fcp.pdf    
   - Optimising First-Class Pattern Matching. Jeff Smits, Toine Hartman, Jesper Cockx, 2022
     - https://dl.acm.org/doi/pdf/10.1145/3567512.3567519
+
+# On implementing pattern matching
+  - Elaborating dependent (co)pattern matching: Nopattern left behind. Jesper Cockx and Andreas Abel, JFP 2020
+    - https://www.cambridge.org/core/services/aop-cambridge-core/content/view/F13CECDAB2B6200135D45452CA44A8B3/S0956796819000182a.pdf/elaborating-dependent-copattern-matching-no-pattern-left-behind.pdf
+  - How to compile pattern matching. Jules Jacobs
+    - https://julesjacobs.com/notes/patternmatching/patternmatching.pdf
+  - Eliminating dependent pattern matching. Healfdene Goguen, Conor McBride, James McKinna.
+    - http://strictlypositive.org/goguen.pdf
+
 Thoughts:    
   - A quote from Pickering et al (Profunctor Optics: Modular Data Accessors):
     - "Prisms are an implementation of first-class patterns, unlike other proposals; for example, Tullsen
@@ -70,7 +80,7 @@ fromJust (Just a) = M
 fromJust = (case #'Just (\ a. a)) 
 
 -- Does it make more sense to specify both directions rather than try to synthesize?
-pattern Just : forall a. a -> Sigma {'Just := a} | Sigma {'Just := a} -> a
+pattern Just : forall a. a -> Sigma {'Just := a} 
 Just =  \ a. (#'Just := a) <|> \ z. z\#'Just
 
 pattern Nothing : Sigma {'Nothing := tt} | Sigma {'Nothing := tt}

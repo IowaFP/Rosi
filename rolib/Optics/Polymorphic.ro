@@ -1,4 +1,5 @@
-import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , Control.Monad , Control.Monad.List
+import Ro.Base , Ro.Show, Data.Tuple , Data.Nat , Data.List , Data.Tree , Data.Functor , 
+       Control.Monad , Control.Applicative , Control.Monad.List
 
 -- Swapping the order or #l and (Pi z) from that in Ro.Base
 sel : forall l t z. {l := t} < z => #l -> Pi z -> t
@@ -30,9 +31,14 @@ lens = \ l. (#'get := sel l , #'put := \ s b. (l := b) ++ prj s)
 bijective : forall a b s t : *. (s -> a) -> (b -> t) -> Lens a b s t 
 bijective = \ get put. (#'get := get , #'put := \ s. put)
 
--- -- lenses may be composed
-comp : forall a a' b b' s t : *. Lens a b s t -> Lens a' b'  a b -> Lens a' b' s t
-comp = \ x y. (#'get :=  o (get y) (get x) , #'put := \ s b'. put x s (put y (get x s) b'))
+-- lenses may be composed (n.b. this is (;), not \circ)
+comp : forall a b s t c d : *. Lens c d s t -> Lens a b c d -> Lens a b s t
+comp = \ x y. (#'get :=  (get y) . (get x) , #'put := \ s b'. put x s (put y (get x s) b'))
+
+-- convert to the van Laarhoven representation
+lensToVL : forall a b s t. Lens a b s t -> (forall f : * -> *. Functor f -> (a -> f b) -> s -> f t)
+lensToVL = \ l fmap f s. fmap (put l s) (f (get l s))
+
 
 --------------------------------------------------------------------------------
 -- Prisms
@@ -45,12 +51,12 @@ prism : forall l : L , a b : * , c x y : R[*]. {l := a} + c ~ x , {l := b} + c ~
         #l -> Prism a b (Sigma x) (Sigma y)
 prism = \ l. (#'get := case l Left | Right . inj , #'put := con l)
 
--- Prisms may be composed
-compPrism : forall a a' b b' s t : *. Prism a b s t -> Prism a' b'  a b -> Prism a' b' s t
+-- Prisms may be composed (n.b. this is (;), not \circ)
+compPrism : forall a b c d s t : *. Prism c d s t -> Prism a b c d -> Prism a b s t
 compPrism = \ x y. 
   (#'get := \ s. match (get x s) 
        (either (\ a. match (get y a) (either Left (Right . (put x)))) Right) , 
-   #'put := o (put x) (put y))
+   #'put := (put x) . (put y))
 
 --------------------------------------------------------------------------------
 -- Adapters
@@ -65,26 +71,46 @@ adapterLens : forall a b s t. Adapter a b s t -> Lens a b s t
 adapterLens = \ a. (#'get := from a , #'put := \ s t. to a t)
 
 adapterPrism : forall a b s t. Adapter a b s t -> Prism a b s t 
-adapterPrism = \ a. (#'get := o Left (from a) , #'put := to a)
+adapterPrism = \ a. (#'get := Left . (from a) , #'put := to a)
+
+compAdapter : forall a b c d s t. Adapter c d s t -> Adapter a b c d -> Adapter a b s t
+compAdapter = \ t u. (#'from :=  from u . from t , #'to := to t . to u)
 
 --------------------------------------------------------------------------------
 -- Traversals
 
--- Want to express:
---   data FunList a b t = Done t | More a (FunList a b (b -> t))
--- which is a nested datatype. Need higher-order Mu...
--- Maybe relevant reading:
---   - Nested Datatypes, Richard Bird:
---     https://www.cs.ox.ac.uk/richard.bird/online/BirdMeertens98Nested.pdf
---   - Patricia Johann, initial algebra semantics is enough!
---     https://libres.uncg.edu/ir/asu/f/Johann_Patricia_2007_Intitial%20Algebra%20Semantics%20Is%20Enough.pdf
--- Alternatively, can use a different representation of traversals.
+-- Pickering et al describes the a traversal as
+--   type Traversal = Traversal { extract :: s -> FunList a b t }
+-- where 
+--   type FunListF  : (* -> * -> * -> *) -> * -> * -> * -> * 
+--   type FunListF = \ F a b t. Sigma {'Done := t , 'More := Pair a (F a b (b -> t)) }
+--   type FunList  : * -> * -> * -> * 
+--   type FunList = Mu FunListF
+-- The type FunList a b t is isomorphic to a^n * (b^n -> t).
+-- Unfortunately to construct/destruct such data we would need `in` and `out` at type:
+--   in  : F (Mu FunListF) a b t -> Mu FunlistF a b t
+--   out : Mu FunlistF a b t -> F (Mu FunListF) a b t
+-- which we don't have. Instead, we will use the van Laarhoven encoding.
 
--- type FunListF  : * -> * -> * -> (* -> * -> * -> *) -> * 
--- type FunListF = \ a b t X. Sigma {'Done := t , 'More := Pair a (X a b (b -> t)) }
+type Traversal : * -> * -> * -> * -> *
+type Traversal = \ a b s t. forall f : * -> *. Applicative f -> (a -> f b) -> s -> f t
 
--- type FunList  : * -> * -> * -> * 
--- type FunList = \ a b t. Mu (FunListF a b t)
+-- recovering the more concrete Traversal interface of Monomorphic lenses
+over : forall a b s t. Traversal a b s t -> (a -> b) -> s -> t 
+over = \ t. t [Id] applicativeId
 
--- type Traversal : * -> * -> * -> * 
--- type Traversal = \ a b s t. Pi {'over := (a -> b) -> s -> t , 'toListOf := s -> List a }
+listOf : forall a s. Traversal a a s s -> s -> List a
+listOf = /\ a. \ t. t [Const (List a)] (applicativeConst monoidList) sing
+
+-- every lens forms a traversal
+lensTraversal : forall a b s t. Lens a b s t -> Traversal a b s t
+lensTraversal = \ l ap. lensToVL l (sel #'Functor ap)
+
+-- every prism forms a traversal 
+prismTraversal : forall a b s t. Prism a b s t -> Traversal a b s t
+prismTraversal = \ p ap g s. match (get p s)
+  (case #'Left (\ a. sel #'Functor ap (put p) (g a)) | case #'Right (sel #'pure ap))
+
+-- Traversals may be composed
+compTraversal : forall a b c d s t : *. Traversal a b s t -> Traversal c d  a b -> Traversal c d s t
+compTraversal = \ f g ap.  (f ap) . (g ap)

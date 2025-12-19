@@ -1,0 +1,8 @@
+import Ro.Base , Data.List
+
+type Monoid : * -> * 
+type Monoid = \ m. Pi {'empty := m , 'append := m -> m -> m}
+
+monoidList : forall a. Monoid (List a)
+monoidList = (#'empty := nil , #'append := Data.List.append)
+
