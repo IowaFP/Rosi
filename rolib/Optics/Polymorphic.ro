@@ -114,3 +114,16 @@ prismTraversal = \ p ap g s. match (get p s)
 -- Traversals may be composed
 compTraversal : forall a b c d s t : *. Traversal a b s t -> Traversal c d  a b -> Traversal c d s t
 compTraversal = \ f g ap.  (f ap) . (g ap)
+
+-- sequencing of a list
+sequence : forall a, f : * -> *. Applicative f -> List (f a) -> f (List a)
+sequence = \ ap. fix ( \sequence xs. match (out xs) 
+  ( case #'Nil (const (sel #'pure ap nil))
+  | case #'Cons (\ p. sel #'ap ap 
+       (sel #'ap ap 
+         (sel #'pure ap cons) (fst p)) 
+       (sequence (snd p)))))
+
+-- In order traversal of a list
+inOrder : forall a b. Traversal a b (List a) (List b)
+inOrder = \ ap f. sequence ap . map f
