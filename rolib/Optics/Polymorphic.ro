@@ -6,10 +6,6 @@ sel : forall l t z. {l := t} < z => #l -> Pi z -> t
 sel = \ l r. prj r / l
 
 --------------------------------------------------------------------------------
--- Polymorphic adapters
-
-
---------------------------------------------------------------------------------
 -- Polymorphic lenses
 
 type Lens : * -> * -> * -> * -> *
@@ -41,7 +37,7 @@ lensToVL = \ l fmap f s. fmap (put l s) (f (get l s))
 
 
 --------------------------------------------------------------------------------
--- Prisms
+-- Polymorphic Prisms
 
 type Prism : * -> * -> * -> * -> * 
 type Prism = \ a b s t. Pi { 'get := s -> Either a t , 'put := b -> t }
@@ -51,6 +47,9 @@ prism : forall l : L , a b : * , c x y : R[*]. {l := a} + c ~ x , {l := b} + c ~
         #l -> Prism a b (Sigma x) (Sigma y)
 prism = \ l. (#'get := case l Left | Right . inj , #'put := con l)
 
+prism : forall l : L , a b : * , c x y : R[*]. {l := a} + c ~ x , {l := b} + c ~ y => 
+        #l -> Prism a b (Sigma x) (Sigma y)
+
 -- Prisms may be composed (n.b. this is (;), not \circ)
 compPrism : forall a b c d s t : *. Prism c d s t -> Prism a b c d -> Prism a b s t
 compPrism = \ x y. 
@@ -59,7 +58,7 @@ compPrism = \ x y.
    #'put := (put x) . (put y))
 
 --------------------------------------------------------------------------------
--- Adapters
+-- Polymorphic Adapters
 
 type Adapter : * -> * -> * -> * -> * 
 type Adapter = \ a b s t. Pi { 'from := s -> a , 'to := b -> t}
@@ -72,6 +71,14 @@ adapterLens = \ a. (#'get := from a , #'put := \ s t. to a t)
 
 adapterPrism : forall a b s t. Adapter a b s t -> Prism a b s t 
 adapterPrism = \ a. (#'get := Left . (from a) , #'put := to a)
+
+-- symmetrize an adapter 
+flip : forall a b s t. Adapter a b s t -> Adapter t s b a 
+flip = \ adp. (#'from := sel #'to adp , #'to := sel #'from adp)
+
+-- iso-recursive types adapter 
+rec : forall f : * -> *. Adapter (f (Mu f)) (f (Mu f)) (Mu f) (Mu f)
+rec = (#'from := out , #'to := in)
 
 compAdapter : forall a b c d s t. Adapter c d s t -> Adapter a b c d -> Adapter a b s t
 compAdapter = \ t u. (#'from :=  from u . from t , #'to := to t . to u)
