@@ -1,0 +1,62 @@
+import Ro.Base , Data.Nat
+
+--------------------------------------------------------------------------------
+-- Existentials in Haskell look like:
+--   data Foo = forall a. Foo a 
+-- where there is a quantified type `a` "hidden" on the RHS.
+-- the type Foo is isomorphic to an existential quantification. That is, 
+-- the types
+--   data Foo : Set where 
+--     foo : forall (A : Set) -> A -> Fool
+-- and 
+--   record Foo : Set where 
+--     field 
+--       A : Set 
+--       a : A 
+-- are isomorphic. A naive attempt at translation is simply incorrect.
+--   type Foo : * 
+--   type Foo = Sigma {'foo := forall a. a}
+-- Here we would need an inhabitant of (forall a. a) to populate Foo.
+-- Instead, we need to encode existential quantification.
+
+-- I suppose the silly thing about this is that Rosi doesn't
+-- have nominal types. So we would like to write:
+--   foo : forall a. a -> Foo 
+-- And, indeed, sans the use of type synonyms, this is immediate:
+
+foo : forall a. a -> Sigma {'foo := a}
+foo = \ a. (#'foo := a)
+
+fnat : Sigma {'foo := Nat}
+fnat = foo 2 
+
+fbool : Sigma {'foo := Bool}
+fbool = foo True
+
+-- By the Yoneda lemma, we have that the functor
+--   type Foo : * -> *
+--   type Foo = \ a. Sigma {'foo := a}
+-- induces a bijection:
+--   forall r. (a -> r) -> Sigma {'foo := r} ≃ Sigma {'foo := a}
+-- We use this fact to eliminate the existential quantifier in 
+-- the type
+--   data Foo = exists a. Foo a
+-- More specifically:
+--   Foo 
+-- = exists a. Sigma {'foo := a}
+--   {Apply Yoneda to inside}
+-- ≃ exists a. (forall r. (a -> r) -> Sigma {'foo := r})
+--   {a occurs negatively}
+-- ≃ forall r. (forall a. a -> r) -> Sigma {'foo := r}
+
+type Foo : *
+type Foo = forall r. (forall a. a -> r) -> Sigma {'foo := r}
+
+foo' : forall a. a -> Foo 
+foo' = \ a f. (#'foo := f a)
+
+fnat' : Foo 
+fnat' = foo' 2
+
+fbool' : Foo 
+fbool' = foo' True 
