@@ -104,7 +104,7 @@ data UVar = UV { uvShift :: Int, uvLevel :: Level, uvGoal :: Goal Ty, uvKind :: 
 instance Eq UVar where
   v == v' = uvShift v == uvShift v' && goalRef (uvGoal v) == goalRef (uvGoal v')
 
-data TyCon = Pi | Sigma | Mu | TCUnif (Goal TyCon)
+data TyCon = Pi | Sigma | Mu (Maybe Int) | TCUnif (Goal TyCon)
   deriving (Data, Eq, Show, Typeable)
 
 data Ty =
@@ -311,7 +311,7 @@ shiftT j = shiftTN j 1
 --------------------------------------------------------------------------------
 
 data Const =
-    CPrj | CConcat | CInj | CBranch | CSyn | CAna | CFold | CIn | COut | CFix | CStringCat
+    CPrj | CConcat | CInj | CBranch | CSyn | CAna | CFold | CFix | CStringCat
     deriving (Data, Eq, Show, Typeable)
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?

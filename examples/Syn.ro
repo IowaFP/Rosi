@@ -2,10 +2,10 @@ import Ro.Base
 
 -- The version actually formalized in the ICFP'23 development
 reify0 : forall z t. (Sigma z -> t) -> Pi ((\X. X -> t) z)
-reify0 = /\ z t. \f. syn [\X. X -> t] (\l x. f (con l x))
+reify0 = /\ z t. \f. syn #(\X. X -> t) (\l x. f (con l x))
 
 reify : forall z t. (Sigma z -> t) -> Pi (z -> t)
-reify = /\ z t. \f. syn [\X. X -> t] (\l x. f (con l x))
+reify = /\ z t. \f. syn #(\X. X -> t) (\l x. f (con l x))
 
 type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
 type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
@@ -13,7 +13,7 @@ type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
 mapP : forall z : R[* -> *], f g : (* -> *) -> *.
        Iter f g z ->
        Pi (f z) -> Pi (g z)
-mapP = /\ z f g. \ i r. syn [g] (\l. i l (sel r l))
+mapP = /\ z f g. \ i r. syn #g (\l. i l (sel r l))
 
 type Functor : (* -> *) -> *
 type Functor = \f. forall a b. (a -> b) -> f a -> f b
@@ -24,4 +24,4 @@ fmapP = /\ z. \ d. /\ a b. \ f.
 
 fmapP0 : forall z : R[* -> *] . Pi (Functor z) -> Functor (Pi z)
 fmapP0 = \d. /\ a b. \f r.
-         syn [\x. x b] (\l. sel d l f (sel r l))
+         syn #(\x. x b) (\l. sel d l f (sel r l))

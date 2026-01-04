@@ -33,7 +33,7 @@ kindOf (TConApp Pi r) =
 kindOf (TConApp Sigma r) =
   do KRow k <- kindOf r  -- TODO: what if pattern matching fails?
      return k
-kindOf (TConApp Mu f)=
+kindOf (TConApp (Mu _) f)=
   do KFun k _ <- kindOf f
      return k
 kindOf (TConApp (TCUnif g) t) =

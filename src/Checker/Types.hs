@@ -170,7 +170,7 @@ checkTy0 t@(TRow ts) expected =
         label _                     = Nothing
 checkTy0 (TConApp Pi r) expected = TConApp Pi <$> checkTy r (KRow expected)
 checkTy0 (TConApp Sigma r) expected = TConApp Sigma <$> checkTy r (KRow expected)
-checkTy0 (TConApp Mu f) expected = TConApp Mu <$> checkTy f (KFun expected expected)
+checkTy0 (TConApp (Mu count) f) expected = TConApp (Mu count) <$> checkTy f (KFun expected expected)
 checkTy0 (TConApp (TCUnif g) t) expected =
   do mk <- readRef (goalRef g)
      case mk of

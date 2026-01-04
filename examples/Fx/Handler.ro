@@ -26,8 +26,8 @@ handle : forall f g k a.
        (forall a. a -> k a) ->
        Free f a ->
        k (Free g a)
-handle = \h k. fix (\rec m. match (out m)
-         ( case #'Ret (\i. k (rcon #'Ret i))
+handle = \h k. fix (\rec.
+         ( case #'Ret (\i. k (con #'Ret i))
          | case #'Con (\m. (h m rec))
          ))
 

@@ -6,7 +6,7 @@ type Get : * -> R[* -> *]
 type Get = \s. {'Get := \v. s -> v}
 
 fmapGet : forall s. Functor (\v. s -> v)
-fmapGet = \f g. o f g
+fmapGet = \f g. f . g
 
 type Put : * -> R[* -> *]
 type Put = \s. {'APut := \v. Pair s (Unit -> v)}
@@ -22,21 +22,21 @@ fmapSt = (#'Get := fmapGet,
           #'APut := fmapPut)
 
 comp : Free (St Nat) Nat
-comp = rcon #'Con (con #'Get (\i.
-       rcon #'Con (con #'APut (pair (add 2 i) (\u.
-       rcon #'Ret i)))))
+comp = con #'Con (con #'Get (\i.
+       con #'Con (con #'APut (pair (add 2 i) (\u.
+       con #'Ret i)))))
 
 bind : forall s a b. Free (St s) a -> (a -> Free (St s) b) -> Free (St s) b
 bind = bindFree fmapSt
 
 ret : forall s a. a -> Free (St s) a
-ret = rcon #'Ret
+ret = con #'Ret
 
 get : forall s. Free (St s) s
-get = rcon #'Con (con #'Get (rcon #'Ret))
+get = con #'Con (con #'Get (con #'Ret))
 
 put : forall s. s -> Free (St s) Unit
-put = \x. rcon #'Con (con #'APut (pair x (rcon #'Ret)))
+put = \x. con #'Con (con #'APut (pair x (con #'Ret)))
 
 comp' : Free (St Nat) Nat
 comp' = bind get (\i.
@@ -58,7 +58,7 @@ handleSt : forall s a. Free (St s) a -> s -> Pair (Free {} a) s
 handleSt = handle stH pureStM
 
 test : Pair Nat Nat
-test = let x = handleSt comp' 3; pair (runFree (fst x)) (snd x)
+test = let x = handleSt comp' 3 in pair (runFree (fst x)) (snd x)
 -- first runFree (handleSt comp' 3)
 
 

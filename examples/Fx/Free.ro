@@ -9,28 +9,26 @@ type Free : R[* -> *] -> * -> *
 type Free = \g a. Mu (FreeF g a)
 
 runFree : forall a. Free {} a -> a
-runFree = \m. match (out m)
-              ( case #'Ret id
-              | case #'Con impossible)
+runFree = case #'Ret id
+        | case #'Con impossible
 
 --
 
 functorFree : forall g : R[* -> *]. Pi (Functor g) -> Functor (Free g)
-functorFree = \d f. (fix (\rec x.
-              match (out x)
-              ( case #'Ret (\a. rcon #'Ret (f a))
-              | case #'Con (\x. rcon #'Con (fmapS d rec x))
+functorFree = \d f. (fix (\rec.
+              ( case #'Ret (\a. con #'Ret (f a))
+              | case #'Con (\x. con #'Con (fmapS d rec x))
               )))
 
 --
 
 pureFree : forall g a. a -> Free g a
-pureFree = rcon #'Ret
+pureFree = con #'Ret
 
 bindFree : forall g : R[* -> *]. Pi (Functor g) -> (forall a b. Free g a -> (a -> Free g b) -> Free g b)
-bindFree = \d. fix (\rec m k. match (out m)
+bindFree = \d. fix (\rec m k. match m
                               ( case #'Ret k
-                              | case #'Con (\f. in (con #'Con (fmapS d (\m. rec m k) f)))))
+                              | case #'Con (\f. con #'Con (fmapS d (\m. rec m k) f))))
 
 apFree : forall g : R[* -> *]. Pi (Functor g) -> (forall a b. Free g (a -> b) -> Free g a -> Free g b)
 apFree = \d mf mx. bindFree d mf (\f. bindFree d mx (\x. pureFree (f x)))

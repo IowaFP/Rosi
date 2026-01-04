@@ -4,25 +4,19 @@ import Ro.Base, Data.Functor
 -- paper.
 
 -------------------------------------------------------------------------------
--- Shorthand
-
-rcon : forall l f z. {l := f} < z => #l -> f (Mu (Sigma z)) -> Mu (Sigma z)
-rcon = \l x. in (con l x)
-
--------------------------------------------------------------------------------
 -- Catamorphisms
 
 type FAlg : (* -> *) -> * -> *
 type FAlg = \f a. f a -> a
 
 cata : forall f a. Functor f -> FAlg f a -> Mu f -> a
-cata = \ map a. fix (\ cata x. a (map cata (out x)))
+cata = \ map a. fix (\ cata x. a (map cata x))
 
 rinj : forall f g : R[* -> *]. f < g => Pi (Functor f) -> Mu (Sigma f) -> Mu (Sigma g)
-rinj = \d. cata (fmapS d) (in . inj)
+rinj = \d. cata (fmapS d) inj
 
 rprj : forall f g : R[* -> *]. f < g => Pi (Functor g) -> Mu (Pi g) -> Mu (Pi f)
-rprj = \ d. cata (fmapP d) (in . prj)
+rprj = \ d. cata (fmapP d) prj
 
 -------------------------------------------------------------------------------
 -- Mendler catamorphisms
@@ -31,7 +25,7 @@ type MAlg : (* -> *) -> * -> *
 type MAlg = \f c. forall a. (a -> c) -> f a -> c
 
 mcata : forall a f. MAlg f a -> Mu f -> a
-mcata = \ alg. fix (\ mcata. alg mcata . out)
+mcata = \ alg. fix (\mcata. alg mcata)
 
 -------------------------------------------------------------------------------
 -- Bounded algebras
@@ -40,7 +34,7 @@ type Xh : R[* -> *] -> (R[* -> *] -> *) -> *
 type Xh = \z f. forall w. z < w => Sigma z (Mu (Sigma w)) -> (Mu (Sigma w) -> f w) -> f w
 
 histo : forall f r. (f (Mu f) -> (Mu f -> r) -> r) -> Mu f -> r
-histo = \ a. fix (\ rec x. a (out x) rec)
+histo = \ a. fix (\ rec x. a x rec)
 
 brna : forall f x y z. x + y ~ z => Xh x f -> Xh y f -> Xh z f
 brna = \ f g. f | g

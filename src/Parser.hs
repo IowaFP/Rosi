@@ -123,7 +123,13 @@ lexeme p    = guardIndent p <* whitespace
 symbol      = lexeme . string
 reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'')))
 
-identifier  = lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '\''))
+keywords = ["let", "in", "forall"]
+
+identifier  =
+  do s <- lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '\''))
+     if s `elem` keywords
+     then unexpected $ Label (fromList "reserved word")
+     else return s
 
 qidentifier  =
   do x <- identifier
@@ -173,7 +179,7 @@ ty = do pfs <- many prefix
                   bs <- commaSep1 (binders kind)
                   dot
                   return (foldr (\(v, k) f -> TLam v k . f) id (concat bs))
-             , do symbol "forall"
+             , do reserved "forall"
                   bs <- commaSep1 (binders kind)
                   dot
                   return (foldr (\(v, k) f -> TForall v k . f) id (concat bs)) ]
@@ -231,7 +237,7 @@ atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
                , TSing <$> (char '#' >> atype)
                , TConApp Sigma <$> (symbol "Sigma" >> atype)
                , TConApp Pi <$> (symbol "Pi" >> atype)
-               , TConApp Mu <$> (symbol "Mu" >> atype)
+               , TConApp (Mu Nothing) <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
                , const TString <$> symbol "String"
                , TVar (-1) <$> qidentifier
@@ -254,6 +260,26 @@ pr = choice [ do symbol "Fold"
 --     ++ ?
 --     := /
 
+prefix :: Parser (Term -> Term)
+prefix = do symbol "\\"
+            bs <- commaSep1 (binders ty)
+            dot
+            return (foldr1 (.) (map (uncurry ELam) (concat bs)))
+       <|>
+         do symbol "/\\"
+            bs <- commaSep1 (binders kind)
+            dot
+            return (foldr1 (.) (map (uncurry ETyLam) (concat bs)))
+       <|>
+         do reserved "let"
+            x <- identifier
+            mty <- optional $ symbol ":" >> ty
+            symbol "="
+            t <- term
+            reserved "in"
+            let t' = maybe t (ETyped t) mty
+            return (ELet x t')
+
 term :: Parser Term
 term = prefixes typedTerm where
 
@@ -273,7 +299,7 @@ term = prefixes typedTerm where
               mty <- optional $ symbol ":" >> ty
               symbol "="
               t <- term
-              symbol ";"
+              symbol "in"
               let t' = maybe t (ETyped t) mty
               return (ELet x t')
 
@@ -341,7 +367,7 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
 
   aterm :: Parser Term
   aterm = choice [ EConst <$> const
-                 , EVar (-1) <$> qidentifier
+                 , EVar (-1) <$> try qidentifier
                  , ESing <$> (char '#' >> atype)
                  , buildNumber <$> number
                  , EStringLit <$> stringLit
@@ -366,8 +392,6 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                     ("syn", CSyn),
                     ("ana", CAna),
                     ("fold", CFold),
-                    ("in", CIn),
-                    ("out", COut),
                     ("fix", CFix),
                     ("(^)", CStringCat)]]
 

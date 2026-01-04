@@ -163,9 +163,9 @@ normalize eqns (TConApp Pi z) =
          do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Pi (TVar 0 ["x", ""])))) z')
             return (z'', VEqTrans q q')
        _ -> return (TConApp Pi z', VEqCon Pi q)
-normalize eqns (TConApp Mu z) =
+normalize eqns (TConApp (Mu count) z) =
   do (z', q) <- normalize eqns z
-     return (TConApp Mu z', VEqCon Mu q)
+     return (TConApp (Mu count) z', VEqCon (Mu count) q)
 normalize eqns (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize eqns t)
      return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)

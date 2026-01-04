@@ -7,52 +7,45 @@ type List : * -> *
 type List = \a. Mu (ListF a)
 
 nil : forall a. List a
-nil = rcon #'Nil tt
+nil = con #'Nil tt
 
 cons : forall a. a -> List a -> List a
-cons = \hd tl. rcon #'Cons (pair hd tl)
+cons = \hd tl. con #'Cons (pair hd tl)
 
-sing : forall a. a -> List a 
+sing : forall a. a -> List a
 sing = \ a. cons a nil
 
 head : forall a. List a -> Maybe a
-head = \l. match (out l)
-           ( case #'Nil (const Nothing)
-           | case #'Cons (o Just fst)
-           )
+head = case #'Nil (const Nothing)
+     | case #'Cons (Just . fst)
 
 tail : forall a. List a -> List a
-tail = \l. match (out l)
-           ( case #'Nil (const nil)
-           | case #'Cons snd
-           )
+tail = case #'Nil (const nil)
+     | case #'Cons snd
 
 nth : forall a. List a -> Nat -> Maybe a
-nth = fix (\f l n.
-            match (out n)
-            ( case #'Zero (const (head l))
-            | case #'Succ (f (tail l))
-            ))
+nth = fix (\nth l.
+             ( case #'Zero (const (head l))
+             | case #'Succ (nth (tail l))))
 
 map : forall a b. (a -> b) -> List a -> List b
-map = fix (\ map f xs.
-              match (out xs)
-                ( case #'Nil (const nil)
-                | case #'Cons (\ ys. cons (f (fst ys)) (map f (snd ys)))))
+map = fix (\map f.
+             ( case #'Nil (const nil)
+             | case #'Cons (\ys. cons (f (fst ys)) (map f (snd ys)))))
 
-foldr : forall a b. (a -> b -> b) -> b -> List a -> b 
-foldr = fix (\ foldr f b xs. match (out xs) 
-          ((case #'Nil (const b))
-        |  (case #'Cons (\ ys. f (fst ys) (foldr f b (snd ys)) ))))
+foldr : forall a b. (a -> b -> b) -> b -> List a -> b
+foldr = fix (\foldr f b.
+               ( case #'Nil (const b)
+               | case #'Cons (\ ys. f (fst ys) (foldr f b (snd ys)))))
 
-append : forall a. List a -> List a -> List a 
+append : forall a. List a -> List a -> List a
 append = \ xs ys. foldr cons ys xs
 
-concat : forall a. List (List a) -> List a 
+concat : forall a. List (List a) -> List a
 concat = foldr append nil
 
 showList : forall a. Show a -> Show (List a)
-showList = \ show. fix ( \ showList xs. match (out xs) 
+showList = \ show. fix (\showList.
     ( (case #'Nil (const "[]"))
     | (case #'Cons (\ p. show (fst p) ^ " :: " ^ showList (snd p)))))
 

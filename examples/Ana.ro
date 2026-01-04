@@ -1,7 +1,7 @@
 import Ro.Base
 
 reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t
-reflect = \ d w. ana (\ l u. sel d l u) w
+reflect = \ d w. ana #(\X.X) (\ l u. sel d l u) w
 
 -- Need for mapS:
 type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
@@ -10,7 +10,7 @@ type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
 mapS : forall z : R[* -> *], f g : (* -> *) -> *.
        Iter f g z ->
        Sigma (f z) -> Sigma (g z)
-mapS = /\ z f g. \ i v. ana [f] (\ l x. con l (i l x)) v
+mapS = /\ z f g. \ i v. ana #f (\ l x. con l (i l x)) v
 
 type Functor : (* -> *) -> *
 type Functor = \f. forall a b. (a -> b) -> f a -> f b
@@ -27,7 +27,7 @@ fmapS = /\ z : R[* -> *].
 -- Can go directly via `ana` as well.
 fmapS1 : forall z : R[* -> *] . Pi (Functor z) -> Functor (Sigma z)
 fmapS1 = \ d. /\ a. \ f w.
-         ana [\x. x a] (\ l x. con l (sel d l f x)) w
+         ana #(\x. x a) (\ l x. con l (sel d l f x)) w
 
 fmapS20 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
 fmapS20 = /\ z. \ d. /\ a b. \ f w.
@@ -57,4 +57,4 @@ type Eq : * -> *
 type Eq = \t. t -> t -> Bool
 
 eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
-eqS = \ d v. ana (\ l y. (case l (\x. sel d l x y) | (\x. False)) v)
+eqS = \ d v. ana #(\X.X) (\ l y. (case l (\x. sel d l x y) | (\x. False)) v)

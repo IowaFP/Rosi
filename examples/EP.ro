@@ -7,7 +7,7 @@ import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
 type ExprInterface : R[*]
 type ExprInterface = {'eval := Nat , 'print := String}
 
-Lit : Nat -> Pi ExprInterface 
+Lit : Nat -> Pi ExprInterface
 Lit = \n. (#'eval := n , #'print := showNat n)
 
 Add : Pi ExprInterface -> Pi ExprInterface -> Pi ExprInterface
@@ -20,7 +20,7 @@ Mult = \ l r. (#'eval  := mult (sel l #'eval) (sel r #'eval),
                #'print := (sel l #'print) ^ " * " ^ (sel r #'print))
 
 -------------------------------------------------------------------------------
--- One thing I find interesting is that, through row mapping, we can succinctly 
+-- One thing I find interesting is that, through row mapping, we can succinctly
 -- express both *cases* and *behaviors* in Rosi.
 
 -- First, reiterate the variant EP
@@ -30,17 +30,17 @@ type ExprF = {'Lit := Const Nat , 'Add := \ x. Pair x x , 'Mult := \x. Pair x x 
 type Expr : *
 type Expr = Mu (Sigma ExprF)
 
-eval : Expr -> Nat 
-eval = fix (\ eval e. match (out e)  
- ( case #'Lit id 
- | case #'Add (\ p. add (eval (fst p)) (eval (snd p))) 
+eval : Expr -> Nat
+eval = fix (\eval.
+ ( case #'Lit id
+ | case #'Add (\ p. add (eval (fst p)) (eval (snd p)))
  | case #'Mult (\ p. mult (eval (fst p)) (eval (snd p)))))
 
 -- As the EP goes, it is easy to add new behaviors when we fix the cases.
 print : Expr -> String
-print = fix (\ print e. match (out e)
+print = fix (\print.
  ( case #'Lit showNat
- | case #'Add  (\ p. (print (fst p)) ^ " + " ^ (print (snd p))) 
+ | case #'Add  (\ p. (print (fst p)) ^ " + " ^ (print (snd p)))
  | case #'Mult (\ p. (print (fst p)) ^ " * " ^ (print (snd p)))))
 
 -- Now an implementation of the interface is expressed succinctly as:
@@ -51,27 +51,27 @@ implementation' = (#'eval := eval , #'print := print)
 -- For my next trick, I will need some plumbing.
 
 -- We will sadly rely on (Mendler-style) algebras.
-evalAlg : MAlg (Sigma ExprF) Nat 
-evalAlg = \ eval e . match e  
- ( case #'Lit id 
- | case #'Add (\ p. add (eval (fst p)) (eval (snd p))) 
+evalAlg : MAlg (Sigma ExprF) Nat
+evalAlg = \ eval e . match e
+ ( case #'Lit id
+ | case #'Add (\ p. add (eval (fst p)) (eval (snd p)))
  | case #'Mult (\ p. mult (eval (fst p)) (eval (snd p))))
 
 printAlg : MAlg (Sigma ExprF) String
 printAlg = \ print e.  match e
  ( case #'Lit showNat
- | case #'Add  (\ p. (print (fst p)) ^ " + " ^ (print (snd p))) 
+ | case #'Add  (\ p. (print (fst p)) ^ " + " ^ (print (snd p)))
  | case #'Mult (\ p. (print (fst p)) ^ " * " ^ (print (snd p))))
 
 -- Now we again have a record of implementation.
 implementation : Pi (MAlg (Sigma ExprF) ExprInterface)
 implementation = (#'eval := evalAlg , #'print := printAlg)
 
--- The punchline: we may *dualize* from a variant implementation to a record implementation. 
+-- The punchline: we may *dualize* from a variant implementation to a record implementation.
 -- Stated first generically:
-dualize : forall Cases : R[* -> *], Interface : R[*]. 
+dualize : forall Cases : R[* -> *], Interface : R[*].
          Pi (MAlg (Sigma Cases) Interface) -> Pi ((Cases (Pi Interface)) -> Pi Interface)
-dualize = /\ Cases. /\ Interface. \ d. 
+dualize = /\ Cases. /\ Interface. \ d.
     syn #(\t. t (Pi Interface) -> Pi Interface) (\ caseLabel e.
         syn #(\t. t) (\ interfaceLabel. sel d interfaceLabel (\ v. sel v interfaceLabel) (con caseLabel e)))
 

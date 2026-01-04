@@ -1,9 +1,9 @@
 import Ro.Base , Data.Nat , Optics.Polymorphic , Control.Monad
-{- 
+{-
 reading:
 
   # First class cases & patterns
-  - First Class Patterns? Mark Tullsen 
+  - First Class Patterns? Mark Tullsen
     - Can't find pdf. https://link.springer.com/chapter/10.1007/3-540-46584-7_1
     - https://www.cambridge.org/core/services/aop-cambridge-core/content/view/968C982CA9B727A2C04D216EEF4E6CFC/S0956796808007144a.pdf/first-class-patterns.pdf
   - Views: a way for pattern matching to cohabit with data abstraction. Wadler, 1987
@@ -11,13 +11,13 @@ reading:
     - View patterns in Haskell:
       - https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/view_patterns.html
   - The view from the left. McBride and mcKinna, 2004
-    - https://cs.ru.nl/~freek/courses/tt-2010/tvftl/conor-james-views.pdf    
+    - https://cs.ru.nl/~freek/courses/tt-2010/tvftl/conor-james-views.pdf
   - Extensible Programming with First-Class Cases. Matthias Blume, Umut A. Acar, Wonseok Chae. 2006
-    - https://www.brinckerhoff.org/clements/csc530-sp08/Readings/blume-2006.pdf    
+    - https://www.brinckerhoff.org/clements/csc530-sp08/Readings/blume-2006.pdf
   - Pattern Synonyms. Matthew Pickering, Gergo Erdi, Simon Peyton Jones, Richard Eisenberg. 2016
-    - https://dl.acm.org/doi/pdf/10.1145/2976002.2976013    
+    - https://dl.acm.org/doi/pdf/10.1145/2976002.2976013
   - First Class Patterns. Barry Jay, Delia Kesner, 2008
-    - https://www.irif.fr/~kesner/papers/fcp.pdf    
+    - https://www.irif.fr/~kesner/papers/fcp.pdf
   - Optimising First-Class Pattern Matching. Jeff Smits, Toine Hartman, Jesper Cockx, 2022
     - https://dl.acm.org/doi/pdf/10.1145/3567512.3567519
 
@@ -29,7 +29,7 @@ reading:
   - Eliminating dependent pattern matching. Healfdene Goguen, Conor McBride, James McKinna.
     - http://strictlypositive.org/goguen.pdf
 
-Thoughts:    
+Thoughts:
   - A quote from Pickering et al (Profunctor Optics: Modular Data Accessors):
     - "Prisms are an implementation of first-class patterns, unlike other proposals; for example, Tullsen
     [37] recognised the close connection between data constructors and pattern matching.
@@ -46,9 +46,9 @@ Amusement:
 --------------------------------------------------------------------------------
 -- Deep pattern matching in Rosi is necessarily nested
 
-isEven : Nat -> Bool 
-isEven = fix (\ isEven n. match (fmapNatF out (out n))
-    ( case #'Zero (const True) 
+isEven : Nat -> Bool
+isEven = fix (\ isEven.
+    ( case #'Zero (const True)
     | case #'Succ (( case #'Succ isEven
                    | otherwise False))))
 
@@ -62,24 +62,24 @@ caseOf : forall a b t : *. (a -> Maybe t) -> (t -> b) -> b -> a -> b
 caseOf = \ get do b a. maybe b do  (get a)
 
 -- Also silly, but illustrates how one might pattern match on accessors.
-isEven' : Nat -> Bool 
+isEven' : Nat -> Bool
 isEven' = fix ( \ isEven' n.
-  caseOf (is #'Zero) (const True) 
-  (caseOf (composeMaybe (is #'Succ . out) (is #'Succ)) isEven' False (out n))
-  (out n)) 
+  caseOf (is #'Zero) (const True)
+  (caseOf (composeMaybe (is #'Succ) (is #'Succ)) isEven' False n)
+  n)
 
-zero : Prism Unit Unit Nat Nat 
+zero : Prism Unit Unit Nat Nat
 zero = compPrism (adapterPrism rec) (prism #'Zero)
 
 suc : Prism Nat Nat Nat Nat
-suc = compPrism (adapterPrism rec) (prism #'Succ) 
+suc = compPrism (adapterPrism rec) (prism #'Succ)
 
 -- pattern matching with prisms. Even sillier!
 iseven'' : Nat -> Bool
-iseven'' = 
+iseven'' =
   fix (\ isEven n. match (get zero n)
-    ( case #'Left (const True) 
-    | case #'Right (\ n. match (get suc n) 
+    ( case #'Left (const True)
+    | case #'Right (\ n. match (get suc n)
       ( case #'Left (\ n. match (get suc n)
         ( case #'Left isEven
         | otherwise False))
@@ -89,46 +89,46 @@ iseven'' =
 -- A thought: bidirectional pattern synonyms in Rosi
 
 -- pattern Just : forall a. a -> Sigma {'Just := a}
--- pattern Just a = (#'Just := a) 
+-- pattern Just a = (#'Just := a)
 
--- -- its use on the rhs 
---    foo  a = Just a 
+-- -- its use on the rhs
+--    foo  a = Just a
 -- -> foo = \ a. (#'Just := a)
 
--- -- its use on the LHS 
--- fromJust (Just a) = M 
+-- -- its use on the LHS
+-- fromJust (Just a) = M
 
 -- -- elaborates to:
--- fromJust = (case #'Just (\ a. a)) 
+-- fromJust = (case #'Just (\ a. a))
 
 -- -- Does it make more sense to specify both directions rather than try to synthesize?
--- pattern Just : forall a. a -> Sigma {'Just := a} 
+-- pattern Just : forall a. a -> Sigma {'Just := a}
 -- Just =  \ a. (#'Just := a) <|> \ z. z\#'Just
 
 -- pattern Nothing : Sigma {'Nothing := tt} | Sigma {'Nothing := tt}
 -- pattern Nothing = (#'Nothing := tt) | (#'Nothing := tt)
 
--- -- Then 
+-- -- Then
 
 -- maybe : Maybe a -> (a -> b) -> b -> Maybe b
 -- maybe (Just a) f b = Just (f a)
--- maybe Nothing f b = b 
+-- maybe Nothing f b = b
 
 -- -- elaborates to...
 -- -- (Not sure how to hack the unary constructor business)
--- maybe = \ j f b. match j 
+-- maybe = \ j f b. match j
 --   ((\ z. (\ a. Just (f a)) ((\ z. z\#'Just) z))
 --   | (\ z. b))
 
 -- -- Unary constructors?
--- pattern True : Sigma ('True := tt) 
+-- pattern True : Sigma ('True := tt)
 -- pattern True = (#'True := tt) + ()
 
 -- -- Recursive types?
 
 
 -- -- For records?
--- pattern Pair a b = pair a b | 
+-- pattern Pair a b = pair a b |
 
 -- -- Nested patterns?
--- foo (Just (Just a)) = 
+-- foo (Just (Just a)) =

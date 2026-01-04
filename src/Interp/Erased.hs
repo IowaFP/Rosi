@@ -27,13 +27,12 @@ instance Show Body where
   show (Prim _) = "<<prim>>"
 
 data Value = VPrLam Env Body | VLam Env Body
-           | VIn Value | VSing | VVariant Int Value | VRecord [Value] | VSyn (Int -> Value)
+           | VSing | VVariant Int Value | VRecord [Value] | VSyn (Int -> Value)
            | VString String
 
 instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
   show (VLam _ b) = "\\ " ++ show b
-  show (VIn v) = "in (" ++ show v ++ ")"
   show VSing = "()"
   show (VVariant k w) = "<" ++ show k ++ ", " ++ show w ++ ">"
   show (VRecord vs) = "(" ++ intercalate ", " (map show vs) ++ ")"
@@ -165,12 +164,6 @@ eval' h (EConst CBranch) = -- VPrLam h (Value (VLam h (Value (VLam h (Value (VLa
         Left i  -> app f (VVariant i w)
         Right i -> app g (VVariant i w)
     _ -> error $ "bad environment for branch: " ++ show h
-eval' h (EConst CIn) = -- VLam h (Const CIn)
-  VLam h $ Prim $ \ (_, v : _) -> VIn v
-eval' h (EConst COut) = -- VLam h (Const COut)
-  VLam h $ Prim $ \case
-    (_, VIn v : _) -> v
-    _ -> error $ "bad environment for out: " ++ show h
 eval' h (EConst CFix) = -- VLam h (Const CFix)
   eval h (ELam "f" Nothing (EApp (EVar 0 ["f", ""]) (EApp (EConst CFix) (EVar 0 ["f", []]))))
 eval' h (EConst CStringCat) =

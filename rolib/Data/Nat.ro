@@ -3,63 +3,64 @@ import Ro.Base, Ro.Show , Data.Functor
 type NatF : * -> *
 type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}
 
-fmapNatF : Functor NatF 
-fmapNatF = fmapS (#'Zero := /\ a b. \ f : a -> b,  u : Unit. u , 
+fmapNatF : Functor NatF
+fmapNatF = fmapS (#'Zero := /\ a b. \ f : a -> b,  u : Unit. u ,
                   #'Succ := /\ a b. \ f : a -> b. f)
 
 type Nat : *
 type Nat = Mu NatF
 
 zero : Nat
-zero = in (inj (#'Zero := tt))
+zero = con #'Zero tt
 
 succ : Nat -> Nat
-succ = \n. in (inj (#'Succ := n))
+succ = con #'Succ
 
 --
 
 decr : Nat -> Nat
-decr = \n. (case #'Zero (\ u. in (con #'Zero u)) | case #'Succ id) (out n)
+decr = case #'Zero (const zero)
+     | case #'Succ id
 
 add : Nat -> Nat -> Nat
-add = \m. fix (\add n. (case #'Zero (\u. m) | case #'Succ (\nn. succ (add nn))) (out n))
+add = \m. fix (\add . case #'Zero (\u. m)
+                    | case #'Succ (\nn. succ (add nn)))
 
-mult : Nat -> Nat -> Nat 
-mult = \m. fix (\mult n. (case #'Zero (const zero) | case #'Succ (\nn. add m (mult nn))) (out n))
+mult : Nat -> Nat -> Nat
+mult = \m. fix (\mult . case #'Zero (const zero)
+                      | case #'Succ (\nn. add m (mult nn)))
 
 monus : Nat -> Nat -> Nat
-monus = fix (\ monus m n. (case #'Zero (\u. m) | case #'Succ (\nn. monus (decr m) nn)) (out n))
+monus = fix (\ monus m n. (case #'Zero (\u. m) | case #'Succ (\nn. monus (decr m) nn)) n)
 
 max : Nat -> Nat -> Nat
-max = \ m n. fix (\max mm nn.
-                    ( case #'Zero (\u. n)
-                    | case #'Succ (\mm1.
-                        (
-                          case #'Zero (\u. m)
-                        | case #'Succ (\nn1. max mm1 nn1)
-                        ) (out nn))
-                    ) (out mm)
-                 ) m n
+max = fix (\max m n.
+  match m
+  ( case #'Zero (const n)
+  | case #'Succ (\m'.
+    match n
+    ( case #'Zero (const m)
+    | case #'Succ (\n'. succ (max m' n'))))))
 
 isZero : Nat -> Bool
-isZero = \n. match (out n) (case #'Zero (const True) | otherwise False)
+isZero = case #'Zero (const True)
+       | otherwise False
 
 equal : Nat -> Nat -> Bool
 equal = fix (\equal m n.
-              match (out m)
+              match m
               ( case #'Zero (const (isZero n))
               | case #'Succ (\mm.
-                match (out n)
+                match n
                 ( case #'Zero (const False)
                 | case #'Succ (\nn. equal mm nn)))))
 
 --
 
 showNat : Show Nat
-showNat = fix (\showNat n. 
-  match (out n) 
-      ((case #'Zero (\ u. "Zero"))
-    | (case #'Succ (\ n. "Succ (" ^ (showNat n) ^ ")" ))))
+showNat = fix (\showNat.
+    ( case #'Zero (\ u. "Zero")
+    | case #'Succ (\ n. "Succ (" ^ (showNat n) ^ ")" )))
 --
 
 one : Nat
@@ -97,4 +98,4 @@ one'' : String
 one'' = showNat one'
 
 three'' : String
-three'' = showNat three'
+three'' = showNat three'1

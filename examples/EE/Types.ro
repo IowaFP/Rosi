@@ -74,6 +74,10 @@ showRecF = \d. (#'names := (#'Fix := "Fix"), #'shows := (#'Fix := d))
 -------------------------------------------------------------------------------
 -- Shorthand
 
+type ABF : R [* -> *]
+type ABF = { 'IConst := \t. Nat, 'Plus := \t. Pair t t,
+             'BConst := \t. Bool, 'If := \t. Triple t t t }
+
 type LBF : R [* -> *]
 type LBF = { 'Var := \t. Nat, 'Lam := Id, 'App := \t. Pair t t,
              'BConst := \t. Bool, 'If := \t. Triple t t t }
@@ -110,25 +114,25 @@ showAllF : forall t. Show t -> ShowR (AllF t)
 showAllF = \d. showRCat (showABLF d) (showRecF d)
 
 showExpr : forall z : R[* -> *]. (forall t. Show t -> ShowR (z t)) -> Show (Mu (Sigma z))
-showExpr = \d. fix (\showExpr e. showS (d showExpr) (out e))
+showExpr = \d. fix (\showExpr e. showS (d showExpr) e)
 
 -------------------------------------------------------------------------------
 -- Some expressions
 
 xpId : Mu (Sigma AllF)
-xpId = rcon #'Lam (rcon #'Var zero)
+xpId = con #'Lam (con #'Var zero)
 
 shId : String
 shId = showExpr showAllF xpId
 
 xpConst : Mu (Sigma AllF)
-xpConst = rcon #'Lam (rcon #'Lam (rcon #'Var one))
+xpConst = con #'Lam (con #'Lam (con #'Var one))
 
 shConst : String
 shConst = showExpr showAllF xpConst
 
 xpNot : Mu (Sigma AllF)
-xpNot = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (rcon #'BConst True)))
+xpNot = con #'Lam (con #'If (triple (con #'Var zero) (con #'BConst False) (con #'BConst True)))
 
 shNot : String
 shNot = showExpr showAllF xpNot

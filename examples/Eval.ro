@@ -11,7 +11,7 @@ n2 = prj m
 
 
 m2 : Pi { 'x := Pi {}, 'y := Pi {} }
-m2 = syn [\t. Pi {}] (\l. tt)
+m2 = syn #(\t. Pi {}) (\l. tt)
 
 n3 : Pi {}
 n3 = prj m2 / #'x
@@ -45,7 +45,7 @@ w2 = q v2
 -- q3 = ana [\t. Sigma { 'x := Pi {}, 'y := Pi {}}] (\l u. inj (l := inj (l := u)))
 
 q2 : Sigma { 'x := Pi {}, 'y := Pi {}} -> Pi {}
-q2 = ana [\t. Pi {}] (\l x. x)
+q2 = ana #(\t. Pi {}) (\l x. x)
 
 w3 : Pi {}
 w3 = q2 v1

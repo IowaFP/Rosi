@@ -10,7 +10,7 @@ pureStM : forall s a. a -> StM s a
 pureStM = pair
 
 apStM : forall s a b. StM s (a -> b) -> StM s a -> StM s b
-apStM = \f m s. let x = f s; first (fst x) (m (snd x))
+apStM = \f m s. let x = f s in first (fst x) (m (snd x))
 
 applicativeStM : forall s. Applicative (StM s)
 applicativeStM = ( #'Functor := functorStM

@@ -23,9 +23,9 @@ import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple, EE.Types
 as : forall l f z. { l := f } < z, { 'Err := \w. Unit } < z =>
      #l -> Mu (Sigma z) -> (f (Mu (Sigma z)) -> Mu (Sigma z)) -> Mu (Sigma z)
 as = \l w f.
-      match (out w)
+      match w
       ( case l f
-      | const (rcon #'Err tt))
+      | const (con #'Err tt))
 
 type Env : R[* -> *] -> *
 type Env = \z. List (Mu (Sigma z))
@@ -37,11 +37,11 @@ evalA : forall valr. ValA < valr =>
         Xh ArithF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalA = \exp rec env.
            match exp
-           ( case #'IConst (rcon #'Nat)
+           ( case #'IConst (con #'Nat)
            | case #'Plus (\p.
                as #'Nat (rec (sel p #'1) env) (\i.
                as #'Nat (rec (sel p #'2) env) (\j.
-                 rcon #'Nat (add i j))))
+                 con #'Nat (add i j))))
            )
 
 type ValB : R[R[* -> *] -> * -> *]
@@ -51,7 +51,7 @@ evalB : forall valr. ValB < valr =>
         Xh BoolF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalB = \exp rec env.
            match exp
-           ( case #'BConst (rcon #'Bool)
+           ( case #'BConst (con #'Bool)
            | case #'If (\t.
                as #'Bool (rec (sel t #'1) env)
                ( case #'True (const (rec (sel t #'2) env))
@@ -66,8 +66,8 @@ evalF : forall valr. ValF < valr =>
         Xh LamF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
 evalF = \exp rec env.
            match exp
-           ( case #'Var (\x. fromMaybe (rcon #'Err tt) (nth env x)) -- (o (maybe (rcon #'Err tt) id) (nth env))
-           | case #'Lam (\e. rcon #'Clos (pair env e))
+           ( case #'Var (\x. fromMaybe (con #'Err tt) (nth env x)) -- (o (maybe (con #'Err tt) id) (nth env))
+           | case #'Lam (\e. con #'Clos (pair env e))
            | case #'App (\p.
                as #'Clos (rec (fst p) env) (\clos.
                  (rec (snd clos)) (cons (rec (snd p) env) (fst clos))))
@@ -79,13 +79,13 @@ evalAB : forall valr.
 evalAB = evalA | evalB
 
 xpThree : Mu (Sigma (ArithF))
-xpThree = rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))
+xpThree = con #'Plus (pair (con #'IConst one) (con #'IConst two))
 
 evThree : Mu (Sigma { 'Nat := \val. Nat, 'Err := \val. Unit })
 evThree = histo evalA xpThree nil
 
 xpThreee : Mu (Sigma (ABF))
-xpThreee = rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))
+xpThreee = con #'Plus (pair (con #'IConst one) (con #'IConst two))
 
 evThreee : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool, 'Err := \val. Unit })
 evThreee = histo evalAB xpThreee nil
@@ -96,8 +96,8 @@ evalABL : forall valr.
 evalABL = evalAB | evalF
 
 xpThreeee : Mu (Sigma ABLF)
-xpThreeee = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
-                             (rcon #'Plus (pair (rcon #'IConst one) (rcon #'IConst two))))
+xpThreeee = con #'App (pair (con #'Lam (con #'Var zero))
+                            (con #'Plus (pair (con #'IConst one) (con #'IConst two))))
 
 evThreeee : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
                       , 'Clos := \val. Pair (List val) (Mu (Sigma ABLF))
@@ -105,8 +105,8 @@ evThreeee : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
 evThreeee = histo evalABL xpThreeee nil
 
 xpTrue : Mu (Sigma ABLF)
-xpTrue = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
-                          (rcon #'BConst True))
+xpTrue = con #'App (pair (con #'Lam (con #'Var zero))
+                         (con #'BConst True))
 
 evTrue : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
                    , 'Clos := \val. Pair (List val) (Mu (Sigma ABLF))
@@ -114,8 +114,8 @@ evTrue : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
 evTrue = histo evalABL xpTrue nil
 
 xpIdd : Mu (Sigma ABLF)
-xpIdd = rcon #'App (pair (rcon #'Lam (rcon #'Var zero))
-                         (rcon #'Lam (rcon #'Var zero)))
+xpIdd = con #'App (pair (con #'Lam (con #'Var zero))
+                        (con #'Lam (con #'Var zero)))
 
 evIdd : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
                   , 'Clos := \val. Pair (List val) (Mu (Sigma ABLF))
@@ -123,7 +123,7 @@ evIdd : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
 evIdd = histo evalABL xpIdd nil
 
 xpBoom : Mu (Sigma ABLF)
-xpBoom = rcon #'App (pair (rcon #'BConst True) (rcon #'BConst True))
+xpBoom = con #'App (pair (con #'BConst True) (con #'BConst True))
 
 evBoom : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
                    , 'Clos := \val. Pair (List val) (Mu (Sigma ABLF))
@@ -137,13 +137,13 @@ evBoom = histo evalABL xpBoom nil
 
 
 naiveA : Mu (Sigma ArithF) -> Nat
-naiveA = fix (\ rec exp. match (out exp)
+naiveA = fix (\rec.
   ( case #'IConst id
   | case #'Plus (\ p. add (rec (sel p #'1))
                           (rec (sel p #'2)))))
 
 naiveB : Mu (Sigma BoolF) -> Bool
-naiveB = fix (\ rec exp. match (out exp)
+naiveB = fix (\rec.
   ( case #'BConst id
   | case #'If (\ t. match (rec (sel t #'1))
       ( case #'True (const (rec (sel t #'2)))

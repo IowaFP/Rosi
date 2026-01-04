@@ -221,16 +221,6 @@ checkTerm0 e@(EConst c) expected =
               TConApp Pi (TVar 1 ["r",""]) `funTy`
               TVar 0 ["t",""]
 
-        constType CIn =
-          do let f = TVar 0 ["f",""]
-             return (TForall "f" (Just (KType `KFun` KType)) $
-                       f `TApp` TConApp Mu f `funTy` TConApp Mu f) where
-
-        constType COut =
-          do let f = TVar 0 ["f",""]
-             return (TForall "f" (Just (KType `KFun` KType)) $
-                       TConApp Mu f `funTy` f `TApp` TConApp Mu f) where
-
         constType CFix =
           do let a = TVar 0 ["a",""]
              return (TForall "a" (Just KType) $

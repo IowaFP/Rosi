@@ -7,7 +7,7 @@ type Tree : * -> *
 type Tree = \a. Mu (TreeF a)
 
 empty : forall a. Tree a
-empty = rcon #'Empty tt
+empty = con #'Empty tt
 
 node : forall a. Tree a -> a -> Tree a -> Tree a
-node = \ l a r. rcon #'Node (triple l a r)
+node = \ l a r. con #'Node (triple l a r)

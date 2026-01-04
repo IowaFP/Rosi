@@ -12,7 +12,7 @@ import Ro.Base , Ro.Show , Data.Nat , Data.Tuple , Data.List
 
 --------------------------------------------------------------------------------
 -- §3 First Class labels
--- 
+--
 -- We can recover the primitives of Leijen's calculus:
 --   - record selection
 --   - record restriction
@@ -54,7 +54,7 @@ intBool = /\ l t. sel (#'n := 1 , #'b := True) (any [ l ])
 -- The magic is sort of lost with explicit type parameters---
 -- of course, a first-class label is often just a type annotation
 -- in disguise.
-n : Nat 
+n : Nat
 n = ite (intBool ['b] [Bool]) (succ (intBool ['n] [Nat])) 0
 
 -- §4.2 Overloading
@@ -65,7 +65,7 @@ type Plus = { 'nat := Nat -> Nat -> Nat ,
 plusRec : Pi Plus
 plusRec = (#'nat := add , #'bool := or )
 
-plus : forall l : L , t : *. {l := t } < Plus => t 
+plus : forall l : L , t : *. {l := t } < Plus => t
 plus = /\ l. sel plusRec (any [ l ])
 
 -- it'd be a lot cooler if these type applications could be inferred
@@ -77,15 +77,15 @@ ok = pair (plus ['nat] [Nat -> Nat -> Nat] 1 2) (plus ['bool] [Bool -> Bool -> B
 nary : forall b c : *. Pi { 'one := b -> List b , 'two := c -> c -> List c }
 nary = (#'one := \ x. sing x , #'two := \ x y. cons x (sing y))
 
-nlist : forall l : L , a b c : *. {l := a} < { 'one := b -> List b , 'two := c -> c -> List c } => a 
+nlist : forall l : L , a b c : *. {l := a} < { 'one := b -> List b , 'two := c -> c -> List c } => a
 nlist = /\ l a b c. sel (nary [b] [c]) (any [l])
 
--- §4.3 Type case 
+-- §4.3 Type case
 -- This is another example where the magic seems to be simply omitting type application annotations.
 -- That is, the magic is to do with type inference and not the calculus.
 -- Moreover, the behavior of this function is ambiguous if it were to truly be used
 -- as type casing, as (a -> b) could occur multiple types in r.
-typecase : forall l : L, r : R[*], a b : *. {l := a -> b} < r => a -> Pi r -> b 
+typecase : forall l : L, r : R[*], a b : *. {l := a -> b} < r => a -> Pi r -> b
 typecase = /\ l. \ x d. (sel d #l) x
 
 -- §4.3 Type selective functions
@@ -96,10 +96,9 @@ typecase = /\ l. \ x d. (sel d #l) x
 -- a record of handlers into a variant eliminator. But we have already derived
 -- this in previous work.
 
-sum : List Nat -> Nat 
-sum = fix (\ sum xs. 
-    match (out xs) 
-    (reflect (#'Nil := \ r. 0 , 
+sum : List Nat -> Nat
+sum = fix (\ sum.
+    (reflect (#'Nil := \ r. 0 ,
               #'Cons := \ r. add (fst r) (sum (snd r)))))
 
 

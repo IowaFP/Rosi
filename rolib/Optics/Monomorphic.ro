@@ -77,8 +77,8 @@ type Prism = \ s t. Pi { 'get := s -> Maybe t , 'put := t -> s }
 prism : forall l : L , t : * , z : R[*]. {l := t} < z => #l -> Prism (Sigma z) t
 prism = \ l. (#'get := case l Just | otherwise Nothing , #'put := con l)
 
-outPrism : forall f : * -> *. Prism (Mu f) (f (Mu f ))
-outPrism = (#'get := Just . out , #'put := in)
+outPrism : forall f : * -> *. Prism (Mu f) (f (Mu f))
+outPrism = (#'get := Just , #'put := id)
 
 -- Prisms may be composed
 compPrism : forall a b c : *. Prism a b -> Prism b c -> Prism a c

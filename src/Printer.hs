@@ -138,7 +138,8 @@ instance Printable Ty where
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
   ppr (TConApp Pi t) = with 3 $ "Pi" <+> at 4 (ppr t)
   ppr (TConApp Sigma t) = with 3 $ "Sigma" <+> at 4 (ppr t)
-  ppr (TConApp Mu t) = with 3 $ "Mu" <+> at 4 (ppr t)
+  ppr (TConApp (Mu Nothing) t) = with 3 $ "Mu" <+> at 4 (ppr t)
+  ppr (TConApp (Mu (Just n)) t) = with 3 $ "Mu[" <> ppre n <> "]" <+> at 4 (ppr t)
   ppr (TConApp (TCUnif g) t) =
     do mk <- liftIO (readIORef (goalRef g))
        case mk of
@@ -175,17 +176,16 @@ instance Printable Pred where
 --   :=               2
 --   application      3
 
-
 instance Printable TyCon where
   ppr Pi = "P"
   ppr Sigma = "S"
-  ppr Mu = "M"
+  ppr (Mu Nothing) = "M"
+  ppr (Mu (Just n)) = "M[" <> ppre n <> "]"
   ppr (TCUnif g) =
     do mk <- liftIO $ readIORef (goalRef g)
        case mk of
          Nothing -> "?"
          Just k  -> ppr k
-
 
 instance Printable Term where
   ppr (EVar _ s) = ppr s
@@ -218,14 +218,12 @@ instance Printable Term where
     name CConcat = "(++)"
     name CInj = "inj"
     name CBranch = "(|)"
-    name CIn = "in"
-    name COut = "out"
     name CFix = "fix"
     name CStringCat = "(^)"
     name CSyn = "syn"
     name CAna = "ana"
     name CFold = "fold"
-  ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> ";", ppr n]
+  ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> "in", ppr n]
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   -- Not printing internals (yet)
   ppr (EPrLam _ m) = ppr m

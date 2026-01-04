@@ -10,7 +10,7 @@ import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple, EE.Types
 -- being an untyped language, so we don't have to account for polymorphism.
 
 app : forall z. LamF < z => Mu (Sigma z) -> Mu (Sigma z) -> Mu (Sigma z)
-app = \f e. rcon #'App (pair f e)
+app = \f e. con #'App (pair f e)
 
 desugarB : forall z.
            LamF < z =>
@@ -18,8 +18,8 @@ desugarB : forall z.
 desugarB = \exp rec.
             match exp
             (case #'BConst
-               ( case #'True (\u. rcon #'Lam (rcon #'Lam (rcon #'Var one)))
-               | case #'False (\u. rcon #'Lam (rcon #'Lam (rcon #'Var zero)))
+               ( case #'True (\u. con #'Lam (con #'Lam (con #'Var one)))
+               | case #'False (\u. con #'Lam (con #'Lam (con #'Var zero)))
                )
             | case #'If (\t. app (app (rec (fst t)) (rec (snd t))) (rec (thd t)))
             )
@@ -28,7 +28,7 @@ desugarB = \exp rec.
 -- Identity traversal
 
 ext : forall z : R[* -> *]. Pi (Functor z) -> Xh z (\ w. (Mu (Sigma z)))
-ext = \ d v rec. in (fmapS d rec v)
+ext = \ d v rec. fmapS d rec v
 
 -- TODO: Why is the result in terms of z, not w? The latter would require an
 -- inj, but seems like the more correct thing to do...?
@@ -38,7 +38,7 @@ desugar : forall y. BoolF < y, LamF < y - BoolF =>
 desugar = \d. desugarB | ext d
 
 xpNott : Mu (Sigma LBF)
-xpNott = rcon #'Lam (rcon #'If (triple (rcon #'Var zero) (rcon #'BConst False) (rcon #'BConst True)))
+xpNott = con #'Lam (con #'If (triple (con #'Var zero) (con #'BConst False) (con #'BConst True)))
 
 desNott : Mu (Sigma LamF)
 desNott = histo (desugar functorLam) xpNott
