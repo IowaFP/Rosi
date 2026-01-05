@@ -367,6 +367,7 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
 
   aterm :: Parser Term
   aterm = choice [ EConst <$> const
+                 , ESing . TLab <$> lexeme (char '\'' >> some alphaNumChar)
                  , EVar (-1) <$> try qidentifier
                  , ESing <$> (char '#' >> atype)
                  , buildNumber <$> number

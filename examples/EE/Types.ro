@@ -29,47 +29,47 @@ functorConst : forall t. Functor (Const t)
 functorConst = \f. id
 
 functorTwo : Functor (\t. Pair t t)
-functorTwo = \f x. pair (f (sel x #'1)) (f (sel x #'2))
+functorTwo = \f x. pair (f (sel x '1)) (f (sel x '2))
 
 functorThree : Functor (\t. Triple t t t)
-functorThree = \f x. triple (f (sel x #'1)) (f (sel x #'2)) (f (sel x #'3))
+functorThree = \f x. triple (f (sel x '1)) (f (sel x '2)) (f (sel x '3))
 
 functorBool : Pi (Functor BoolF)
-functorBool = (#'BConst := functorConst, #'If := functorThree)
+functorBool = ('BConst := functorConst, 'If := functorThree)
 
 functorArith : Pi (Functor ArithF)
-functorArith = (#'IConst := functorConst, #'Plus := functorTwo)
+functorArith = ('IConst := functorConst, 'Plus := functorTwo)
 
 functorLam : Pi (Functor LamF)
-functorLam = (#'Var := functorConst, #'Lam := functorId, #'App := functorTwo)
+functorLam = ('Var := functorConst, 'Lam := functorId, 'App := functorTwo)
 
 functorRec : Pi (Functor RecF)
-functorRec = #'Fix := functorId
+functorRec = 'Fix := functorId
 
 -------------------------------------------------------------------------------
 -- Shows
 
-tupleNames = (#'1 := "1", #'2 := "2", #'3 := "3")
+tupleNames = ('1 := "1", '2 := "2", '3 := "3")
 
 showTuple : forall t : *, z : R[*].
             Fold (Const t z), Const String z < {'1 := String, '2 := String, '3 := String} =>
             (t -> String) -> Pi (Const t z) -> String
-showTuple = \d. showP (#'names := prj tupleNames, #'shows := every d)
+showTuple = \d. showP ('names := prj tupleNames, 'shows := every d)
 
 showBoolF : forall t. Show t -> ShowR (BoolF t)
-showBoolF = \d. (#'names := (#'BConst := "BConst", #'If := "If"),
-                 #'shows := (#'BConst := showBool, #'If := showTuple d))
+showBoolF = \d. ('names := ('BConst := "BConst", 'If := "If"),
+                 'shows := ('BConst := showBool, 'If := showTuple d))
 
 showArithF : forall t. Show t -> ShowR (ArithF t)
-showArithF = \d. (#'names := (#'IConst := "IConst", #'Plus := "Plus"),
-                  #'shows := (#'IConst := showNat, #'Plus := showTuple d))
+showArithF = \d. ('names := ('IConst := "IConst", 'Plus := "Plus"),
+                  'shows := ('IConst := showNat, 'Plus := showTuple d))
 
 showLamF : forall t. Show t -> ShowR (LamF t)
-showLamF = \d. (#'names := (#'Var := "Var", #'Lam := "Lam", #'App := "App"),
-                #'shows := (#'Var := showNat, #'Lam := d, #'App := showTuple d))
+showLamF = \d. ('names := ('Var := "Var", 'Lam := "Lam", 'App := "App"),
+                'shows := ('Var := showNat, 'Lam := d, 'App := showTuple d))
 
 showRecF : forall t. Show t -> ShowR (RecF t)
-showRecF = \d. (#'names := (#'Fix := "Fix"), #'shows := (#'Fix := d))
+showRecF = \d. ('names := ('Fix := "Fix"), 'shows := ('Fix := d))
 
 -------------------------------------------------------------------------------
 -- Shorthand
@@ -120,19 +120,19 @@ showExpr = \d. fix (\showExpr e. showS (d showExpr) e)
 -- Some expressions
 
 xpId : Mu (Sigma AllF)
-xpId = con #'Lam (con #'Var zero)
+xpId = con 'Lam (con 'Var zero)
 
 shId : String
 shId = showExpr showAllF xpId
 
 xpConst : Mu (Sigma AllF)
-xpConst = con #'Lam (con #'Lam (con #'Var one))
+xpConst = con 'Lam (con 'Lam (con 'Var one))
 
 shConst : String
 shConst = showExpr showAllF xpConst
 
 xpNot : Mu (Sigma AllF)
-xpNot = con #'Lam (con #'If (triple (con #'Var zero) (con #'BConst False) (con #'BConst True)))
+xpNot = con 'Lam (con 'If (triple (con 'Var zero) (con 'BConst False) (con 'BConst True)))
 
 shNot : String
 shNot = showExpr showAllF xpNot

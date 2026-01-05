@@ -54,14 +54,11 @@ promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k
          Just t' -> promoteN v m (shiftTN 0 n' t')
          Nothing
            | n' < m ->
-             do trace $ "promoteN 1: " ++ show n' ++ " < " ++ show m
-                return (Just t)
+             return (Just t)
            | n' >= m + n && l >= l' ->
-             do trace "promoteN 2"
-                return (Just $ TUnif (v' { uvShift = n' - n }))
+             return (Just $ TUnif (v' { uvShift = n' - n }))
            | otherwise ->
-             do trace "promoteN 3"
-                r'' <- newRef Nothing
+             do r'' <- newRef Nothing
                 uvar'' <- fresh uvar'
                 let newT n = TUnif (UV n l (Goal (uvar'', r'')) k')
                 writeRef r' (Just (newT ((m + n) - n')))

@@ -23,7 +23,7 @@ wand0 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> 
   -- Notes: label constants have an initial quote
   -- Records are `Pi z`; I guess variants are `Sigma z`.  (Unicode? still sucks for GHC on Windows)
 wand0 = /\ x y z : R[*], t : *. \ m : Pi x, n : Pi y.
-          prj [{'l := t}] [z] ((++) [x] [y] [z] m n) / #'l
+          prj [{'l := t}] [z] ((++) [x] [y] [z] m n) / 'l
   -- Not sure about punning singletons: Do we need to distinguish between the
   -- syntax for singleton #T and the type T?
 
@@ -31,7 +31,7 @@ wand0 = /\ x y z : R[*], t : *. \ m : Pi x, n : Pi y.
 
 wand1 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
 wand1 = /\ x y z : R[*], t : * . \ m : Pi x, n : Pi y.
-          prj (m ++ n) / #'l
+          prj (m ++ n) / 'l
 
 -- Should be able to infer the presence of type abstractions from the type signature:
 
@@ -44,7 +44,7 @@ wand1 = /\ x y z : R[*], t : * . \ m : Pi x, n : Pi y.
 -- Can infer types of function arguments:
 
 wand3 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
-wand3 = \ m n. prj (m ++ n) / #'l
+wand3 = \ m n. prj (m ++ n) / 'l
 
 -- Not convinced about these next two:
 
@@ -56,7 +56,7 @@ wand3 = \ m n. prj (m ++ n) / #'l
 -- Can infer kinds?
 
 wand5 : forall x y z t. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
-wand5 = \ m n. prj (m ++ n) / #'l
+wand5 = \ m n. prj (m ++ n) / 'l
 
 -- Automatically generalize undeclared variables, in alphabetical order. (Note
 -- interaction with #4?)
@@ -67,7 +67,7 @@ wand5 = \ m n. prj (m ++ n) / #'l
 -- Let's dualize the above
 
 dnaw : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y -> u) -> t -> u
-dnaw = \ r s x. (r | s) (inj (#'l := x))
+dnaw = \ r s x. (r | s) (inj ('l := x))
 
 dnawHO : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x u -> u) -> (Sigma y u -> u) -> t u -> u
-dnawHO = \ f g x. (f | g) (inj (#'l := x))
+dnawHO = \ f g x. (f | g) (inj ('l := x))
