@@ -31,23 +31,23 @@ type Step = \y : R[* -> *]. Pi (Functor y) -> Maybe (Mu (Sigma y))
 stepA : Xh ArithF Step
 stepA = \ exp rec d.
   match exp
-  ( case #'IConst (const Nothing)
-  | case #'Plus (\ p .
+  ( 'IConst: u -> Nothing
+  | 'Plus: p ->
     match (fst p)
-    ( case #'IConst (\i.
+    ( 'IConst: i ->
       match (snd p)
-      ( case #'IConst (\j. Just (con #'IConst (add i j)))
-      | otherwise (
+      ( 'IConst: j -> Just ('IConst: (add i j))
+      | otherwise ->
         match (rec (snd p) d)
-        ( case #'Just (\sndd. Just (con #'Plus (pair (con #'IConst i) sndd)))
-        | otherwise Nothing))))
+        ( 'Just: sndd -> Just ('Plus: (pair ('IConst: i) sndd))
+        | otherwise -> Nothing))
     | otherwise (
       match (rec (fst p) d)
-      ( case #'Just (\fstt. Just (con #'Plus (pair fstt (snd p))))
-      | otherwise (
+      ( 'Just: fstt -> Just ('Plus: (pair fstt (snd p)))
+      | otherwise ->
         match (rec (snd p) d)
         ( case #'Just (\sndd. Just (con #'Plus (pair (fst p) sndd)))
-        | otherwise Nothing )))))))
+        | otherwise -> Nothing )))))
 
 stepB : Xh BoolF Step
 stepB = \ exp rec d.

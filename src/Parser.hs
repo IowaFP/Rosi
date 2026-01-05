@@ -14,7 +14,7 @@ import Data.IORef (newIORef)
 import Data.List (delete, intercalate)
 import Data.List.NonEmpty (fromList)
 import Data.List.Split (splitOn)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Void (Void)
 import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure)
@@ -123,13 +123,16 @@ lexeme p    = guardIndent p <* whitespace
 symbol      = lexeme . string
 reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'')))
 
-keywords = ["let", "in", "forall"]
-
 identifier  =
-  do s <- lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '\''))
+  do s <- ((:) <$> letterChar <*> many (alphaNumChar <|> char '\''))
      if s `elem` keywords
      then unexpected $ Label (fromList "reserved word")
      else return s
+  where keywords = ["let", "in", "forall"]
+
+lidentifier :: Parser String
+lidentifier =
+  char '\'' >> some alphaNumChar
 
 qidentifier  =
   do x <- identifier
@@ -165,7 +168,7 @@ kind = chainr1 akind (symbol "->" >> return KFun) where
 
 binders :: Parser t -> Parser [(String, Maybe t)]
 binders p =
-  do xs <- some identifier
+  do xs <- some (lexeme identifier)
      m <- optional $ do colon >> p
      return (map (, m) xs)
 
@@ -233,14 +236,14 @@ labeledTy =
        _ -> unexpected (Label $ fromList "unlabeled type")
 
 atype :: Parser Ty
-atype = choice [ TLab <$> lexeme (char '\'' >> some alphaNumChar)
+atype = choice [ TLab <$> lexeme lidentifier
                , TSing <$> (char '#' >> atype)
                , TConApp Sigma <$> (symbol "Sigma" >> atype)
                , TConApp Pi <$> (symbol "Pi" >> atype)
                , TConApp (Mu Nothing) <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
                , const TString <$> symbol "String"
-               , TVar (-1) <$> qidentifier
+               , TVar (-1) <$> (lexeme qidentifier)
                , parens ty ]
 
 pr :: Parser Pred
@@ -272,7 +275,7 @@ prefix = do symbol "\\"
             return (foldr1 (.) (map (uncurry ETyLam) (concat bs)))
        <|>
          do reserved "let"
-            x <- identifier
+            x <- lexeme identifier
             mty <- optional $ symbol ":" >> ty
             symbol "="
             t <- term
@@ -295,7 +298,7 @@ term = prefixes typedTerm where
               return (foldr1 (.) (map (uncurry ETyLam) (concat bs)))
          <|>
            do symbol "let"
-              x <- identifier
+              x <- lexeme identifier
               mty <- optional $ symbol ":" >> ty
               symbol "="
               t <- term
@@ -321,8 +324,30 @@ term = prefixes typedTerm where
   ebinary :: Const -> Parser (Term -> Term -> Term)
   ebinary k = return (\e1 e2 -> EApp (EApp (EConst k) e1) e2)
 
-  branchTerm = chainl1 composeTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
+  branchTerm = chainl1 caseTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
 
+  caseTerm =
+        do p <- try (pattern <* symbol "->")
+           t <- caseTerm
+           return (buildCase p t)
+    <|> do try (symbol "otherwise" >> symbol "->")
+           t <- caseTerm
+           return (EApp (EVar (-1) (reverse ["Ro", "Base", "otherwise"])) t)
+    <|> composeTerm
+    where
+    pattern =
+      do k <- choice [ ESing . TLab <$> lidentifier
+                     , EVar (-1) <$> qidentifier ]
+         symbol ":"
+         x <- lexeme identifier
+         return (k, x)
+
+    -- case ,k (\,x. ,t)
+    buildCase (k, x) t =
+      EApp
+        (EApp (EVar (-1) (reverse ["Ro", "Base", "case"]))
+              k)
+        (ELam x Nothing t)
 
   -- ELam "x" Nothing (EApp e1 (EApp e2 (EVar 0 ["x"])))
   o :: Term
@@ -363,12 +388,34 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
 
   goal s = Goal . (s,) <$> newIORef Nothing
 
-  -- builtIns = choice (map builtIn ["prj", "inj", "ana", "syn", "(++)", "(?)", "in", "out", "fix"]) where
+  ctor = do x <- choice [ ESing . TLab <$> lidentifier
+                        , EVar (-1) <$> qidentifier ]
+            char ':'
+            return (EApp (EVar (-1) (reverse ["Ro", "Base", "con"])) x)
+
+  sing x = [x]
+  buildSel x l = EApp (EApp (EVar (-1) (reverse ["Ro", "Base", "sel"])) x) l
+
+  selection =
+    do x <- EVar (-1) <$> qidentifier
+       xs <- many $ do char '.'
+                       choice [ ESing . TLab <$> lidentifier
+                              , EVar (-1) . sing <$> identifier]
+       return (foldl buildSel x xs)
+
+  stor =
+    do xs <- some $ do char '.'
+                       choice [ ESing . TLab <$> lidentifier
+                              , EVar (-1) . sing <$> identifier]
+       return (ELam "$x" Nothing (foldl buildSel (EVar (-1) ["$x"]) xs))
 
   aterm :: Parser Term
   aterm = choice [ EConst <$> const
-                 , ESing . TLab <$> lexeme (char '\'' >> some alphaNumChar)
-                 , EVar (-1) <$> try qidentifier
+                 , try (lexeme ctor)
+                 , try (lexeme selection)
+                 , try (lexeme stor)
+                 , ESing . TLab <$> lexeme lidentifier
+                 , EVar (-1) <$> try (lexeme qidentifier)
                  , ESing <$> (char '#' >> atype)
                  , buildNumber <$> number
                  , EStringLit <$> stringLit
@@ -409,7 +456,7 @@ topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
   lhs = reserved "import" *> return ImportLHS <|>
         TypeLHS <$> lexeme typeIdentifier <|>
-        TermLHS <$> identifier
+        TermLHS <$> lexeme identifier
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
   -- which will check the indentation level, but we are looking for entries at
@@ -436,9 +483,6 @@ defns moduleNames tls
   | otherwise =
     do ds <- mapM mkDecl names
        return (Prog (concat imports, ds))
-
-
-    -- return (Prog (concat imports, map mkDecl names))
   where -- TODO: Why would not we *not* traverse this list four times?
         termDefs = [(x, t) | (x, TermDef t) <- tls]
         typeSigs = [(x, t) | (x, TypeSig t) <- tls]

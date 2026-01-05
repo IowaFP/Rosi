@@ -120,19 +120,19 @@ showExpr = \d. fix (\showExpr e. showS (d showExpr) e)
 -- Some expressions
 
 xpId : Mu (Sigma AllF)
-xpId = con 'Lam (con 'Var zero)
+xpId = 'Lam: ('Var: 0)
 
 shId : String
 shId = showExpr showAllF xpId
 
 xpConst : Mu (Sigma AllF)
-xpConst = con 'Lam (con 'Lam (con 'Var one))
+xpConst = 'Lam: ('Lam: ('Var: 1))
 
 shConst : String
 shConst = showExpr showAllF xpConst
 
 xpNot : Mu (Sigma AllF)
-xpNot = con 'Lam (con 'If (triple (con 'Var zero) (con 'BConst False) (con 'BConst True)))
+xpNot = 'Lam: ('If: (triple ('Var: zero) ('BConst: False) ('BConst: True)))
 
 shNot : String
 shNot = showExpr showAllF xpNot

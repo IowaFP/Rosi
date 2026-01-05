@@ -16,7 +16,7 @@ type Const = \x y. x
 const : forall t u. t -> u -> t
 const = \ x y. x
 
-flip : forall a b c. (a -> b -> c) -> b -> a -> c 
+flip : forall a b c. (a -> b -> c) -> b -> a -> c
 flip = \ f b a. f a b
 
 -------------------------------------------------------------------------------
@@ -59,16 +59,16 @@ brnl = \ f g. f | (g . inj)
 
 relabelS : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
            #l0 -> #l1 -> Sigma y0 -> Sigma y1
-relabelS = \ l0 l1. case l0 (con l1) | (\x. inj x)
+relabelS = \ l0 l1. case l0 (con l1) | inj
 
 relabelInj : forall y1 y0 l0 l1 t x z.
              {l0 := t} + x ~ y0, {l1 := t} + x ~ y1, y1 < z =>
              #l0 -> #l1 -> Sigma y0 -> Sigma z
-relabelInj = /\y1. \l0 l1 x. inj (relabelS l0 l1 x : Sigma y1)
+relabelInj = /\y1. \l0 l1 x. inj (relabelS l0 l1 x)
 
 relabelP : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
            #l0 -> #l1 -> Pi y0 -> Pi y1
-relabelP = \ l0 l1 r. (l1 := sel r l0) ++ prj r
+relabelP = \ l0 l1 r. (l1 := r.l0) ++ prj r
 
 ---
 
@@ -95,11 +95,11 @@ False : Bool
 False = con #'False tt
 
 ite : forall t : *. Bool -> t -> t -> t
-ite = case #'True (\ u t1 t2. t1) 
-    | case #'False (\ u t1 t2. t2)
+ite = 'True: u -> (\t1 t2. t1)
+    | 'False: u ->  (\t1 t2. t2)
 
 not : Bool -> Bool
-not = \ b. ite b False True 
+not = \ b. ite b False True
 
 and : Bool -> Bool -> Bool
 and = \ b. ite b id (const False)
@@ -118,17 +118,17 @@ impossible = fix (\x. x)
 
 
 reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t
-reflect = \ d w. ana #(\X. X) (\ l u. sel d l u) w
+reflect = \ d w. ana #(\X. X) (\ l u. d.l u) w
 
 reify : forall z t. (Sigma z -> t) -> Pi (z -> t)
-reify = /\ z t. \f. syn #(\X. X -> t) (\l x. f (con l x))
+reify = /\ z t. \f. syn #(\X. X -> t) (\l x. f (l: x))
 
 -- Categorical duals to reify / reflect. Don't have great names for these.
 decompose : forall z : R[*] , t. Pi (t -> z) -> (t -> Pi z)
-decompose = \ d t. syn #(\ X. X) (\ l. sel d l t)
+decompose = \ d t. syn #(\ X. X) (\ l. d.l t)
 
-recompose : forall z : R[*] , t. (t -> Pi z) -> Pi (t -> z) 
-recompose = /\ z t. \ f. syn #(\ X. t -> X) (\ l. \ u : t. sel (f u) l)
+recompose : forall z : R[*] , t. (t -> Pi z) -> Pi (t -> z)
+recompose = /\ z t. \ f. syn #(\ X. t -> X) (\ l u. sel (f u) l)
 
 every : forall a : *, z : R[*]. a -> Pi (Const a z)
 every = /\a. \x. syn #(\X. a) (\l. x)
@@ -139,16 +139,16 @@ type Eq = \t. t -> t -> Bool
 eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
 eqS = \ d v. ana #(\X. X)
                  (\ l y. match v
-                         ( case l (\x. sel d l x y)
-                         | const False))
+                         ( l: x -> d.l x y
+                         | otherwise -> False))
 
 eqP : forall z: R[*]. Fold z => Pi (Eq z) -> Eq (Pi z)
-eqP = \ d r. fold (\l x. sel d l (sel r l) x) and True
+eqP = \ d r. fold (\l x. d.l r.l x) and True
 
 -- Branching is derivable
-branch : forall x y z : R[*] , t : *. x + y ~ z => 
-            (Sigma x -> t) -> (Sigma y -> t) -> Sigma z -> t 
-branch = \ f g. reflect (reify f ++ reify g)            
+branch : forall x y z : R[*] , t : *. x + y ~ z =>
+            (Sigma x -> t) -> (Sigma y -> t) -> Sigma z -> t
+branch = \ f g. reflect (reify f ++ reify g)
 
 -------------------------------------------------------------------------------
 
@@ -164,18 +164,18 @@ type Maybe : * -> *
 type Maybe = \a. Sigma { 'Nothing := Unit, 'Just := a }
 
 Just : forall a. a -> Maybe a
-Just = \a. con #'Just a
+Just = \a. 'Just: a
 
 Nothing : forall a. Maybe a
-Nothing = con #'Nothing tt
+Nothing = 'Nothing: tt
 
 maybe : forall a b. b -> (a -> b) -> Maybe a -> b
 maybe = \z f.
-        ( case #'Nothing (const z)
-        | case #'Just f
+        ( 'Nothing: u -> z
+        | 'Just: x -> f x
         )
 
-is : forall l t z. {l := t} < z => #l -> Sigma z -> Maybe t 
+is : forall l t z. {l := t} < z => #l -> Sigma z -> Maybe t
 is = \ l. case l Just | otherwise Nothing
 
 fromMaybe : forall a. a -> Maybe a -> a
@@ -192,7 +192,7 @@ Left = \a. con #'Left a
 Right : forall a b. b -> Either a b
 Right = \b. con #'Right b
 
-either : forall a b c. (a -> c) -> (b -> c) -> Either a b -> c 
+either : forall a b c. (a -> c) -> (b -> c) -> Either a b -> c
 either = \ f g. (case #'Left f | case #'Right g)
 
 -------------------------------------------------------------------------------

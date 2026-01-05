@@ -4,6 +4,7 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Bifunctor
 import Data.List
+import Data.Maybe
 import Syntax
 
 newtype ScopeM a = ScopeM { runScope :: ReaderT ([QName], [QName]) (Except Error) a }
@@ -23,19 +24,32 @@ bindGTyVar, bindGVar :: QName -> ScopeM a -> ScopeM a
 bindGTyVar tv = bindVars ([tv], [])
 bindGVar v    = bindVars ([], [v])
 
-generic :: (([QName], [QName]) -> [QName]) -> (QName -> Error) -> QName -> ScopeM (Int, QName)
-generic sel err x = do names <- asks sel
-                       case findIndex (lookFor x) names of
-                         Nothing -> throwError (err x)
-                         Just i  -> return (i, names !! i)
-  where lookFor :: QName -> QName -> Bool
-        lookFor [x] (y : ys) = x == y
-        lookFor xs ys        = xs == ys
+lookFor :: QName -> QName -> Bool
+lookFor [x] (y : ys) = x == y
+lookFor xs ys        = xs == ys
 
+tyvar :: QName -> ScopeM (Int, QName)
+tyvar x = do names <- asks fst
+             case findIndex (lookFor x) names of
+               Nothing -> throwError (ErrUnboundTyVar x)
+               Just i  -> return (i, names !! i)
 
-var, tyvar :: QName -> ScopeM (Int, QName)
-var = generic snd ErrUnboundVar
-tyvar = generic fst ErrUnboundTyVar
+var :: QName -> ScopeM Term
+var x = do names <- asks snd
+           case finds names of
+            [] -> throwError (ErrUnboundVar x)
+            (([], i) : _) ->
+              return (EVar i (names !! i))
+            ((xs, i) : _) ->
+              do ls <- mapM (var . sing) xs
+                 sel <- var ["sel", "Base", "Ro"]
+                 return (foldl (\x l -> EApp (EApp sel x) l)
+                               (EVar i (names !! i))
+                               (reverse ls))
+
+  where splits = [splitAt n x | n <- [0..length x]]
+        finds names = [(xs, i) | (xs, x) <- splits, i <- maybeToList (findIndex (lookFor x) names)]
+        sing x = [x]
 
 class HasVars t where
   scope :: t -> ScopeM t
@@ -78,7 +92,7 @@ instance HasVars Pred where
 -- type checking, and so starts with de Bruijn indices.
 
 instance HasVars Term where
-  scope (EVar _ x) = uncurry EVar <$> var x
+  scope (EVar _ x) = var x
   scope (EConst c) = return (EConst c)
   scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
