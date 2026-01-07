@@ -414,6 +414,9 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                  , try (lexeme ctor)
                  , try (lexeme selection)
                  , try (lexeme stor)
+                 , lexeme $ do char '?'
+                               name <- many (alphaNumChar <|> char '\'')
+                               return (EHole name)
                  , ESing . TLab <$> lexeme lidentifier
                  , EVar (-1) <$> try (lexeme qidentifier)
                  , ESing <$> (char '#' >> atype)

@@ -230,6 +230,7 @@ instance Printable Term where
   ppr (ECast m VEqRefl) = ppr m
   ppr (ECast m q) = parens (fillSep [ppr m <+> "<|", fromString (show q)])
   ppr (EStringLit s) = "\"" <> ppre s <> "\""
+  ppr (EHole s) = "?" <> ppre s
 
 instance Printable Evid where
   ppr _ = "<evid>"

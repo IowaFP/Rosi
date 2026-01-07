@@ -723,7 +723,7 @@ solverLoop ps =
           --      Nothing -> trace "Solver done" >> return ps'
   where once b qs [] = return (b, qs)
         once b qs (p : ps) =
-          do (b', TCOut ps') <- collect $ solve p
+          do (b', ps') <- collect $ solve p
              once (b || b')
                   (if b' then qs else p : qs)
                   (ps ++ ps')
@@ -733,8 +733,10 @@ solverLoop ps =
 
 andSolve :: CheckM a -> CheckM a
 andSolve m =
-  censor (const (TCOut [])) $
-  do (x, TCOut goals) <- collect m
+  -- censor (const (TCOut [])) $
+      -- Not sure why this should be here; the `collect` below should do the
+      -- same, and `solverLoop` shouldn't leave any problems in the output
+  do (x, goals) <- collect m
      remaining <- solverLoop goals
      if null remaining
      then return x

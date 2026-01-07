@@ -9,6 +9,7 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
+import Data.Bifunctor (second)
 import Data.Dynamic
 import Data.IORef
 import Data.List (elemIndex, nub)
@@ -86,8 +87,13 @@ emptyTCIn :: TCIn
 emptyTCIn = TCIn [] [] [] 0 id
 
 type Problem = (TCIn, Pred, IORef (Maybe Evid))
-newtype TCOut = TCOut { goals :: [Problem] }
-  deriving (Semigroup, Monoid)
+data TCOut = TCOut { goals :: [Problem], holes :: [(String, Ty)] }
+
+instance Semigroup TCOut where
+  TCOut goals holes <> TCOut goals' holes' = TCOut (goals <> goals') (holes <> holes')
+
+instance Monoid TCOut where
+  mempty = TCOut mempty mempty
 
 newtype CheckM a = CM (WriterT TCOut (ReaderT TCIn (StateT TCSt (ExceptT Error IO))) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader TCIn, MonadState TCSt, MonadWriter TCOut)
@@ -146,7 +152,7 @@ instance MonadCheck CheckM where
     do cin <- ask
        p' <- flattenP p
        trace ("requiring " ++ show p')
-       tell (TCOut [(cin, p, r)])
+       tell (TCOut [(cin, p, r)] [])
 
   typeError = throwError
 
@@ -167,8 +173,8 @@ instance MonadCheck CheckM where
       do mapM_ perform us
          when (m /= m') $ resetLoop rest
 
-collect :: CheckM a -> CheckM (a, TCOut)
-collect m = censor (const (TCOut [])) $ listen m
+collect :: CheckM a -> CheckM (a, [Problem])
+collect m = censor (\out -> out { goals = [] }) $ (second goals <$> listen m)
 
 upLevel m = do l <- theLevel
                atLevel (l + 1) m

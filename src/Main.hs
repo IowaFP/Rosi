@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module Main where
 
@@ -8,7 +8,7 @@ import Control.Monad.State
 import Data.IORef
 import Data.List (findIndex, break)
 import Data.List.Split
-import Data.Bitraversable
+import Data.String
 import qualified Prettyprinter as P
 import qualified Prettyprinter.Util as P
 import System.Console.GetOpt
@@ -124,27 +124,43 @@ main = do nowArgs <- getArgs
           when (printOkay flags) $ putStrLn "okay"
   where goCheck d g [] = return []
         goCheck d g (TyDecl x k t : ds) =
-          do t' <- flattenT =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ checkTy t k)
+          do t' <- flattenT . fst =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ checkTy t k)
+               -- Shouldn't be any holes in types...
              goCheck (KBDefn k t' : d) g ds
         goCheck d g (TmDecl v (Just ty) te : ds) =
-          do ty' <- flattenT =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
-             te' <- flattenE =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
+          do ty' <- flattenT . fst =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
+             (te', holes) <- reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
+             te'' <- flattenE te'
+             reportHoles holes
              ds' <- goCheck d (ty' : g) ds
-             return ((v, ty', te') : ds')
+             return ((v, ty', te'') : ds')
         goCheck d g (TmDecl v Nothing te : ds) =
-          do (te', ty) <- bitraverse flattenE flattenT =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
-             ds' <- goCheck d (ty : g) ds
-             return ((v, ty, te') : ds')
+          do ((te', ty), holes) <- reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
+             ty' <- flattenT ty
+             te'' <- flattenE te'
+             reportHoles holes
+             ds' <- goCheck d (ty' : g) ds
+             return ((v, ty, te'') : ds')
         goCheck d g (TyDecl {} : ds) =
           goCheck d g ds
 
         goEvalE _ [] = return []
-        goEvalE h ((x, t, m) : ds) =
-          do m' <- flattenE m
-             let v = E.eval ([], h) m'
-             ((x, v) :) <$> goEvalE (v : h) ds
+        goEvalE h ((x, t, m) : ds)
+          | hasHoles m = return []
+          | otherwise =
+            do m' <- flattenE m
+               let v = E.eval ([], h) m'
+               ((x, v) :) <$> goEvalE (v : h) ds
 
         thirdM f (a, b, c) = (a, b,) <$> f c
+
+        reportHoles :: [(String, Ty)] -> IO ()
+        reportHoles = mapM_ reportHole where
+          reportHole (s, t) =
+            do t' <- flattenT t
+               putDocWLn 80 $
+                 nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
+                                  , ppr t']
 
         wordsIfExists :: FilePath -> IO [String]
         wordsIfExists fn =

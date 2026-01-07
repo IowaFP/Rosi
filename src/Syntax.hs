@@ -322,7 +322,7 @@ data Term =
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
-  | EStringLit String
+  | EStringLit String | EHole String
   deriving (Data, Eq, Show, Typeable)
 
 shiftENV :: [UVar] -> Int -> Int -> Term -> Term
@@ -340,16 +340,30 @@ shiftENV vs j n (ELet x e f) = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
 shiftENV vs j n (ECast e q) = ECast (shiftENV vs j n e) q
 shiftENV vs j n (ETyped e t) = ETyped e (shiftTNV vs j n t)
 shiftENV _ _ _ e@(EStringLit {}) = e
+shiftENV _ _ _ e@(EHole {}) = e
 
 shiftEN :: Int -> Int -> Term -> Term
 shiftEN = shiftENV []
-
 
 flattenE :: MonadIO m => Term -> m Term
 flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) <=< everywhereM (mkM flattenTC) where
   (f <=< g) x = g x >>= f
   flattenInsts (EInst m is) = EInst m <$> flattenIs is
   flattenInsts m = return m
+
+hasHoles :: Term -> Bool
+hasHoles (EHole {})       = True
+hasHoles (ELam _ _ e)     = hasHoles e
+hasHoles (EApp f e)       = hasHoles f || hasHoles e
+hasHoles (ETyLam _ _ e)   = hasHoles e
+hasHoles (EPrLam _ e)     = hasHoles e
+hasHoles (EInst e _)      = hasHoles e
+hasHoles (ELabel _ l e)   = hasHoles l || hasHoles e
+hasHoles (EUnlabel _ e l) = hasHoles e || hasHoles l
+hasHoles (ELet _ e f)     = hasHoles e || hasHoles f
+hasHoles (ECast e _)      = hasHoles e
+hasHoles (ETyped e _)     = hasHoles e
+hasHoles _                = False -- covers: EVar, ESing, EConst
 
 --------------------------------------------------------------------------------
 -- Evidence

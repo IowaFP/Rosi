@@ -106,7 +106,8 @@ instance HasVars Term where
     scopeI (TyArg t) = TyArg <$> scope t
     scopeI (PrArg v) = return (PrArg v)
   scope (EInst m (Unknown n g)) = EInst <$> scope m <*> return (Unknown n g) -- how is this case actually possible?
-  scope (EStringLit s) = return (EStringLit s)
+  scope e@(EStringLit {}) = return e
+  scope e@(EHole {}) = return e
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
   scope ECast{} = error "scope: ETyEqu"

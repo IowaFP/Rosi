@@ -242,6 +242,9 @@ checkTerm0 e0@(ELet x e f) expected =
 checkTerm0 e0@(EStringLit _) expected =
   do expectT e0 TString expected
      return e0
+checkTerm0 e0@(EHole s) expected =
+  do tell (TCOut [] [(s, expected)])
+     return e0
 
 generalize :: Term -> CheckM (Term, Ty)
 generalize e =
@@ -251,13 +254,13 @@ generalize e =
        local (\cin -> cin { pctxt = [] }) $
        do t <- expectedGoal "t"
           level <- theLevel
-          (e', tcout) <- collect $ checkTerm e t
-          (psHere, psThere) <- splitProblems level (goals tcout)
+          (e', ps) <- collect $ checkTerm e t
+          (psHere, psThere) <- splitProblems level ps
           remaining <- solverLoop psHere
           return (level, t, e', remaining, psThere)
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
      when (not (null ungeneralizable)) $ notEntailed ungeneralizable
-     tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere))
+     tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere) [])
      genVars <- foldl cat [] <$> ((:) <$> uvars level t <*> mapM (puvars level . fst) generalizable)
      fixInsts t
      t' <- shiftTNV genVars 0 (length genVars) <$> flattenT t

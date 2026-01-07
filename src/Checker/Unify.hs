@@ -61,7 +61,7 @@ unify eqns actual expected =
      (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
      case result of
        Right q ->
-         do tell (TCOut preds)
+         do tell (TCOut preds [])
             return (Right q)
        Left err ->
          do reset m
@@ -73,7 +73,7 @@ check eqns actual expected =
      (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) (Just [])) eqns
      case result of
        Right q ->
-         do tell (TCOut preds)
+         do tell (TCOut preds [])
             return (Right q)
        Left err ->
          do reset m
@@ -93,7 +93,7 @@ unifyProductive eqns actual expected =
                 do reset m
                    return Unproductive
               _ ->
-                do tell (TCOut preds)
+                do tell (TCOut preds [])
                    return (Productive q')
        Left err ->
          do reset m
