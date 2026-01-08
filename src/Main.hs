@@ -132,14 +132,14 @@ main = do nowArgs <- getArgs
              (te', holes) <- reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              te'' <- flattenE te'
              reportHoles holes
-             ds' <- goCheck d (ty' : g) ds
+             ds' <- goCheck d ((v, ty') : g) ds
              return ((v, ty', te'') : ds')
         goCheck d g (TmDecl v Nothing te : ds) =
           do ((te', ty), holes) <- reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
              ty' <- flattenT ty
              te'' <- flattenE te'
              reportHoles holes
-             ds' <- goCheck d (ty' : g) ds
+             ds' <- goCheck d ((v, ty') : g) ds
              return ((v, ty, te'') : ds')
         goCheck d g (TyDecl {} : ds) =
           goCheck d g ds
@@ -154,13 +154,22 @@ main = do nowArgs <- getArgs
 
         thirdM f (a, b, c) = (a, b,) <$> f c
 
-        reportHoles :: [(String, Ty)] -> IO ()
+        reportHoles :: [(String, Ty, TCtxt)] -> IO ()
         reportHoles = mapM_ reportHole where
-          reportHole (s, t) =
+          reportHole (s, t, tcin) =
             do t' <- flattenT t
+               locals' <- mapM (\(x, t) -> (x,) <$> flattenT t) locals
                putDocWLn 80 $
-                 nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
-                                  , ppr t']
+                 if null locals'
+                 then nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
+                                       , ppr t']
+                 else vsep [ nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
+                                              , ppr t']
+                           , nest 4 $ vsep ("Local variables in scope:" :
+                                           [ppr x <:> ppr t | (x, t) <- locals']) ]
+
+            where locals = filter (\(x, t) -> length x == 2 && null (head (tail x))) tcin
+
 
         wordsIfExists :: FilePath -> IO [String]
         wordsIfExists fn =

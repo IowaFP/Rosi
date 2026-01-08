@@ -94,7 +94,7 @@ checkTerm0 e0@(ELam v (Just t) e) expected =
   do tcod <- expectedGoal "cod"
      t' <- fst <$> (normalize' [] =<< checkTy' e0 t KType)
      q <- expectT e0 (funTy t' tcod) expected
-     wrap q . ELam v (Just t') <$> bind t' (checkTerm'  e tcod)
+     wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
 checkTerm0 e0@(EApp f e) expected =
   do tdom <- expectedGoal "dom"
      elimForm expected $ \expected ->
@@ -237,13 +237,14 @@ checkTerm0 e0@(ETyped e t) expected =
           return (ECast e' q)
 checkTerm0 e0@(ELet x e f) expected =
   do (e', t) <- generalize e
-     f' <- bind t (elimForm expected (checkTerm f))
+     f' <- bind x t (elimForm expected (checkTerm f))
      return (ELet x e' f')
 checkTerm0 e0@(EStringLit _) expected =
   do expectT e0 TString expected
      return e0
 checkTerm0 e0@(EHole s) expected =
-  do tell (TCOut [] [(s, expected)])
+  do tcin <- ask
+     tell (TCOut [] [(s, expected, tcin)])
      return e0
 
 generalize :: Term -> CheckM (Term, Ty)

@@ -14,10 +14,12 @@ import Checker.Types
 
 import Syntax
 
-runCheckM :: CheckM a -> IO (Either Error (a, [(String, Ty)]))
-runCheckM m = runExceptT (second holes <$> evalStateT (runReaderT (runWriterT m') emptyTCIn) emptyTCSt) where
+third f (a, b, c) = (a, b, f c)
+
+runCheckM :: CheckM a -> IO (Either Error (a, [(String, Ty, TCtxt)]))
+runCheckM m = runExceptT (second (map (third tctxt) . holes) <$> evalStateT (runReaderT (runWriterT m') emptyTCIn) emptyTCSt) where
   CM m' = andSolve m
 
-runCheckM' :: KCtxt -> TCtxt -> CheckM a -> IO (Either Error (a, [(String, Ty)]))
-runCheckM' d g m = runExceptT (second holes <$> evalStateT (runReaderT (runWriterT m') (emptyTCIn { kctxt = d, tctxt = g })) emptyTCSt) where
+runCheckM' :: KCtxt -> TCtxt -> CheckM a -> IO (Either Error (a, [(String, Ty, TCtxt)]))
+runCheckM' d g m = runExceptT (second (map (third tctxt) . holes) <$> evalStateT (runReaderT (runWriterT m') (emptyTCIn { kctxt = d, tctxt = g })) emptyTCSt) where
   CM m' = andSolve m

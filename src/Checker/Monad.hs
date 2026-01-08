@@ -51,16 +51,16 @@ type KCtxt = [KBinding]
 -- lambda-bound type definitions get a `Nothing` in the second component.
 -- data TCtxt = Emp | Shift TCtxt | Bind Ty TCtxt
 --   deriving (Data, Eq, Show, Typeable)
-type TCtxt = [Ty]
+type TCtxt = [(QName, Ty)]
 type PCtxt = [Pred]
 
 lookupV :: HasCallStack => Int -> TCtxt -> Ty
 lookupV _ [] = error "lookupV: index out of range"
-lookupV 0 (t : _) = t
-lookupV n (_ : ts) = lookupV (n - 1) ts
+lookupV 0 ((_, t) : _) = t
+lookupV n (_ : ts)     = lookupV (n - 1) ts
 
 shiftE :: TCtxt -> TCtxt
-shiftE = map (shiftTN 0 1)
+shiftE = map (second (shiftTN 0 1))
 
 data Update where
   U :: IORef a -> a -> Update
@@ -87,7 +87,7 @@ emptyTCIn :: TCIn
 emptyTCIn = TCIn [] [] [] 0 id
 
 type Problem = (TCIn, Pred, IORef (Maybe Evid))
-data TCOut = TCOut { goals :: [Problem], holes :: [(String, Ty)] }
+data TCOut = TCOut { goals :: [Problem], holes :: [(String, Ty, TCIn)] }
 
 instance Semigroup TCOut where
   TCOut goals holes <> TCOut goals' holes' = TCOut (goals <> goals') (holes <> holes')
@@ -123,8 +123,8 @@ class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => Monad
   defineTy :: Kind -> Ty -> m a -> m a
   defineTy k t = local (\env -> env { kctxt = KBDefn k t : kctxt env, tctxt = shiftE (tctxt env), level = level env + 1 })
 
-  bind :: Ty -> m a -> m a
-  bind t = local (\env -> env { tctxt = t : tctxt env })
+  bind :: String -> Ty -> m a -> m a
+  bind x t = local (\env -> env { tctxt = ([x, ""], t) : tctxt env })  -- assuming that we only call `bind` with local variables
 
   assume :: Pred -> m a -> m a
   assume g = local (\env -> env { pctxt = g : pctxt env })
