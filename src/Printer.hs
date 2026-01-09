@@ -14,7 +14,7 @@ import System.IO.Unsafe
 
 import Syntax
 
-data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool }
+data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool, printInstantiations :: Bool }
 type RDoc ann = ReaderT PrinterOptions IO (P.Doc ann)
 
 instance Semigroup (RDoc ann) where
@@ -153,14 +153,21 @@ instance Printable Ty where
        if b then "map_arg" <+> ppr t else ppr t
   ppr TString = "String"
   ppr (TInst (Unknown n (Goal (s, r))) t) =
-    do minst <- liftIO $ readIORef r
-       case minst of
-         Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
-         Just is  -> ppr (TInst is t)
+    do b <- asks printInstantiations
+       if b
+       then do minst <- liftIO $ readIORef r
+               case minst of
+                 Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
+                 Just is  -> ppr (TInst is t)
+       else ppr t
   ppr (TInst (Known is) t) =
-    with 3 $ fillSep (map pprI is ++ [ppr t]) where
-      pprI (TyArg t) = brackets (ppr t)
-      pprI (PrArg v) = brackets (ppre (show v)) -- dunno what to put here, honestly...
+    do b <- asks printInstantiations
+       if b
+       then do with 3 $ fillSep (map pprI is ++ [ppr t])
+       else ppr t
+    where pprI (TyArg t) = brackets (ppr t)
+          pprI (PrArg v) = brackets (ppre (show v)) -- dunno what to put here, honestly...
+
   ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr t = "<missing: " <> ppre (show t) <> ">"
 
@@ -265,12 +272,8 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrDuplicateDefinition v) = "Duplicate definition o" <+> ppr v
         pprErr (ErrOther s) = ppre s
 
-f :: Int -> Bool -> Bool -> RDoc ann -> IO ()
-f n pk pm d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = pk, printMaps = pm})
-                 putStrLn ""
-
 renderString :: RDoc ann -> String
 renderString doc =
   unsafePerformIO $
-  do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = False})
+  do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = False, printInstantiations = True})
      return (P.renderString (P.layoutPretty (P.LayoutOptions P.Unbounded) d))

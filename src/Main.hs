@@ -25,28 +25,13 @@ import Printer
 import Scope
 import Syntax
 
--- data Flag = Eval String | Input String | Import String | TraceKindInference
---           | TraceTypeInference | TraceEvaluation | PrintTypedTerms | PrintOkay | Reset
---   deriving Show
-
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doTraceKindInference, doTraceInference
                    , doTraceEvaluation, doPrintTyped, printOkay
-                   , doPrintKinds, doPrintMaps :: Bool }
+                   , doPrintKinds, doPrintMaps, doPrintInstantiations :: Bool }
 
 emptyFlags :: Flags
-emptyFlags = Flags [] [] [] False False False False False False False
-
--- interpretFlag :: Flags -> Flag -> Flags
--- interpretFlag f (Eval s)           = f { evals = evals f ++ splitOn "," s }
--- interpretFlag f (Input s)          = f { inputs = inputs f ++ [s] }
--- interpretFlag f (Import s)         = f { imports = imports f ++ [s] }
--- interpretFlag f PrintOkay          = f { printOkay = True }
--- interpretFlag f TraceKindInference = f { doTraceKindInference = True }
--- interpretFlag f TraceTypeInference = f { doTraceInference = True }
--- interpretFlag f TraceEvaluation    = f { doTraceEvaluation = True }
--- interpretFlag f PrintTypedTerms    = f { doPrintTyped = True }
--- interpretFlag f Reset              = Flags [] [] [] False False False False False False False
+emptyFlags = Flags [] [] [] False False False False False False False False
 
 interpretFlags = foldl (flip ($)) emptyFlags
 
@@ -61,6 +46,7 @@ options = [ Option ['e'] ["eval"] (ReqArg (\s f -> f { evals = evals f ++ splitO
           , Option ['E'] ["trace-evaluation"] (NoArg (\f -> f { doTraceEvaluation = True })) "generate trace output from evaluation"
           , Option [] ["print-kinds"] (NoArg (\f -> f { doPrintKinds = True })) "print kind information"
           , Option [] ["print-maps"] (NoArg (\f -> f { doPrintMaps = True })) "print maps explicitly"
+          , Option [] ["print-instantiations"] (NoArg (\f -> f { doPrintInstantiations = True })) "print instantiations explicitly"
           , Option [] ["reset"] (NoArg (const emptyFlags)) "reset flags" ]
 unprog (Prog ds) = ds
 
@@ -114,35 +100,35 @@ main = do nowArgs <- getArgs
           when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
-          scoped <- reportErrors $ runScopeM $ scopeProg decls
-          checked <- goCheck [] [] scoped
+          scoped <- reportErrors flags $ runScopeM $ scopeProg decls
+          checked <- goCheck flags [] [] scoped
           when (doPrintTyped flags) $
-            mapM_ (putDocWLn 120 . pprTyping) checked
+            mapM_ (putDocWLn 120 flags . pprTyping) checked
           evaled <- goEvalE [] checked
           let output = filter ((`elem` evals flags) . head . fst) evaled
           sequence_ [putStrLn $ stringFromQName x ++ " = " ++ show v | (x, v) <- output]
           when (printOkay flags) $ putStrLn "okay"
-  where goCheck d g [] = return []
-        goCheck d g (TyDecl x k t : ds) =
-          do t' <- flattenT . fst =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ checkTy t k)
+  where goCheck _ d g [] = return []
+        goCheck flags d g (TyDecl x k t : ds) =
+          do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ checkTy t k)
                -- Shouldn't be any holes in types...
-             goCheck (KBDefn k t' : d) g ds
-        goCheck d g (TmDecl v (Just ty) te : ds) =
-          do ty' <- flattenT . fst =<< reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
-             (te', holes) <- reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
+             goCheck flags (KBDefn k t' : d) g ds
+        goCheck flags d g (TmDecl v (Just ty) te : ds) =
+          do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
+             (te', holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              te'' <- flattenE te'
-             reportHoles holes
-             ds' <- goCheck d ((v, ty') : g) ds
+             reportHoles flags holes
+             ds' <- goCheck flags d ((v, ty') : g) ds
              return ((v, ty', te'') : ds')
-        goCheck d g (TmDecl v Nothing te : ds) =
-          do ((te', ty), holes) <- reportErrors =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
+        goCheck flags d g (TmDecl v Nothing te : ds) =
+          do ((te', ty), holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
              ty' <- flattenT ty
              te'' <- flattenE te'
-             reportHoles holes
-             ds' <- goCheck d ((v, ty') : g) ds
+             reportHoles flags holes
+             ds' <- goCheck flags d ((v, ty') : g) ds
              return ((v, ty, te'') : ds')
-        goCheck d g (TyDecl {} : ds) =
-          goCheck d g ds
+        goCheck flags d g (TyDecl {} : ds) =
+          goCheck flags d g ds
 
         goEvalE _ [] = return []
         goEvalE h ((x, t, m) : ds)
@@ -154,12 +140,12 @@ main = do nowArgs <- getArgs
 
         thirdM f (a, b, c) = (a, b,) <$> f c
 
-        reportHoles :: [(String, Ty, TCtxt)] -> IO ()
-        reportHoles = mapM_ reportHole where
+        reportHoles :: Flags -> [(String, Ty, TCtxt)] -> IO ()
+        reportHoles flags = mapM_ reportHole where
           reportHole (s, t, tcin) =
             do t' <- flattenT t
                locals' <- mapM (\(x, t) -> (x,) <$> flattenT t) locals
-               putDocWLn 80 $
+               putDocWLn 120 flags $
                  if null locals'
                  then nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
                                        , ppr t']
@@ -170,18 +156,17 @@ main = do nowArgs <- getArgs
 
             where locals = filter (\(x, t) -> length x == 2 && null (head (tail x))) tcin
 
-
         wordsIfExists :: FilePath -> IO [String]
         wordsIfExists fn =
           do exists <- doesFileExist fn
              if exists then words <$> readFile fn else return []
 
-reportErrors :: Either Error t -> IO t
-reportErrors (Left err) =
-  do putDocWLn 80 (pprTypeError err)
+reportErrors :: Flags -> Either Error t -> IO t
+reportErrors flags (Left err) =
+  do putDocWLn 120 flags (pprTypeError err)
      exitFailure
-reportErrors (Right x) = return x
+reportErrors _ (Right x) = return x
 
-putDocWLn :: Int -> RDoc ann -> IO ()
-putDocWLn n d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = False, printMaps = False})
-                   putStrLn ""
+putDocWLn :: Int -> Flags -> RDoc ann -> IO ()
+putDocWLn n f d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = doPrintKinds f, printMaps = doPrintMaps f, printInstantiations = doPrintInstantiations f})
+                     putStrLn ""
