@@ -27,18 +27,18 @@ type PointF = {
 -- (For the categorically minded: yes, it is not really a *functor*, as it is mixed-variant.)
 fmapPointF : Pi (Functor PointF)
 fmapPointF =
-    (#'x := /\ a b. \ f x. x ,
-     #'y := /\ a b. \ f y. y ,
-     #'move := /\ a b. \ f move p. f (move p)  ,
-     #'equal := /\ a b. \ f equal. sorry , -- <-- Negative occurrence in #'equal
-     #'get := /\ a b. \ f p. p
+    ('x := /\ a b. \ f x. x ,
+     'y := /\ a b. \ f y. y ,
+     'move := /\ a b. \ f move p. f (move p)  ,
+     'equal := /\ a b. \ f equal. sorry , -- <-- Negative occurrence in #'equal
+     'get := /\ a b. \ f p. p
      )
 
 type Point : *
 type Point = Mu (Pi PointF)
 
 printPoint : forall z : R[*]. {'get := Pair Nat Nat } < z => Pi z -> String
-printPoint = \ p. showPair showNat showNat (sel p #'get)
+printPoint = \ p. showPair showNat showNat p.'get
 
 -- A class can be seen as an implementation of the interface with:
 --  - A class method initializing the object (and possibly more class methods)
@@ -46,16 +46,16 @@ printPoint = \ p. showPair showNat showNat (sel p #'get)
 CartPoint : (Pair Nat Nat -> Point -> Point) ->
             Pair Nat Nat -> Point -> Point
 CartPoint = \ init p self.
-    (#'x := fst p ,
-     #'y := snd p ,
-     #'move := \ q.
-        fix (init (pair
-            (add (sel self #'x) (fst q))
-            (add (sel self #'y) (snd q)))) ,
-     #'equal := \ q.
-        and (equal (sel self #'x) (sel q #'x))
-            (equal (sel self #'y) (sel q #'y)) ,
-     #'get := pair (sel self #'x) (sel self #'y))
+    ('x := p.'1 ,
+     'y := p.'2 ,
+     'move := \ q.
+       fix (init (pair
+           (add self.'x q.'1)
+           (add self.'y q.'2))) ,
+     'equal := \ q.
+       and (equal self.'x q.'x)
+           (equal self.'y q.'y) ,
+     'get := pair self.'x self.'y)
 
 -- We tie the knot to get the object initializer
 newCartPoint : Pair Nat Nat -> Point
@@ -69,23 +69,23 @@ p2 : Point
 p2 = newCartPoint (pair 1 1)
 
 p3 : Point
-p3 = sel p1 #'move (pair 3 4)
+p3 = p1.'move (pair 3 4)
 
 p3str : String
 p3str = printPoint p3
 
 p1eqp2 : String
-p1eqp2 = showBool (sel p2 #'equal (sel p1 #'move (pair 2 2)))
+p1eqp2 = showBool (p2.'equal (p1.'move (pair 2 2)))
 
 -- testing that self links correctly.
 p4 : Point
-p4 = prj p1 ++ (#'x := 1 , #'y := 1)
+p4 = prj p1 ++ ('x := 1 , 'y := 1)
 
 test0 : String
 test0 = printPoint p4
 
 test1 : String
-test1 = showPair showNat showNat (pair (sel p4 #'x) (sel p4 #'y))
+test1 = showPair showNat showNat (pair p4.'x p4.'y)
 
 -- --------------------------------------------------------------------------------
 {- The definition of CartPoint above has tied the recursive knot too soon.
@@ -129,21 +129,21 @@ cartPoint : forall z : R [ * -> * ]. PointF < z =>
             (Pair Nat Nat -> (Mu (Pi z)) -> (Mu (Pi z))) ->
              Pair Nat Nat -> (Mu (Pi z)) -> (Pi PointF) (Mu (Pi z))
 cartPoint = \ init p self.
-    (#'x := fst p ,
-     #'y := snd p ,
-     #'move := \ q.
-        fix (init (pair
-            (add (sel self #'x) (fst q))
-            (add (sel self #'y) (snd q)))) ,
-     #'equal := \ q.
-        and (equal (sel self #'x) (sel q #'x))
-            (equal (sel self #'y) (sel q #'y)) ,
-     #'get := pair (sel self #'x) (sel self #'y))
+    ('x := p.'1 ,
+     'y := p.'2 ,
+     'move := \ q.
+       fix (init (pair
+           (add self.'x q.'1)
+           (add self.'y q.'2))) ,
+     'equal := \ q.
+       and (equal self.'x q.'x)
+           (equal self.'y q.'y) ,
+     'get := pair self.'x self.'y)
 
 -- We can take the fixed-point of cartPoint precisely
 -- when z = PointF.
 newPoint : Pair Nat Nat -> Point
-newPoint = \ p. fix (fix (\ f p d. cartPoint [PointF] f p d) p)
+newPoint = \ p. fix (fix (\ f p d. cartPoint f p d) p)
 
 
 -- testing
@@ -154,7 +154,7 @@ p2' : Point
 p2' = newPoint (pair 1 1)
 
 p3' : Point
-p3' = sel p1' #'move (pair 3 4)
+p3' = p1'.'move (pair 3 4)
 
 p3Str : String
 p3Str = printPoint p3'
@@ -210,13 +210,13 @@ type ColorPoint = Mu (Pi ColorPointF)
 colorPoint : Class ColorPointF (TripleRow Nat Nat Color)
 colorPoint = /\ t. \ init p self.
   let super = (cartPoint [t]
-                (\ q. init (triple (fst q) (snd q) (thd p)))
-                (pair (fst p) (snd p))
+                (\ q. init (triple q.'1 q.'2 p.'3))
+                (pair p.'1 p.'2)
                 self) in
   (prj super ++
-    (#'color := (thd p) ,
-     #'equal := \ q. and (sel super #'equal q)
-                         (equalColor (sel self #'color) (sel q #'color))))
+    (#'color := p.'3 ,
+     #'equal := \ q. and (super.'equal q)
+                         (equalColor self.'color q.'color)))
 
 c1 : ColorPoint
 c1 = new colorPoint (triple 1 2 black)
@@ -235,4 +235,4 @@ c1 = new colorPoint (triple 1 2 black)
 -- compromise, we can still write functions that operate uniformly over both types.
 
 sumxy : forall t : R[ * -> *]. PointF < t => Mu (Pi t) -> Nat
-sumxy = \ p. add (sel p #'x) (sel p #'y)
+sumxy = \ p. add p.'x p.'y
