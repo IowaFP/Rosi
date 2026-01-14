@@ -25,13 +25,11 @@ We welcome involvement&mdash;questions, bug reports, or patches.
 
 Rosi builds using `cabal`. You should find that `cabal configure; cabal build` does the trick for you.
 
-At the moment, Rosi's `cabal` file is specific to GHC 9.10.1. I suspect that it works on other versions, but I have not tested it.
-
 # Running
 
 Rosi typechecks and evaluates Rose programs; it does not (yet) have a REPL or other interactive support.
 
-By default, Rosi only checks types. (This probably says something about the focus of the implementors...) For example, to typecheck the extensible expression examples, I use:
+By default, Rosi only checks types. (This probably says something about the focus of the implementors...) For example, to typecheck the extensible expression examples, you could say:
 
 ```shell
 > cabal run Rosi -- -i rolib -i examples EE
@@ -47,7 +45,7 @@ szId0 = in (<0, in (<0, in (<1, ()>)>)>)
 >
 ```
 
-By default, Rosi searches for modules in the current directory. Its search list can be expanded using the `-i` option. Common options can be listed in a `.rosi` file in the current directory, or in your XDG_CONFIG directory.
+By default, Rosi searches for modules in the current directory. Its search list can be expanded using the `-i` option. Common options can a configuration file in the current directory, or in your XDG_CONFIG directory. Rosi looks for configuration files with the same name as its executable; to take best advantage of this, you may not want to invoke Rosi via `cabal run`.
 
 # Rose by Example
 
@@ -63,7 +61,7 @@ Wand's solution to this is to use intersection types to combine the two possible
 
 ```
 wand5 : forall x y z t. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
-wand5 = \ m n. prj (m ++ n) / #'l
+wand5 = \ m n. prj (m ++ n) / 'l
 ```
 
 We start with the type. The conclusion of the type, `Pi x -> Pi y -> t` indicates that this is a function from two records, built from rows `x` and `y`, to a result type `t`. The predicates of the type restrict `x` and `y`. First, we require that `x` and `y` must be able to be combined, giving a combined row `z`. This predicate might fail, for example, if `x` and `y` share a label. Then, we require that the label `'l` appear in the combined row `z`, associated with type `t`. This predicate might fail if neither `x` nor `y` contains row `l'`.
@@ -84,7 +82,7 @@ We move on to the term. Rose's primitive record operations are *concatenation* o
 Several additional notes about Rosi:
 
 * Rosi's parser is not clever about left-hand sides of definitions: functions must be written using λs (syntactically `\`s) on the right-hand sides of equations.
-* `#'l` is a *singleton* value "carrying" the type `'l`. Our guiding principle for Rosi is that type arguments ought to be implicit, so we capture cases where type arguments are necessary using singletons. We do not always manage to follow this principle, sometimes because type inference is hard, and sometimes simply through oversights in the language.
+* `'l` is a *singleton* value "carrying" the type `'l`. Our guiding principle for Rosi is that type arguments ought to be implicit, so we capture cases where type arguments are necessary using singletons. We do not always manage to follow this principle, sometimes because type inference is hard, and sometimes simply through oversights in the language.
 
 Rosi can generally infer the presence of type abstractions and type applications, but they can be given explicitly if necessary. Here is the fully explicit version of the preceding example (inhabiting the same type:)
 ```
@@ -93,20 +91,25 @@ wand0 = /\ x y z : R[*], t : *. \ m : Pi x, n : Pi y.
 ```
 `R[k]` is syntax for rows of kind `k`; `*` is the kind of types. Rosi does not support general infix operators; the use of `++` as infix and `(++)` as the corresponding prefix operator is hard-wired into the parser.
 
+
+We can abstract over the particular label being projected:
+```
+wand7 : forall x y z l t. x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
+wand7 = \l m n. prj (m ++ n) / l
+```
+
 The projection-and-unlabeling step of this example is commonplace. The [base library](rolib/Ro/Base.ro) defines an operator to do this:
 ```
 sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
 sel = \ r l. prj r / l
 ```
-Here `L` is the kind of labels, and `#l` is the type of a singleton for type `l`. With this definition in hand, we could have written Wand's challenge as:
+and Rosi has syntax for selection:
 ```
-wand6 = \ m n. sel (m ++ n) #'l
+wand8 : forall x y z l t. x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
+wand8 = \l m n. .l (m ++ n)
 ```
-or indeed have abstracted Wand's example over the particular label being projected:
-```
-wand7 : forall x y z l t. x + y ~ z, {l := t} < z => Pi x -> Pi y -> #l -> t
-wand7 = \m n l. sel (m ++ n) l
-```
+Here `.l` is the name of the `l` selection function. Rosi also allows you to write `m.l` or `n.l` for selection from a variable.
+
 
 ## Variants
 
@@ -119,7 +122,7 @@ dnaw : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y 
 The claim is that, if we know that `{'l := t}` is somewhere in the combination of `x` and `y`, then given an *eliminator* for variants built from row `x` to type `u` and eliminator for variants built from row `y` to type `u`, we can get from a `t` to a `u`.  The term inhabiting this type is:
 
 ```
-dnaw = \r s x. (r | s) (inj (#'l := x))
+dnaw = \r s x. (r | s) (inj ('l := x))
 ```
 
 This term also demonstrates three operators:
@@ -128,9 +131,13 @@ This term also demonstrates three operators:
 * Injection `inj _`: dual to projection, injects arbitrary subvariants into a variant type.
 * Labeling `_ := _`: in this case, we construct an element of the singleton variant type to inject.
 
-Note that we identify the singleton record and variant types, and use the same labeling and unlabeling operators for construction and elimination of singleton records and variants.
+Note that overload the labeling and unlabeling operators for construction and elimination of singleton records and variants.
 
-As with selecting individual record fields, the base library defines an operator `con` that combines labeling and injection.
+As with selecting individual record fields, the base library defines an operator `con` that combines labeling and injection, and syntax for construction:
+```
+dnaw1 : forall x y z l t u. x + y ~ z, {l := t} < z => #l -> (Sigma x -> u) -> (Sigma y -> u) -> t -> u
+dnaw1 = \l f g x. (f | g) (l: x)
+```
 
 Unlabeling is used in writing individual cases of a variant eliminator. Given a Boolean type defined as:
 ```
@@ -140,16 +147,21 @@ type Bool = Sigma { 'True := Unit, 'False := Unit}
 We could write the inversion function as:
 ```
 not : Bool -> Bool
-not = (\b. con #'False (b / #'True))
-    | (\b. con #'True (b / #'False))
+not = (\b. 'False: (b / 'True))
+    | (\b. 'True: (b / 'False))
 ```
-On the first line, `b` must be of the singleton variant type `Sigma { 'True := Unit }` (because we unlabel it with `#'True`), and on the second line `b` must be of the singleton variant type `Sigma { 'False := Unit }`, for a similar reason. This pattern is abstracted by the `case` function:
+On the first line, `b` must be of the singleton variant type `Sigma { 'True := Unit }` (because we unlabel it with `'True`), and on the second line `b` must be of the singleton variant type `Sigma { 'False := Unit }`, for a similar reason. This pattern is abstracted by the `case` function:
 ```
 not : Bool -> Bool
-not = case #'True (con #'False)
-    | case #'False (con #'True)
+not = case #'True (\u. 'False: u)
+    | case #'False (\u. 'True: u)
 ```
-where we have η-contracted the case branches, to be cool.
+Again, this pattern is common enough that we have built in syntax for it.
+```
+not = 'True: u  -> 'False: u
+    | 'False: u -> 'True: u
+```
+This syntax is not particularly flexible. In particular, we do not (yet) have any kind of support for nested patterns.
 
 ## Label-generic programming
 
@@ -159,8 +171,8 @@ To compare two Boolean values for equality, we could use a term like
 
 ```
 eqBool : Bool -> Bool -> Bool
-eqBool = case #'True id
-       | case #'False not
+eqBool = 'True: u  -> id
+       | 'False: u -> not
 ```
 
 In writing this term, we needed to know the constructors of `Bool`, and that any two values of `Unit` type are identical. Consider the more general case, in which we have two values of an arbitrary variant type `Sigma z`. Intuitively, to compare them for equality, all we have to know is how to compare each type in the range of `z` for equality. The rest of the comparison would be the same for any instantiation of `z`.
@@ -183,10 +195,13 @@ Finally, we need a label-generic way to deconstruct a variant. The Rose operator
 
 ```
 eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
-eqS = \ d v w. ana (\ l y. ( case l (\x. sel d l x y)
-                           | (\x. False)) v) w
+eqS = \ d v w. ana #(\X. X)
+                    (\l y. match v
+                           ( l: x -> d.l x y
+                           | otherwise -> False))
+                    w
 ```
-We perform analysis on variable `w`, of type `Sigma z`. The "body" of analysis—that is to say, its first argument—must be polymorphic over *any* entry in row `z`. Its type must be
+We perform analysis on variable `w`, of type `Sigma z`. The "body" of analysis&mdash;its second argument&mdash;must be polymorphic over *any* entry in row `z`. Its type must be
 ```
 forall l : L, u : *. {l := u} < z => #l -> u -> Bool
 ```
@@ -201,7 +216,6 @@ To return to our starting point, we can now define an equality function for `Boo
 eqBool : Eq Bool
 eqBool = eqS (every (\x y. True))
 ```
-
 Each field of the argument to `eqS` is the same (they all compare units), so we can use the `every` combinator to build a suitable record.
 
 ## Higher-order rows and generic programming
@@ -222,8 +236,7 @@ type Arith : *
 type Arith = Mu (Sigma ArithF)
 
 aexp : Arith
-aexp = in (con #'Plus (in (con #'Const zero))
-                      (in (con #'Const (succ zero))))
+aexp = 'Plus: ('Const: 0) ('Const: 1)
 ```
 But our focus in the rest of this section is on the rows themselves, not on the mechanisms of recursive types.
 
@@ -243,7 +256,7 @@ fmapS : forall z : R[* -> *] .
         Pi (Functor z) -> Functor (Sigma z)
 fmapS = \ d. /\ a b. \ f w.
         ana #(\x. x a)
-            (\ l x. con l (sel d l f x))
+            (\ l x. l: (d.l f x))
             w
 ```
 
@@ -255,7 +268,7 @@ The implementation of `fmapS` begins by abstracting over the record of mapping f
 
 Next, we define a label-generic traversal of `w`. In the body of the `ana`, we are given its constructor `l` and contents `x`. We obtain the mapping function for `x` by getting the `l`-labeled entry in `d`; we then provide this mapping function with the argument `f` and contents `x`. Finally, we build a value of the result type by rewrapping it in constructor `l`.
 
-* Note that the result of `sel d l` is polymorphic; its instantiation with `a` and `b` is implicit.
+* Note that the result of `d.l` is polymorphic; its instantiation with `a` and `b` is implicit.
 
 There is one substantial complication. The type of `w` is not just `Sigma z`—which, remember, has kind `* -> *`, but is actually of type `(Sigma z) a`. This type simplifies to `Sigma (z a)`; that is to say, to a variant built from applying each type constructor in `z` to `a`. However, `d` is defined over row `z`, not over row `z a`!
 
@@ -294,5 +307,3 @@ broken = \x. sel x #'C
 which attempts to project a missing field from a record. The error reported here is that the predicate `{C := Unit} < {'A := Unit, 'B := Unit}` is not entailed. This is because the type of `sel` itself is polymorphic: it works for any singleton row contained in the type of `x`, and checking whether the record we need is such a record is handled by Rosi's predicate solver.
 
 As a further aid to users, Rosi does not yet track the origin of predicates. So, the error message that arises from this definition gives no clue as to which expression gave rise to the unsolvable predicate.
-
-Finally, types in Rosi's error messages may contain `[%i#nnn]` warts. These are relic of the treatment of polymorphism, and may be safely ignored.

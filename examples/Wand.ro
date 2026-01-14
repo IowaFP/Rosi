@@ -1,3 +1,5 @@
+import Ro.Base
+
 -- Examples
 --
 -- Comments are Haskell-style line comments
@@ -64,10 +66,24 @@ wand5 = \ m n. prj (m ++ n) / 'l
 -- wand6 : x + y ~ z, {l := t} < z => Pi x -> Pi y -> t
 -- wand6 = \ m n. prj (m ++ n) / l
 
+-- Have first-class labels
+
+wand7 : forall x y z l t. x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
+wand7 = \l m n. prj (m ++ n) / l
+
+-- And syntax for selection
+
+wand8 : forall x y z l t. x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
+wand8 = \l m n. .l (m ++ n)
+
+
 -- Let's dualize the above
 
 dnaw : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y -> u) -> t -> u
-dnaw = \ r s x. (r | s) (inj ('l := x))
+dnaw = \ r s x. (r | s) ('l: x)
 
 dnawHO : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x u -> u) -> (Sigma y u -> u) -> t u -> u
-dnawHO = \ f g x. (f | g) (inj ('l := x))
+dnawHO = \ f g x. (f | g) ('l: x)
+
+dnaw1 : forall x y z l t u. x + y ~ z, {l := t} < z => #l -> (Sigma x -> u) -> (Sigma y -> u) -> t -> u
+dnaw1 = \l f g x. (f | g) (l: x)
