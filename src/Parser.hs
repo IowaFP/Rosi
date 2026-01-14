@@ -121,10 +121,10 @@ whitespace = P.space space1 (P.skipLineComment "--") (P.skipBlockCommentNested "
 lexeme p    = guardIndent p <* whitespace
 
 symbol      = lexeme . string
-reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'')))
+reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
 
 identifier  =
-  do s <- ((:) <$> letterChar <*> many (alphaNumChar <|> char '\''))
+  do s <- ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
      if s `elem` keywords
      then unexpected $ Label (fromList "reserved word")
      else return s
@@ -132,7 +132,7 @@ identifier  =
 
 lidentifier :: Parser String
 lidentifier =
-  char '\'' >> some alphaNumChar
+  char '\'' >> some (alphaNumChar <|> char '\'' <|> char '_')
 
 qidentifier  =
   do x <- identifier
@@ -415,7 +415,7 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                  , try (lexeme selection)
                  , try (lexeme stor)
                  , lexeme $ do char '?'
-                               name <- many (alphaNumChar <|> char '\'')
+                               name <- many (alphaNumChar <|> char '\'' <|> char '_')
                                return (EHole name)
                  , ESing . TLab <$> lexeme lidentifier
                  , EVar (-1) <$> try (lexeme qidentifier)
@@ -467,7 +467,7 @@ topLevel = item lhs body where
   --
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
-  typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many alphaNumChar)
+  typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
   body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
   body (TypeLHS x) = colon *> ((x,) . KindSig <$> kind) <|>
                      symbol "=" *> ((x,) . TypeDef <$> ty)
