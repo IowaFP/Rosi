@@ -121,6 +121,17 @@ instance Printable UVar where
               then name <:> (P.align <$> ppr k)
               else name
 
+instance Printable TyCon where
+  ppr Pi = "Pi"
+  ppr Sigma = "Sigma"
+  ppr (Mu Nothing) = "Mu"
+  ppr (Mu (Just n)) = "Mu [" <> ppre n <> "]"
+  ppr (TCUnif g) =
+    do mk <- liftIO (readIORef (goalRef g))
+       case mk of
+         Just k -> ppr k
+         Nothing -> ppre (goalName g)
+
 instance Printable Ty where
   ppr (TVar _ x) = ppr x
   ppr (TUnif v) = ppr v
@@ -136,15 +147,7 @@ instance Printable Ty where
   ppr (TSing t) = "#" <> at 5 (ppr t)
   ppr (TLabeled l t) = fillSep [ppr l <+> ":=", ppr t]
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
-  ppr (TConApp Pi t) = with 3 $ "Pi" <+> at 4 (ppr t)
-  ppr (TConApp Sigma t) = with 3 $ "Sigma" <+> at 4 (ppr t)
-  ppr (TConApp (Mu Nothing) t) = with 3 $ "Mu" <+> at 4 (ppr t)
-  ppr (TConApp (Mu (Just n)) t) = with 3 $ "Mu[" <> ppre n <> "]" <+> at 4 (ppr t)
-  ppr (TConApp (TCUnif g) t) =
-    do mk <- liftIO (readIORef (goalRef g))
-       case mk of
-         Just k -> ppr (TConApp k t)
-         Nothing -> with 3 $ ppre (goalName g) <+> at 4 (ppr t)
+  ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
   ppr (TMapFun t) =
     do b <- asks printMaps
        if b then "map" <+> ppr t else ppr t
@@ -169,6 +172,10 @@ instance Printable Ty where
           pprI (PrArg v) = brackets (ppre (show v)) -- dunno what to put here, honestly...
 
   ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
+  ppr (TPlus y z) = fillSep [parens (ppr y) <+> "+", parens (ppr z)] -- oops, need a precedence table...
+  ppr (TConOrd k rel t) = ppr k <> pprel rel <+> at 4 (ppr t) where
+    pprel Geq = ">"
+    pprel Leq = "<"
   ppr t = "<missing: " <> ppre (show t) <> ">"
 
 instance Printable Pred where
@@ -182,17 +189,6 @@ instance Printable Pred where
 --   ++, |            1
 --   :=               2
 --   application      3
-
-instance Printable TyCon where
-  ppr Pi = "P"
-  ppr Sigma = "S"
-  ppr (Mu Nothing) = "M"
-  ppr (Mu (Just n)) = "M[" <> ppre n <> "]"
-  ppr (TCUnif g) =
-    do mk <- liftIO $ readIORef (goalRef g)
-       case mk of
-         Nothing -> "?"
-         Just k  -> ppr k
 
 instance Printable Term where
   ppr (EVar _ s) = ppr s

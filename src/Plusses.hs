@@ -95,6 +95,13 @@ instance Sugared Ty where
          return (TVar (-1) [zv])
     where splitConcrete (TLabeled (TLab s) x) = Just (TLab s, x)
           splitConcrete _ = Nothing
+  desugar (TConOrd k ord t) =
+    do t' <- desugar t
+       zv <- fresh
+       tell [(zv, case ord of
+                    Leq -> PLeq (TVar (-1) [zv]) t
+                    Geq -> PLeq t (TVar (-1) [zv]))]
+       return (TConApp k (TVar (-1) [zv]))
   desugar t = error $ "<whoopsie: " ++ show t ++ ">"
 
 desugarTy :: Ty -> M Ty
@@ -132,4 +139,4 @@ t1 = TForall "A" Nothing $ TForall "B" Nothing $ TPlus (TVar (-1) ["A"]) (TVar (
 m1 = ETyLam "A" Nothing $ ETyLam "B" Nothing $ EInst (EVar (-1) ["id"]) (Known [TyArg (TPlus (TVar (-1) ["A"]) (TVar (-1) ["B"]))])
 
 
-
+t2 = TApp (TApp TFun (TVar (-1) ["A"])) (TConOrd Sigma Geq (TRow [TLabeled (TLab "l") (TVar (-1) ["A"])]))

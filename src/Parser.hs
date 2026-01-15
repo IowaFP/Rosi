@@ -239,12 +239,24 @@ labeledTy =
        TLabeled _ _ -> return t
        _ -> unexpected (Label $ fromList "unlabeled type")
 
+tcon = choice [ ordered (string "Pi") Pi
+              , ordered (string "Sigma") Sigma
+              , symbol "Mu" >> return (TConApp (Mu Nothing)) ] where
+  ordered p k =
+    lexeme $
+    do p
+       choice
+         [ try (char '<') >> return (TConOrd k Leq)
+         , try (char '>') >> return (TConOrd k Geq)
+         , return (TConApp k) ]
+
 atype :: Parser Ty
 atype = choice [ TLab <$> lexeme lidentifier
                , TSing <$> (char '#' >> atype)
-               , TConApp Sigma <$> (symbol "Sigma" >> atype)
-               , TConApp Pi <$> (symbol "Pi" >> atype)
-               , TConApp (Mu Nothing) <$> (symbol "Mu" >> atype)
+               , tcon <*> atype
+              --  , TConApp Sigma <$> (symbol "Sigma" >> atype)
+              --  , TConApp Pi <$> (symbol "Pi" >> atype)
+              --  , TConApp (Mu Nothing) <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
                , const TString <$> symbol "String"
                , TVar (-1) <$> (lexeme qidentifier)

@@ -108,6 +108,9 @@ instance Eq UVar where
 data TyCon = Pi | Sigma | Mu (Maybe Int) | TCUnif (Goal TyCon)
   deriving (Data, Eq, Show, Typeable)
 
+data TyOrdering = Leq | Geq
+  deriving (Data, Eq, Show, Typeable)
+
 data Ty =
     TVar Int QName
   | TUnif UVar
@@ -117,7 +120,7 @@ data Ty =
   | TMapFun Ty | TCompl Ty Ty
   | TString
   -- Internals and temporaries
-  | TInst Insts Ty | TMapArg Ty | TPlus Ty Ty
+  | TInst Insts Ty | TMapArg Ty | TPlus Ty Ty | TConOrd TyCon TyOrdering Ty
   deriving (Data, Eq, Show, Typeable)
 
 data Inst = TyArg Ty | PrArg Evid
@@ -161,6 +164,7 @@ tvFreeIn n (TInst is t) = tvFreeInIs is || tvFreeIn n t where
   tvFreeInI (PrArg {}) = False
 tvFreeIn n (TMapArg t) = tvFreeIn n t
 tvFreeIn n (TPlus y z) = tvFreeIn n y || tvFreeIn n z
+tvFreeIn n (TConOrd _ _ t) = tvFreeIn n t
 
 label, labeled :: Ty -> Maybe Ty
 concreteLabel :: Ty -> Maybe String
@@ -260,6 +264,8 @@ flattenT (TMapArg t) =
   TMapArg <$> flattenT t
 flattenT (TPlus t u) =
   TPlus <$> flattenT t <*> flattenT u
+flattenT (TConOrd k rel t) =
+  TConOrd k rel <$> flattenT t
 
 flattenP :: MonadIO m => Pred -> m Pred
 flattenP (PLeq z y) =
