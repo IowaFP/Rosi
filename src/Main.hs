@@ -21,6 +21,7 @@ import System.IO (hPutStrLn, stderr, stdout, hSetBuffering, BufferMode(..))
 import Checker
 import Interp.Erased as E
 import Parser
+import Plusses
 import Printer
 import Scope
 import Syntax
@@ -100,7 +101,8 @@ main = do nowArgs <- getArgs
           when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
-          scoped <- reportErrors flags $ runScopeM $ scopeProg decls
+          desugared <- reportErrors flags $ desugarPluses decls
+          scoped <- reportErrors flags $ runScopeM $ scopeProg desugared
           checked <- goCheck flags [] [] scoped
           when (doPrintTyped flags) $
             mapM_ (putDocWLn 120 flags . pprTyping) checked

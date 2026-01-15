@@ -217,7 +217,11 @@ labTy =
   -- chainr1 minusTy (symbol ":=" *> return TLabeled)
 
 minusTy :: Parser Ty
-minusTy = chainl1 (apps <$> some atype) (lexeme (try (string "-" <* notFollowedBy (char '>'))) *> return (\t u -> TCompl t u))
+minusTy =
+    chainl1 (apps <$> some atype)
+            (choice [ lexeme (try (string "-" <* notFollowedBy (char '>'))) *> return TCompl  -- wtf is this?
+                    , symbol "+" *> return TPlus
+                    ])
 
 apps :: [Ty] -> Ty
 apps = foldl1 TApp
@@ -253,10 +257,15 @@ pr = choice [ do symbol "Fold"
                  choice
                    [ do symbol "<"
                         PLeq t <$> arrTy
-                   , do symbol "+"
-                        u <- arrTy
-                        symbol "~"
-                        PPlus t u <$> arrTy ] ]
+                  , do symbol "~"
+                       u <- arrTy
+                       return $ case t of
+                         TPlus x y -> PPlus x y u
+                         _         -> PEq t u ] ]
+                  --  , do symbol "+"
+                  --       u <- arrTy
+                  --       symbol "~"
+                  --       PPlus t u <$> arrTy ] ]
 
 -- We need a random precedence table here.  Let's try:
 --

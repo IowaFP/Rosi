@@ -7,16 +7,16 @@ o = \ f g x. f (g x)
 type Id : * -> *
 type Id = \x. x
 
-id : forall t. t -> t
+id : t -> t
 id = \x. x
 
 type Const : * -> * -> *
 type Const = \x y. x
 
-const : forall t u. t -> u -> t
+const : t -> u -> t
 const = \ x y. x
 
-flip : forall a b c. (a -> b -> c) -> b -> a -> c
+flip : (a -> b -> c) -> b -> a -> c
 flip = \ f b a. f a b
 
 -------------------------------------------------------------------------------
@@ -37,37 +37,30 @@ any = /\ l. #l
 -------------------------------------------------------------------------------
 -- Convenience functions for records and variants
 
-sel : forall l t z. {l := t} < z => Pi z -> #l -> t
+sel : {l := t} < z => Pi z -> #l -> t
 sel = \ r l. prj r / l
 
-con : forall l t z. {l := t} < z => #l -> t -> Sigma z
+con : {l := t} < z => #l -> t -> Sigma z
 con = \l x. inj (l := x)
 
 
-match : forall a b. a -> (a -> b) -> b
+match : a -> (a -> b) -> b
 match = \x f. f x
 
-case : forall l t u. #l -> (t -> u) -> Sigma { l := t } -> u
+case : #l -> (t -> u) -> Sigma { l := t } -> u
 case = \ l f x. f (x / l)
 
 
-otherwise : forall a b. a -> b -> a
+otherwise : a -> b -> a
 otherwise = const
 
-brnl : forall x z t. x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
+brnl : x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
 brnl = \ f g. f | (g . inj)
 
-relabelS : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
-           #l0 -> #l1 -> Sigma y0 -> Sigma y1
+relabelS : #l0 -> #l1 -> Sigma ({l0 := t} + z) -> Sigma ({l1 := t} + z)
 relabelS = \ l0 l1. case l0 (con l1) | inj
 
-relabelInj : forall y1 y0 l0 l1 t x z.
-             {l0 := t} + x ~ y0, {l1 := t} + x ~ y1, y1 < z =>
-             #l0 -> #l1 -> Sigma y0 -> Sigma z
-relabelInj = /\y1. \l0 l1 x. inj (relabelS l0 l1 x)
-
-relabelP : forall l0 l1 t z y0 y1. {l0 := t} + z ~ y0, {l1 := t} + z ~ y1 =>
-           #l0 -> #l1 -> Pi y0 -> Pi y1
+relabelP : #l0 -> #l1 -> Pi ({l0 := t} + z) -> Pi ({l1 := t} + z)
 relabelP = \ l0 l1 r. (l1 := r.l0) ++ prj r
 
 ---
@@ -77,9 +70,8 @@ type Labels = \r. Const Unit r
 
 upd : forall x' y z z'.
         y < z,
-        x' + y ~ z',
         Labels (z - y) < Labels x' =>
-        Pi x' -> Pi z -> Pi z'
+        Pi x' -> Pi z -> Pi (x' + y)
 upd = \r s. r ++ prj s
 
 --------------------------------------------------------------------------------
@@ -94,7 +86,7 @@ True = con #'True tt
 False : Bool
 False = con #'False tt
 
-ite : forall t : *. Bool -> t -> t -> t
+ite : Bool -> t -> t -> t
 ite = 'True: u -> (\t1 t2. t1)
     | 'False: u ->  (\t1 t2. t2)
 
@@ -110,7 +102,7 @@ or = \ b. ite b (const True) id
 --------------------------------------------------------------------------------
 -- Bot elimination
 
-impossible : forall a. Sigma {} -> a
+impossible : Sigma {} -> a
 impossible = fix (\x. x)
 
 -------------------------------------------------------------------------------
@@ -146,8 +138,7 @@ eqP : forall z: R[*]. Fold z => Pi (Eq z) -> Eq (Pi z)
 eqP = \ d r. fold (\l x. d.l r.l x) and True
 
 -- Branching is derivable
-branch : forall x y z : R[*] , t : *. x + y ~ z =>
-            (Sigma x -> t) -> (Sigma y -> t) -> Sigma z -> t
+branch : (Sigma x -> t) -> (Sigma y -> t) -> Sigma (x + y) -> t
 branch = \ f g. reflect (reify f ++ reify g)
 
 -------------------------------------------------------------------------------
@@ -163,22 +154,22 @@ eqBool = eqS (every eqUnit)
 type Maybe : * -> *
 type Maybe = \a. Sigma { 'Nothing := Unit, 'Just := a }
 
-Just : forall a. a -> Maybe a
-Just = \a. 'Just: a
+Just : a -> Maybe a
+Just = 'Just:
 
-Nothing : forall a. Maybe a
+Nothing : Maybe a
 Nothing = 'Nothing: tt
 
-maybe : forall a b. b -> (a -> b) -> Maybe a -> b
+maybe : b -> (a -> b) -> Maybe a -> b
 maybe = \z f.
         ( 'Nothing: u -> z
         | 'Just: x -> f x
         )
 
-is : forall l t z. {l := t} < z => #l -> Sigma z -> Maybe t
+is : {l := t} < z => #l -> Sigma z -> Maybe t
 is = \ l. case l Just | otherwise Nothing
 
-fromMaybe : forall a. a -> Maybe a -> a
+fromMaybe : a -> Maybe a -> a
 fromMaybe = \z. maybe z id
 
 -------------------------------------------------------------------------------

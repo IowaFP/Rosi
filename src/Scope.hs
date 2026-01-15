@@ -87,14 +87,6 @@ bindable :: [Name] -> Ty -> [Name]
 bindable vs t = take (length ws - length vs) ws
   where ws = execState (bindableTyVars t) vs
 
-binders :: Ty -> ([(Name, Maybe Kind)], Ty)
-binders (TForall x k t) = ((x, k) : bs, t')
-  where (bs, t') = binders t
-binders t = ([], t)
-
-rebuild :: [(Name, Maybe Kind)] -> Ty -> Ty
-rebuild = flip (foldr (uncurry TForall))
-
 class HasVars t where
   scope :: t -> ScopeM t
 
@@ -130,10 +122,10 @@ instance HasVars Ty where
 implicitQuantifiers :: Ty -> ScopeM Ty
 implicitQuantifiers t =
   do ws <- asks (map head . fst)
-     let (bs, t') = binders t
+     let (bs, t') = tybinders t
          xs = sort $ bindable (map fst bs ++ ws) t'
      t'' <- foldr bindTyVar (scope t') (map fst bs ++ xs)
-     return (rebuild (bs ++ [(x, Nothing) | x <- xs]) t'')
+     return (rebind (bs ++ [(x, Nothing) | x <- xs]) t'')
 
 instance HasVars Pred where
   scope (PLeq y z) = PLeq <$> scope y <*> scope z

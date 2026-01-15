@@ -63,6 +63,11 @@ wand7 = \l m n. prj (m ++ n) / l
 wand8 : x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
 wand8 = \l m n. .l (m ++ n)
 
+-- And syntax for plusses...
+
+wand9 : {l := t} < x + y => #l -> Pi x -> Pi y -> t
+wand9 = \l m n. .l (m ++ n)
+
 -- Let's dualize the above
 
 dnaw : x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y -> u) -> t -> u
@@ -73,3 +78,6 @@ dnawHO = \ f g x. (f | g) ('l: x)
 
 dnaw1 : x + y ~ z, {l := t} < z => #l -> (Sigma x -> u) -> (Sigma y -> u) -> t -> u
 dnaw1 = \l f g x. (f | g) (l: x)
+
+dnaw2 : {l := t} < x + y => #l -> (Sigma x -> u) -> (Sigma y -> u) -> t -> u
+dnaw2 = \l f g x. (f | g) (l: x)

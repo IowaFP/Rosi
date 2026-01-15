@@ -270,6 +270,7 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrUnboundTyVar v) = "Unbound type variable" <+> ppr v
         pprErr (ErrUnboundVar v) = "Unbound variable" <+> ppr v
         pprErr (ErrDuplicateDefinition v) = "Duplicate definition o" <+> ppr v
+        pprErr (ErrTypeDesugaring t) = "Error in desugaring" <+> ppr t
         pprErr (ErrOther s) = ppre s
 
 renderString :: RDoc ann -> String

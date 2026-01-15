@@ -116,8 +116,8 @@ data Ty =
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TConApp TyCon Ty
   | TMapFun Ty | TCompl Ty Ty
   | TString
-  -- Internals
-  | TInst Insts Ty | TMapArg Ty
+  -- Internals and temporaries
+  | TInst Insts Ty | TMapArg Ty | TPlus Ty Ty
   deriving (Data, Eq, Show, Typeable)
 
 data Inst = TyArg Ty | PrArg Evid
@@ -138,7 +138,11 @@ tvFreeIn :: Int -> Ty -> Bool
 tvFreeIn n (TVar i _) = i == n
 tvFreeIn n (TUnif u) = False
 tvFreeIn n TFun = False
-tvFreeIn n (TThen p t) = tvFreeIn n t
+tvFreeIn n (TThen p t) = tvFreeInP p || tvFreeIn n t where
+  tvFreeInP (PEq t u) = tvFreeIn n t || tvFreeIn n u
+  tvFreeInP (PLeq y z) = tvFreeIn n y || tvFreeIn n z
+  tvFreeInP (PPlus x y z) = tvFreeIn n x || tvFreeIn n y || tvFreeIn n z
+  tvFreeInP (PFold z) = tvFreeIn n z
 tvFreeIn n (TForall s _ t) = tvFreeIn (n + 1) t
 tvFreeIn n (TLam s _ t) = tvFreeIn (n + 1) t
 tvFreeIn n (TApp t u) = tvFreeIn n t || tvFreeIn n u
@@ -150,6 +154,13 @@ tvFreeIn n (TConApp c t) = tvFreeIn n t
 tvFreeIn n (TMapFun t) = tvFreeIn n t
 tvFreeIn n (TCompl t u) = tvFreeIn n t || tvFreeIn n u
 tvFreeIn n TString = False
+tvFreeIn n (TInst is t) = tvFreeInIs is || tvFreeIn n t where
+  tvFreeInIs (Unknown {}) = False
+  tvFreeInIs (Known is) = any tvFreeInI is
+  tvFreeInI (TyArg t) = tvFreeIn n t
+  tvFreeInI (PrArg {}) = False
+tvFreeIn n (TMapArg t) = tvFreeIn n t
+tvFreeIn n (TPlus y z) = tvFreeIn n y || tvFreeIn n z
 
 label, labeled :: Ty -> Maybe Ty
 concreteLabel :: Ty -> Maybe String
@@ -170,6 +181,14 @@ splitLabel _              = Nothing
 splitConcreteLabel :: Ty -> Maybe (String, Ty)
 splitConcreteLabel (TLabeled (TLab s) t) = Just (s, t)
 splitConcreteLabel _                     = Nothing
+
+tybinders :: Ty -> ([(Name, Maybe Kind)], Ty)
+tybinders (TForall x k t) = ((x, k) : bs, t')
+  where (bs, t') = tybinders t
+tybinders t = ([], t)
+
+rebind :: [(Name, Maybe Kind)] -> Ty -> Ty
+rebind = flip (foldr (uncurry TForall))
 
 data Quant = QuForall String Kind | QuThen Pred
   deriving (Data, Eq, Show, Typeable)
@@ -232,13 +251,15 @@ flattenT (TMapFun t) =
   TMapFun <$> flattenT t
 flattenT (TCompl r0 r1) =
   TCompl <$> flattenT r0 <*> flattenT r1
+flattenT TString =
+  return TString
 -- not entirely sure what *should* happen here
 flattenT (TInst is t) =
   TInst <$> flattenIs is <*> flattenT t
 flattenT (TMapArg t) =
   TMapArg <$> flattenT t
-flattenT TString =
-  return TString
+flattenT (TPlus t u) =
+  TPlus <$> flattenT t <*> flattenT u
 
 flattenP :: MonadIO m => Pred -> m Pred
 flattenP (PLeq z y) =
@@ -511,5 +532,6 @@ data Error = ErrContextDefn QName Error | ErrContextType Ty Error | ErrContextTe
            | ErrContextTyEq Ty Ty Error
            | ErrTypeMismatch Ty Ty Ty Ty | ErrTypeMismatchFD Pred | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Kind Kind
            | ErrNotEntailed [(Pred, [Pred])]
+           | ErrTypeDesugaring Ty
            | ErrUnboundVar QName | ErrUnboundTyVar QName | ErrDuplicateDefinition QName
            | ErrOther String
