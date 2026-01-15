@@ -2,6 +2,7 @@ module Scope where
 
 import Control.Monad.Except
 import Control.Monad.Reader
+import Control.Monad.State
 import Data.Bifunctor
 import Data.List
 import Data.Maybe
@@ -51,6 +52,49 @@ var x = do names <- asks snd
         finds names = [(xs, i) | (xs, x) <- splits, i <- maybeToList (findIndex (lookFor x) names)]
         sing x = [x]
 
+bindableTyVars :: Ty -> State [Name] ()
+bindableTyVarsP :: Pred -> State [Name] ()
+
+bindableTyVars (TVar _ [v]) =
+  do vs <- get
+     if v `elem` vs
+     then return ()
+     else put (v : vs)
+bindableTyVars (TVar _ qn) = return ()
+bindableTyVars (TUnif {}) = return ()
+bindableTyVars TFun = return ()
+bindableTyVars (TThen p t) = bindableTyVarsP p >> bindableTyVars t
+bindableTyVars (TForall {}) = return ()
+bindableTyVars (TLam {}) = return ()
+bindableTyVars (TApp t u) = bindableTyVars t >> bindableTyVars u
+bindableTyVars (TLab {}) = return ()
+bindableTyVars (TSing t) = bindableTyVars t
+bindableTyVars (TLabeled l t) = bindableTyVars l >> bindableTyVars t
+bindableTyVars (TRow ts) = mapM_ bindableTyVars ts
+bindableTyVars (TConApp _ t) = bindableTyVars t
+bindableTyVars (TMapFun t) = bindableTyVars t
+bindableTyVars (TCompl z y) = bindableTyVars z >> bindableTyVars y
+bindableTyVars TString = return ()
+bindableTyVars (TInst is t) = error "internal type constructor in scoping"
+bindableTyVars (TMapArg t) = bindableTyVars t
+
+bindableTyVarsP (PEq t u) = bindableTyVars t >> bindableTyVars u
+bindableTyVarsP (PLeq y z) = bindableTyVars y >> bindableTyVars z
+bindableTyVarsP (PPlus x y z) = mapM_ bindableTyVars [x, y, z]
+bindableTyVarsP (PFold z) = bindableTyVars z
+
+bindable :: [Name] -> Ty -> [Name]
+bindable vs t = take (length ws - length vs) ws
+  where ws = execState (bindableTyVars t) vs
+
+binders :: Ty -> ([(Name, Maybe Kind)], Ty)
+binders (TForall x k t) = ((x, k) : bs, t')
+  where (bs, t') = binders t
+binders t = ([], t)
+
+rebuild :: [(Name, Maybe Kind)] -> Ty -> Ty
+rebuild = flip (foldr (uncurry TForall))
+
 class HasVars t where
   scope :: t -> ScopeM t
 
@@ -62,14 +106,15 @@ instance HasVars t => HasVars (Maybe t) where
 
 instance HasVars Ty where
   scope (TVar _ x) =
-
     uncurry TVar <$> tyvar x
   -- Wild assumption: scoping happens before any goals have been resolved, so
   -- I'm not going to track down the contents of the goal
   scope t@TUnif{} = return t
   scope t@TFun = return t
   scope (TThen p t) = TThen <$> scope p <*> scope t
-  scope (TForall x k t) = TForall x k <$> bindTyVar x (scope t)
+  scope t@(TForall {}) =
+    implicitQuantifiers t
+    -- TForall x k <$> bindTyVar x (scope t)
   scope (TLam x k t) = TLam x k <$> bindTyVar x (scope t)
   scope (TApp t u) = TApp <$> scope t <*> scope u
   scope t@TLab{} = return t
@@ -81,6 +126,14 @@ instance HasVars Ty where
   scope (TMapArg t) = TMapArg <$> scope t
   scope (TCompl r0 r1) = TCompl <$> scope r0 <*> scope r1
   scope TString = return TString
+
+implicitQuantifiers :: Ty -> ScopeM Ty
+implicitQuantifiers t =
+  do ws <- asks (map head . fst)
+     let (bs, t') = binders t
+         xs = sort $ bindable (map fst bs ++ ws) t'
+     t'' <- foldr bindTyVar (scope t') (map fst bs ++ xs)
+     return (rebuild (bs ++ [(x, Nothing) | x <- xs]) t'')
 
 instance HasVars Pred where
   scope (PLeq y z) = PLeq <$> scope y <*> scope z
@@ -113,8 +166,15 @@ instance HasVars Term where
   scope ECast{} = error "scope: ETyEqu"
 
 instance HasVars Decl where
-  scope (TmDecl x t m) = TmDecl x <$> (maybe id (withError . ErrContextType) t) (scope t) <*> withError (ErrContextTerm m) (scope m)
-  scope (TyDecl x k t) = TyDecl x k <$> withError (ErrContextType t) (scope t)
+  scope (TmDecl x Nothing m) =
+    TmDecl x <$> pure Nothing <*> withError (ErrContextTerm m) (scope m)
+  scope (TmDecl x (Just t) m) =
+    TmDecl x <$>
+      withError (ErrContextType t) (Just <$> implicitQuantifiers t) <*>
+      withError (ErrContextTerm m) (scope m)
+  scope (TyDecl x k t) =
+    TyDecl x k <$>
+      withError (ErrContextType t) (implicitQuantifiers t)
 
 declName (TmDecl x _ _) = x
 declName (TyDecl x _ _) = x
@@ -123,3 +183,10 @@ scopeProg :: [Decl] -> ScopeM [Decl]
 scopeProg [] = return []
 scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindGVar x (scopeProg ds)
 scopeProg (d@(TyDecl x _ _) : ds) = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)
+
+-- Testing code
+deriving instance Show Error
+
+test1 =
+  runScopeM $ scope $
+  TmDecl ["id"] (Just (TApp (TApp TFun (TVar (-1) ["a"])) (TVar (-1) ["a"]))) (ELam "x" Nothing (EVar (-1) ["x"]))

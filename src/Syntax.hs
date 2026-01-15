@@ -13,7 +13,8 @@ import GHC.Stack
 
 -- Qualified names: are stored in reverse order ("Data.Nat.zero" --> ["zero",
 -- "Nat", "Data"]). Local names are signified with an empty list ["zero", ""].
-type QName = [String]
+type Name = String
+type QName = [Name]
 
 data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
