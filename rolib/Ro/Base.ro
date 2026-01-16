@@ -67,10 +67,7 @@ relabelP = \ l0 l1 r. (l1 := r.l0) ++ prj r
 type Labels : R[*] -> R[*]
 type Labels = \r. Const Unit r
 
-upd : forall x' y z z'.
-        y < z,
-        Labels (z - y) < Labels x' =>
-        Pi x' -> Pi z -> Pi (x' + y)
+upd : Labels x' < Labels x => Pi x -> Pi (x' + y) -> Pi (x + y)
 upd = \r s. r ++ prj s
 
 --------------------------------------------------------------------------------
