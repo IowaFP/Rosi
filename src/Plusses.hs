@@ -99,8 +99,8 @@ instance Sugared Ty where
     do t' <- desugar t
        zv <- fresh
        tell [(zv, case ord of
-                    Leq -> PLeq (TVar (-1) [zv]) t
-                    Geq -> PLeq t (TVar (-1) [zv]))]
+                    Leq -> PLeq (TVar (-1) [zv]) t'
+                    Geq -> PLeq t' (TVar (-1) [zv]))]
        return (TConApp k (TVar (-1) [zv]))
   desugar t = error $ "<whoopsie: " ++ show t ++ ">"
 
