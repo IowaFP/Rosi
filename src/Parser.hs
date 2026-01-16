@@ -218,7 +218,7 @@ labTy =
 
 minusTy :: Parser Ty
 minusTy =
-    chainl1 (apps <$> some atype)
+    chainl1 (apps <$> some mapType)
             (choice [ lexeme (try (string "-" <* notFollowedBy (char '>'))) *> return TCompl  -- wtf is this?
                     , symbol "+" *> return TPlus
                     ])
@@ -226,18 +226,18 @@ minusTy =
 apps :: [Ty] -> Ty
 apps = foldl1 TApp
 
--- labTy = do t <- atype
---            choice
---              [ do symbol ":="
---                   (u : us) <- some atype
---                   return (TLabeled t (foldl TApp u us))
---              , do us <- many atype
---                   return (foldl TApp t us) ]
+mapType :: Parser Ty
+mapType =
+  do t <- atype
+     us <- many (symbol "*")
+     return (foldr (const TMapFun) t us)
+
 labeledTy =
   do t <- labTy
      case t of
        TLabeled _ _ -> return t
        _ -> unexpected (Label $ fromList "unlabeled type")
+
 
 tcon = choice [ ordered (string "Pi") Pi
               , ordered (string "Sigma") Sigma

@@ -181,12 +181,12 @@ checkTy0 (TInst ig t) expected =
 checkTy0 t@(TMapFun f) expected =
   do kdom <- kindGoal "d"
      kcod <- kindGoal "c"
-     expectK t (KFun kdom (KRow kcod)) expected
+     expectK t (KFun (KRow kdom) (KRow kcod)) expected
      TMapFun <$> checkTy f (KFun kdom kcod)
 checkTy0 t@(TMapArg f) expected =
   do kdom <- kindGoal "d"
      kcod <- kindGoal "e"
-     expectK t (KFun (KRow kcod) (KRow kcod)) expected
+     expectK t (KFun kcod (KRow kcod)) expected
      TMapFun <$> checkTy f (KFun kdom kcod)
 checkTy0 t@(TCompl r0 r1) expected =
   do k <- kindGoal "t"

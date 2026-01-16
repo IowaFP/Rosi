@@ -77,6 +77,7 @@ bindableTyVars (TCompl z y) = bindableTyVars z >> bindableTyVars y
 bindableTyVars TString = return ()
 bindableTyVars (TInst is t) = error "internal type constructor in scoping"
 bindableTyVars (TMapArg t) = bindableTyVars t
+bindableTyVars t = error $ "<whoopsie: " ++ show t ++ ">"
 
 bindableTyVarsP (PEq t u) = bindableTyVars t >> bindableTyVars u
 bindableTyVarsP (PLeq y z) = bindableTyVars y >> bindableTyVars z
