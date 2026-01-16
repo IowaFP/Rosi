@@ -47,8 +47,8 @@ instance HasTyVars Ty where
        case minst of
          Nothing -> TInst i <$> subst v t u
          Just is -> subst v t (TInst (shiftIsV [] 0 n is) u)
-  subst v t (TMapFun f) = TMapFun <$> subst v t f
-  subst v t (TMapArg f) = TMapArg <$> subst v t f
+  subst v t (TMap f) = TMap <$> subst v t f
+  subst v t (TMapApp f) = TMapApp <$> subst v t f
   subst v t TString = return TString
   subst v t u = error $ "internal: subst " ++ show v ++ " (" ++ show t ++ ") (" ++ show u ++")"
 
@@ -88,17 +88,17 @@ normalize eqns t0@(TApp (TLam x (Just k) t) u) =
      (t2, q) <- normalize eqns t1
      return (t2, VEqTrans VEqBeta q)
 normalize eqns (TApp (TConApp Pi r) t) =
-  do (t1, q) <- normalize eqns (TConApp Pi (TApp (TMapArg r) t))  -- To do: check kinding
+  do (t1, q) <- normalize eqns (TConApp Pi (TApp (TMapApp r) t))  -- To do: check kinding
      return (t1, VEqTrans (VEqLiftTyCon Pi) q)
 normalize eqns (TApp (TConApp Sigma r) t) =
-  do (t1, q) <- normalize eqns (TConApp Sigma (TApp (TMapArg r) t))
+  do (t1, q) <- normalize eqns (TConApp Sigma (TApp (TMapApp r) t))
      return (t1, VEqTrans (VEqLiftTyCon Sigma) q)
-normalize eqns (TApp (TMapFun f) (TRow es))
+normalize eqns (TApp (TMap f) (TRow es))
   | Just ls <- mapM label es, Just ts <- mapM labeled es =
     do (t, q) <- normalize eqns (TRow (zipWith TLabeled ls (map (TApp f) ts)))
        return (t, VEqTrans VEqMap q)
 -- The next rule implements `map id == id`
-normalize eqns (TApp (TMapFun f) z)
+normalize eqns (TApp (TMap f) z)
   | TLam _ k (TVar 0 _) <- f =
     do (z, q) <- normalize eqns z
        return (z, VEqTrans VEqMapId q)
@@ -106,26 +106,26 @@ normalize eqns (TApp (TMapFun f) z)
 -- The need for special cases arises from our various ways to represent type
 -- functions: they're not all `TLam`. There are probably some cases missing: in
 -- particular, I see nothing about nested maps.
-normalize eqns (TApp (TMapFun (TLam _ _ f)) (TApp (TMapFun (TLam v k g)) z)) =
+normalize eqns (TApp (TMap (TLam _ _ f)) (TApp (TMap (TLam v k g)) z)) =
   do f' <- subst 0 g f
-     (t, q) <- normalize eqns (TApp (TMapFun (TLam v k f')) z)
+     (t, q) <- normalize eqns (TApp (TMap (TLam v k f')) z)
      return (t, VEqTrans VEqMapCompose q)
-normalize eqns (TApp (TMapFun (TLam v (Just (KFun KType KType)) f)) (TApp (TMapFun TFun) z)) =
+normalize eqns (TApp (TMap (TLam v (Just (KFun KType KType)) f)) (TApp (TMap TFun) z)) =
   do f' <- subst 0 (TApp TFun (TVar 0 [v, ""])) f
-     (t, q) <- normalize eqns (TApp (TMapFun (TLam v (Just KType) f')) z)
+     (t, q) <- normalize eqns (TApp (TMap (TLam v (Just KType) f')) z)
      return (t, VEqTrans VEqMapCompose q)
-normalize eqns (TApp (TMapFun TFun) (TApp (TMapFun (TLam v k f)) z)) =
-  do (t, q) <- normalize eqns (TApp (TMapFun (TLam v k (TApp TFun f))) z)
+normalize eqns (TApp (TMap TFun) (TApp (TMap (TLam v k f)) z)) =
+  do (t, q) <- normalize eqns (TApp (TMap (TLam v k (TApp TFun f))) z)
      return (t, VEqTrans VEqMapCompose q)
-normalize eqns (TApp (TMapArg (TRow es)) t)
+normalize eqns (TApp (TMapApp (TRow es)) t)
   | Just ls <- mapM label es, Just fs <- mapM labeled es =
     do (t, q) <- normalize eqns (TRow (zipWith TLabeled ls (map (`TApp` t) fs)))
        return (t, VEqTrans VEqMapCompose q)
-normalize eqns (TMapArg z) =
+normalize eqns (TMapApp z) =
     do k <- kindOf z
        case k of
-         KRow (KFun k1 k2) -> return (TLam "X" (Just k1) (TApp (TMapFun (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 ["Y", ""]) (TVar 1 ["X", ""])))) (shiftTN 0 1 z)), VEqDefn)
-         _ -> fail ("normalize: ill-kinded " ++ show (TMapArg z))
+         KRow (KFun k1 k2) -> return (TLam "X" (Just k1) (TApp (TMap (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 ["Y", ""]) (TVar 1 ["X", ""])))) (shiftTN 0 1 z)), VEqDefn)
+         _ -> fail ("normalize: ill-kinded " ++ show (TMapApp z))
 normalize eqns (TApp t1 t2) =
   do (t1', q1) <- normalize eqns t1
      q1' <- flattenV q1
@@ -152,7 +152,7 @@ normalize eqns (TConApp Sigma z) =
      k <- kindOf z'
      case k of
        KRow (KRow k') ->
-         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Sigma (TVar 0 ["x", ""])))) z')
+         do (z'', q') <- normalize eqns (TApp (TMap (TLam "x" (Just k) (TConApp Sigma (TVar 0 ["x", ""])))) z')
             return (z'', VEqTrans q q')
        _ -> return (TConApp Sigma z', VEqCon Sigma q)
 normalize eqns (TConApp Pi z) =
@@ -160,7 +160,7 @@ normalize eqns (TConApp Pi z) =
      k <- kindOf z'
      case k of
        KRow (KRow k') ->
-         do (z'', q') <- normalize eqns (TApp (TMapFun (TLam "x" (Just k) (TConApp Pi (TVar 0 ["x", ""])))) z')
+         do (z'', q') <- normalize eqns (TApp (TMap (TLam "x" (Just k) (TConApp Pi (TVar 0 ["x", ""])))) z')
             return (z'', VEqTrans q q')
        _ -> return (TConApp Pi z', VEqCon Pi q)
 normalize eqns (TConApp (Mu count) z) =
@@ -173,9 +173,9 @@ normalize eqns ty@(TLam x (Just k) t) =
   do (t',  q1) <- bindTy k (normalize eqns t)
      let (t'', q2) = etaContract (TLam x (Just k) t')
      return (t'', VEqTrans (VEqLambda q1) q2)
-normalize eqns (TMapFun t) =
+normalize eqns (TMap t) =
   do (t', q) <- normalize eqns t
-     return (TMapFun t', q)
+     return (TMap t', q)
 normalize eqns (TCompl x y) =
   do (x', q) <- normalize eqns x
      (y', q') <- normalize eqns y

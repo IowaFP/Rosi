@@ -117,10 +117,10 @@ data Ty =
     -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
   | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
   | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TConApp TyCon Ty
-  | TMapFun Ty | TCompl Ty Ty
+  | TMap Ty | TCompl Ty Ty
   | TString
   -- Internals and temporaries
-  | TInst Insts Ty | TMapArg Ty | TPlus Ty Ty | TConOrd TyCon TyOrdering Ty
+  | TInst Insts Ty | TMapApp Ty | TPlus Ty Ty | TConOrd TyCon TyOrdering Ty
   deriving (Data, Eq, Show, Typeable)
 
 data Inst = TyArg Ty | PrArg Evid
@@ -154,7 +154,7 @@ tvFreeIn n (TSing t) = tvFreeIn n t
 tvFreeIn n (TLabeled t u) = tvFreeIn n t || tvFreeIn n u
 tvFreeIn n (TRow ts) = any (tvFreeIn n) ts
 tvFreeIn n (TConApp c t) = tvFreeIn n t
-tvFreeIn n (TMapFun t) = tvFreeIn n t
+tvFreeIn n (TMap t) = tvFreeIn n t
 tvFreeIn n (TCompl t u) = tvFreeIn n t || tvFreeIn n u
 tvFreeIn n TString = False
 tvFreeIn n (TInst is t) = tvFreeInIs is || tvFreeIn n t where
@@ -162,7 +162,7 @@ tvFreeIn n (TInst is t) = tvFreeInIs is || tvFreeIn n t where
   tvFreeInIs (Known is) = any tvFreeInI is
   tvFreeInI (TyArg t) = tvFreeIn n t
   tvFreeInI (PrArg {}) = False
-tvFreeIn n (TMapArg t) = tvFreeIn n t
+tvFreeIn n (TMapApp t) = tvFreeIn n t
 tvFreeIn n (TPlus y z) = tvFreeIn n y || tvFreeIn n z
 tvFreeIn n (TConOrd _ _ t) = tvFreeIn n t
 
@@ -251,8 +251,8 @@ flattenT (TLabeled l t) =
 flattenT (TRow ts) =
   TRow <$> mapM flattenT ts
 flattenT (TConApp k t) = TConApp <$> flattenTC k <*> flattenT t
-flattenT (TMapFun t) =
-  TMapFun <$> flattenT t
+flattenT (TMap t) =
+  TMap <$> flattenT t
 flattenT (TCompl r0 r1) =
   TCompl <$> flattenT r0 <*> flattenT r1
 flattenT TString =
@@ -260,8 +260,8 @@ flattenT TString =
 -- not entirely sure what *should* happen here
 flattenT (TInst is t) =
   TInst <$> flattenIs is <*> flattenT t
-flattenT (TMapArg t) =
-  TMapArg <$> flattenT t
+flattenT (TMapApp t) =
+  TMapApp <$> flattenT t
 flattenT (TPlus t u) =
   TPlus <$> flattenT t <*> flattenT u
 flattenT (TConOrd k rel t) =
@@ -308,8 +308,8 @@ shiftTNV vs j n (TRow ts) = TRow (shiftTNV vs j n <$> ts)
 shiftTNV vs _ _ t@TFun = t
 shiftTNV vs _ _ t@(TLab s) = t
 shiftTNV vs j n (TConApp k t) = TConApp k (shiftTNV vs j n t)
-shiftTNV vs j n (TMapFun t) = TMapFun (shiftTNV vs j n t)
-shiftTNV vs j n (TMapArg t) = TMapArg (shiftTNV vs j n t)
+shiftTNV vs j n (TMap t) = TMap (shiftTNV vs j n t)
+shiftTNV vs j n (TMapApp t) = TMapApp (shiftTNV vs j n t)
 shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t) where
 shiftTNV vs j n (TCompl r0 r1) = TCompl (shiftTNV vs j n r0) (shiftTNV vs j n r1)
 shiftTNV _ _ _  t@TString = t

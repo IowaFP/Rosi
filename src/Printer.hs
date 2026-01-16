@@ -148,10 +148,10 @@ instance Printable Ty where
   ppr (TLabeled l t) = fillSep [ppr l <+> ":=", ppr t]
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
-  ppr (TMapFun t) =
+  ppr (TMap t) =
     do b <- asks printMaps
        if b then "map" <+> ppr t else ppr t
-  ppr (TMapArg t) =
+  ppr (TMapApp t) =
     do b <- asks printMaps
        if b then "map_arg" <+> ppr t else ppr t
   ppr TString = "String"

@@ -76,7 +76,7 @@ promoteN v n (TLabeled l t) = liftM2 TLabeled <$> promoteN v n l <*> promoteN v 
 promoteN v n (TRow ts) = liftM TRow . sequence <$> mapM (promoteN v n) ts
 promoteN v n (TConApp k t) = liftM (TConApp k) <$> promoteN v n t
 promoteN v n TString = return (Just TString)
-promoteN v n (TMapFun t) = liftM TMapFun <$> promoteN v n t
+promoteN v n (TMap t) = liftM TMap <$> promoteN v n t
 promoteN v n (TCompl y z) = liftM2 TCompl <$> promoteN v n y <*> promoteN v n z
 promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promoteN v m t
   where promoteIs :: MonadCheck m => Insts -> m (Maybe Insts)
@@ -95,7 +95,7 @@ promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promo
         promoteI :: MonadCheck m => Inst -> m (Maybe Inst)
         promoteI (TyArg t) = liftM TyArg <$> promoteN v n t
         promoteI i@(PrArg v) = return (Just i)
-promoteN v n (TMapArg f) = liftM TMapArg <$> promoteN v n f
+promoteN v n (TMapApp f) = liftM TMapApp <$> promoteN v n f
 promoteN v n t = error $ "promote: missing " ++ show t
 
 promoteP :: MonadCheck m => UVar -> Int -> Pred -> m (Maybe Pred)

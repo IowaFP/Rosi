@@ -230,7 +230,7 @@ mapType :: Parser Ty
 mapType =
   do t <- atype
      us <- many (symbol "*")
-     return (foldr (const TMapFun) t us)
+     return (foldr (const TMap) t us)
 
 labeledTy =
   do t <- labTy

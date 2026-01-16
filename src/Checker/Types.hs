@@ -141,7 +141,7 @@ checkTy0 (TApp t u) expected =
      -- If lifting is involved, this should also be reflected in the expected kind
      expectK (TApp t u) (foldr ($) kcod (replicate (n + m) KRow)) expected
      -- Step 3: build exciting result type
-     return (TApp (foldr ($) t' (replicate n TMapArg ++ replicate m TMapFun)) u')
+     return (TApp (foldr ($) t' (replicate n TMapApp ++ replicate m TMap)) u')
 checkTy0 t@(TLab _) expected = expectK t KLabel expected
 checkTy0 t@(TSing l) expected =
   do expectK t KType expected
@@ -178,16 +178,16 @@ checkTy0 (TConApp (TCUnif g) t) expected =
        Nothing -> fail "don't know how to kind check unknown constructor application"
 checkTy0 (TInst ig t) expected =
   TInst ig <$> checkTy t expected
-checkTy0 t@(TMapFun f) expected =
+checkTy0 t@(TMap f) expected =
   do kdom <- kindGoal "d"
      kcod <- kindGoal "c"
      expectK t (KFun (KRow kdom) (KRow kcod)) expected
-     TMapFun <$> checkTy f (KFun kdom kcod)
-checkTy0 t@(TMapArg f) expected =
+     TMap <$> checkTy f (KFun kdom kcod)
+checkTy0 t@(TMapApp f) expected =
   do kdom <- kindGoal "d"
      kcod <- kindGoal "e"
      expectK t (KFun kcod (KRow kcod)) expected
-     TMapFun <$> checkTy f (KFun kdom kcod)
+     TMap <$> checkTy f (KFun kdom kcod)
 checkTy0 t@(TCompl r0 r1) expected =
   do k <- kindGoal "t"
      expectK t (KRow k) expected

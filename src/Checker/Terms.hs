@@ -189,7 +189,7 @@ checkTerm0 e@(EConst c) expected =
                     PLeq (TRow [TLabeled (TVar 1 ["l", ""]) (TVar 0 ["t", ""])]) (TVar 2 ["z", ""]) `TThen`
                      TSing (TVar 1 ["l", ""]) `funTy`
                      TApp (TVar 3 ["f", ""]) (TVar 0 ["t", ""])) `funTy`
-                 TConApp Pi (TApp (TMapFun (TVar 1 ["f", ""])) (TVar 0 ["z", ""]))
+                 TConApp Pi (TApp (TMap (TVar 1 ["f", ""])) (TVar 0 ["z", ""]))
 
         constType CAna =
           do k <- kindGoal "e"
@@ -204,7 +204,7 @@ checkTerm0 e@(EConst c) expected =
                     TSing (TVar 1 ["l",""]) `funTy`
                     TApp (TVar 4 ["f",""]) (TVar 0 ["u",""]) `funTy`
                     TVar 2 ["t",""]) `funTy`
-                 TConApp Sigma (TApp (TMapFun (TVar 2 ["f",""])) (TVar 1 ["z",""])) `funTy`
+                 TConApp Sigma (TApp (TMap (TVar 2 ["f",""])) (TVar 1 ["z",""])) `funTy`
                  TVar 0 ["t",""]
 
         constType CFold =
@@ -292,13 +292,13 @@ generalize e =
         uvars level (TLabeled l t) = cat <$> uvars level t <*> uvars level t
         uvars level (TRow ts) = foldl cat [] <$> mapM (uvars level) ts
         uvars level (TConApp k t) = uvars level t
-        uvars level (TMapFun t) = uvars level t
+        uvars level (TMap t) = uvars level t
         uvars level (TInst is t) = cat <$> isuvars is <*> uvars level t where
           isuvars (Unknown {}) = return []
           isuvars (Known is) = foldl cat [] <$> mapM iuvars is
           iuvars (TyArg t) = uvars level t
           iuvars (PrArg {}) = return []
-        uvars level (TMapArg t) = uvars level t
+        uvars level (TMapApp t) = uvars level t
         uvars _ TString = return []
 
         puvars :: Level -> Pred -> CheckM [UVar]

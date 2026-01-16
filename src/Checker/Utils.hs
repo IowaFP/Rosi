@@ -45,10 +45,10 @@ kindOf (TConApp (TCUnif g) t) =
           do KRow k <- kindOf t
              return k
 kindOf (TInst _ t) = kindOf t
-kindOf (TMapFun f) =
+kindOf (TMap f) =
   do KFun kd kc <- kindOf f
      return $ KFun (KRow kd) (KRow kc)
-kindOf (TMapArg f) =
+kindOf (TMapApp f) =
   do KRow (KFun kd kc) <- kindOf f
      return $ KFun kd (KRow kc)
 kindOf (TCompl r _) = kindOf r

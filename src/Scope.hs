@@ -72,11 +72,11 @@ bindableTyVars (TSing t) = bindableTyVars t
 bindableTyVars (TLabeled l t) = bindableTyVars l >> bindableTyVars t
 bindableTyVars (TRow ts) = mapM_ bindableTyVars ts
 bindableTyVars (TConApp _ t) = bindableTyVars t
-bindableTyVars (TMapFun t) = bindableTyVars t
+bindableTyVars (TMap t) = bindableTyVars t
 bindableTyVars (TCompl z y) = bindableTyVars z >> bindableTyVars y
 bindableTyVars TString = return ()
 bindableTyVars (TInst is t) = error "internal type constructor in scoping"
-bindableTyVars (TMapArg t) = bindableTyVars t
+bindableTyVars (TMapApp t) = bindableTyVars t
 bindableTyVars t = error $ "<whoopsie: " ++ show t ++ ">"
 
 bindableTyVarsP (PEq t u) = bindableTyVars t >> bindableTyVars u
@@ -115,8 +115,8 @@ instance HasVars Ty where
   scope (TLabeled l t) = TLabeled <$> scope l <*> scope t
   scope (TRow ts) = TRow <$> scope ts
   scope (TConApp k t) = TConApp k <$> scope t
-  scope (TMapFun t) = TMapFun <$> scope t
-  scope (TMapArg t) = TMapArg <$> scope t
+  scope (TMap t) = TMap <$> scope t
+  scope (TMapApp t) = TMapApp <$> scope t
   scope (TCompl r0 r1) = TCompl <$> scope r0 <*> scope r1
   scope TString = return TString
 

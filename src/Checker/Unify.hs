@@ -298,20 +298,20 @@ unify0 t@(TApp {}) (u@(TApp {}))
              qs <- zipWithM unify' ts us
              return (Just (foldl VEqApp q qs))
 
-unify0 (TApp (TMapFun fa) ra) (TRow []) =
+unify0 (TApp (TMap fa) ra) (TRow []) =
   do q <- unify' ra (TRow [])
      return VEqMap
-unify0 (TApp (TMapFun fa) ra) (TRow xs@(tx:_)) =
+unify0 (TApp (TMap fa) ra) (TRow xs@(tx:_)) =
   do KFun kdom kcod <- kindOf fa
      gs <- replicateM (length xs) (typeGoal' "t" kdom)
      ls <- replicateM (length xs) (typeGoal' "l" KLabel)
      q <- unify' ra (TRow (zipWith TLabeled ls gs))
      qs <- sequence [unify' (TLabeled tl (TApp fa ta)) tx | (tl, ta, tx) <- zip3 ls gs xs]
      return VEqMap  -- wrong
-unify0 (TRow []) (TApp (TMapFun fa) ra) =
+unify0 (TRow []) (TApp (TMap fa) ra) =
   do unify' (TRow []) ra
      return VEqMap
-unify0 (TRow xs@(tx:_)) (TApp (TMapFun fa) ra) =
+unify0 (TRow xs@(tx:_)) (TApp (TMap fa) ra) =
   do KFun kdom kcod <- kindOf fa
      gs <- replicateM (length xs) (typeGoal' "t" kdom)
      ls <- replicateM (length xs) (typeGoal' "l" KLabel)
@@ -389,7 +389,7 @@ unify0 t u0@(TConApp (TCUnif g) u) =
 unify0 TString TString =
   return VEqRefl
 
-unify0 a@(TMapFun f) x@(TMapFun g) =
+unify0 a@(TMap f) x@(TMap g) =
   do mq <- try $ checking $ unify' f g
      case mq of
        Just VEqRefl -> return (VEqRefl)  -- shouldn't this be handled by flattenV?

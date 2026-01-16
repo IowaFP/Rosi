@@ -130,7 +130,7 @@ solve (cin, p, r) =
     return (Just VLeqRefl)
   refl _ = return Nothing
 
-  matchLeqMap p@(PLeq (TRow es) (TApp (TMapFun f) z)) q@(PLeq (TRow es') z', v) =
+  matchLeqMap p@(PLeq (TRow es) (TApp (TMap f) z)) q@(PLeq (TRow es') z', v) =
     suppose (typesEqual z z') $
     case (mapM label es, mapM label es') of
       (Just ed, Just ed')
@@ -197,13 +197,13 @@ solve (cin, p, r) =
      align x z y x' z' y' v <|>
      align z x y z' x' y' v)
     where align x y z x' y' z' v
-            | TApp (TMapFun zf) zr <- z =
+            | TApp (TMap zf) zr <- z =
               suppose (typesEqual zr z') $
               (case (x, x') of
                 (TRow xr, TRow xr')
                    | Just xs <- mapM splitLabel xr, Just xs' <- mapM splitLabel xr', sameSet (map fst xs) (map fst xs') ->
                        do forceAssocs xs (map (second (TApp zf)) xs')   -- Is this actually forced?
-                          forceFD y (TApp (TMapFun zf) y')
+                          forceFD y (TApp (TMap zf) y')
                           return (Just (VPlusLiftL zf v))
                    | otherwise -> trace ("mpm failed: " ++ show xr ++ ", " ++ show xr') >>
                                   return Nothing
@@ -362,31 +362,31 @@ solve (cin, p, r) =
        name <- fresh "g"
        return (Just (VGoal (Goal (name, r))))
 
-  mapFunApp as p@(PLeq (TApp (TMapFun f) y) (TApp (TMapFun f') z)) =
+  mapFunApp as p@(PLeq (TApp (TMap f) y) (TApp (TMap f') z)) =
     suppose (typesEqual f f') $
       fmap (VLeqLiftL f) <$> defer (PLeq y z)
-  mapFunApp as p@(PLeq (TRow []) (TApp (TMapFun f) z)) =
+  mapFunApp as p@(PLeq (TRow []) (TApp (TMap f) z)) =
     fmap (VLeqLiftL f) <$> defer (PLeq (TRow []) z)
-  mapFunApp as p@(PLeq (TApp (TMapFun f) y) (TRow [])) =
+  mapFunApp as p@(PLeq (TApp (TMap f) y) (TRow [])) =
     fmap (VLeqLiftL f) <$> defer (PLeq y (TRow []))
-  mapFunApp as p@(PLeq (TApp (TMapFun f) y) (TRow z))
+  mapFunApp as p@(PLeq (TApp (TMap f) y) (TRow z))
     | Just (ls, fs, es) <- funCallsFrom z =
     suppose (allM (typesEqual f) fs) $
       fmap (VLeqLiftL f) <$> defer (PLeq y (TRow (zipWith TLabeled ls es)))
-  mapFunApp as p@(PPlus x (TApp (TMapFun f) y) (TApp (TMapFun g) z)) =
+  mapFunApp as p@(PPlus x (TApp (TMap f) y) (TApp (TMap g) z)) =
     suppose (typesEqual f g) $
     do x' <- typeGoal' "x" =<< kindOf y
-       force p x (TApp (TMapFun f) x') -- I am very unsure about this
+       force p x (TApp (TMap f) x') -- I am very unsure about this
        fmap (VPlusLiftL f) <$> defer (PPlus x' y z)
-  mapFunApp as p@(PPlus (TApp (TMapFun f) x) y (TApp (TMapFun g) z)) =
+  mapFunApp as p@(PPlus (TApp (TMap f) x) y (TApp (TMap g) z)) =
     suppose (typesEqual f g) $
     do y' <- typeGoal' "y" =<< kindOf x
-       force p y (TApp (TMapFun f) y') -- I am very unsure about this
+       force p y (TApp (TMap f) y') -- I am very unsure about this
        fmap (VPlusLiftL f) <$> defer (PPlus x y' z)
-  mapFunApp as p@(PPlus (TApp (TMapFun f) x) (TApp (TMapFun g) y) z) =
+  mapFunApp as p@(PPlus (TApp (TMap f) x) (TApp (TMap g) y) z) =
     suppose (typesEqual f g) $
     do z' <- typeGoal' "z" =<< kindOf x
-       force p z (TApp (TMapFun f) z') -- I am very unsure about this
+       force p z (TApp (TMap f) z') -- I am very unsure about this
        fmap (VPlusLiftL f) <$> defer (PPlus x y z')
   mapFunApp _ _ = return Nothing
 
@@ -532,9 +532,9 @@ guesses prs =
     walk x u m (TLabeled l t) = TLabeled <$> walk x u m l <*> walk x u m t
     walk x u m (TRow ts) = TRow <$> mapM (walk x u m) ts
     walk x u m (TConApp k t) = TConApp k <$> walk x u m t
-    walk x u m (TMapFun f) = TMapFun <$> walk x u m f
+    walk x u m (TMap f) = TMap <$> walk x u m f
     walk x u m (TCompl t t') = TCompl <$> walk x u m t <*> walk x u m t'
-    walk x u m (TMapArg r) = TMapArg <$> walk x u m r
+    walk x u m (TMapApp r) = TMapApp <$> walk x u m r
     walk x u m (TInst is t) = TInst <$> walkIs is <*> walk x u m t where
       walkIs (Known is) = Known <$> mapM walkI is
       walkIs (Unknown n g) =
@@ -604,7 +604,7 @@ guess (pr@(tcin, PEq t u, v) : prs) =
                "by guessing " ++ renderString (ppr v) ++ " := " ++ renderString (ppr u')
              solveUV v u'
              return (Just (pr : prs))
-       (TApp f@(TMapFun _) a, TApp f'@(TMapFun _) a') ->
+       (TApp f@(TMap _) a, TApp f'@(TMap _) a') ->
           do trace $ guessingRefinement f a f' a'
              r1 <- newRef Nothing
              r2 <- newRef Nothing
@@ -679,9 +679,9 @@ guess (pr@(tcin, PEq t u, v) : prs) =
         walk x u m (TLabeled l t) = TLabeled <$> walk x u m l <*> walk x u m t
         walk x u m (TRow ts) = TRow <$> mapM (walk x u m) ts
         walk x u m (TConApp k t) = TConApp k <$> walk x u m t
-        walk x u m (TMapFun f) = TMapFun <$> walk x u m t
+        walk x u m (TMap f) = TMap <$> walk x u m t
         walk x u m (TCompl t t') = TCompl <$> walk x u m t <*> walk x u m t'
-        walk x u m (TMapArg r) = TMapArg <$> walk x u m r
+        walk x u m (TMapApp r) = TMapApp <$> walk x u m r
         walk x u m (TInst is t) = TInst <$> walkIs is <*> walk x u m t where
           walkIs (Known is) = Known <$> mapM walkI is
           walkIs (Unknown n g) =

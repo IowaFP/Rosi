@@ -159,7 +159,7 @@ substTy' (E (ht, he)) (TForall x (Just k) t) = TForall x (Just k) (substTy' (E (
 substTy' (E (ht, he)) (TLam x (Just k) t) = TLam x (Just k) (substTy' (E (TVar 0 x : map (shiftT 0) ht, he)) t)
 substTy' e@(E (ht, he)) (TApp t u)
   | TLam _ _ body <- t' = substTy' (E (u' : shiftE ht, he)) body
-  | TMapFun f <- t', TRow lts <- u', Just ps <- mapM splitLabel lts = TRow [TLabeled l (substTy' e (TApp f t)) | (l, t) <- ps]
+  | TMap f <- t', TRow lts <- u', Just ps <- mapM splitLabel lts = TRow [TLabeled l (substTy' e (TApp f t)) | (l, t) <- ps]
   | otherwise = TApp t' u'
   where t' = substTy' e t
         u' = substTy' e u
@@ -171,8 +171,8 @@ substTy' h (TPi t) = TPi (substTy' h t)
 substTy' h (TSigma t) = TSigma (substTy' h t)
 substTy' h (TMu t) = TMu (substTy' h t)
 substTy' h TFun = TFun
-substTy' h (TMapFun t) = TMapFun (substTy' h t)
-substTy' h (TMapArg t) = TMapArg (substTy' h t)
+substTy' h (TMap t) = TMap (substTy' h t)
+substTy' h (TMapApp t) = TMapApp (substTy' h t)
 substTy' h (TInst _ t) = substTy' h t
 substTy' h (TCompl z y)
   | TRow zs <- substTy' h z, TRow ys <- substTy' h y, Just zps <- mapM splitLabel zs, Just yps <- mapM splitLabel ys =

@@ -37,11 +37,11 @@ tyvars (TLab {}) = []
 tyvars (TSing t) = tyvars t
 tyvars (TLabeled l t) = tyvars l `catu` tyvars t
 tyvars (TConApp _ t) = tyvars t
-tyvars (TMapFun t) = tyvars t
+tyvars (TMap t) = tyvars t
 tyvars (TCompl z y) = tyvars z `catu` tyvars y
 tyvars TString = []
 tyvars (TInst {}) = error "Plusses.tyvars: TInst"
-tyvars (TMapArg t) = tyvars t
+tyvars (TMapApp t) = tyvars t
 tyvars (TPlus y z) = tyvars y `catu` tyvars z
 
 tyvarsP :: Pred -> [QName]
@@ -77,11 +77,11 @@ instance Sugared Ty where
   desugar (TLabeled l t) = TLabeled <$> desugar l <*> desugar t
   desugar (TRow ts) = TRow <$> mapM desugar ts
   desugar (TConApp k t) = TConApp k <$> desugar t
-  desugar (TMapFun t) = TMapFun <$> desugar t
+  desugar (TMap t) = TMap <$> desugar t
   desugar (TCompl z y) = TCompl <$> desugar z <*> desugar y
   desugar t@TString = return t
   desugar (TInst {}) = error "Plusses.desugar: TInst"
-  desugar (TMapArg t) = TMapArg <$> desugar t
+  desugar (TMapApp t) = TMapApp <$> desugar t
   desugar (TPlus x y)
     | TRow xr <- x, TRow yr <- y, Just xs <- mapM splitConcrete xr, Just ys <- mapM splitConcrete yr =
       if any (`elem` map fst ys) (map fst xs)
