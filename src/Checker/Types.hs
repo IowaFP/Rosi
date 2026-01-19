@@ -114,12 +114,12 @@ instance MonadCheck KindM where
 collect :: KindM a -> KindM (a, KCOut)
 collect = censor (const []) . listen
 
-toCheckM :: KindM a -> CheckM a
+toCheckM :: KindM Ty -> CheckM Ty
 toCheckM m =
-  do (x, ps) <- runWriterT (runKindM m)
+  do (t, ps) <- runWriterT (runKindM m)
      if null ps
-     then return x
-     else typeError $ ErrOther $ "Unhandled desugared predicates"
+     then return t
+     else typeError (ErrTypeDesugaring t)
 
 --
 
@@ -164,18 +164,15 @@ checkTy0 (TThen pi t) expected =
     (assume pi $ checkTy t expected)
 checkTy0 t@(TForall {}) expected =
   implicitConstraints t expected
--- checkTy0 (TForall x Nothing t) expected =
---   do k <- kindGoal "d"
---      checkTy (TForall x (Just k) t) expected
--- checkTy0 (TForall x (Just k) t) expected =
---   TForall x (Just k) <$> bindTy k (checkTy t expected)
 checkTy0 t@(TLam x Nothing u) expected =
   do k <- kindGoal "d"
-     checkTy (TLam x (Just k) u) expected
+     (t', bs) <- collect $ checkTy (TLam x (Just k) u) expected
+     if null bs then return t' else typeError (ErrTypeDesugaring t)
 checkTy0 t@(TLam x (Just k) u) expected =
   do k' <- kindGoal "cod"
      expectK t (KFun k k') expected
-     TLam x (Just k) <$> bindTy k (checkTy u k')
+     (t', bs) <- collect $ TLam x (Just k) <$> bindTy k (checkTy u k')
+     if null bs then return t' else typeError (ErrTypeDesugaring t)
 checkTy0 (TApp t u) expected =
   do -- Step 1: work out the function's kind, including potential lifting
      kfun <- kindGoal "f"
