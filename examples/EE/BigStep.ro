@@ -30,8 +30,11 @@ as = \l w f.
 type Env : R[* -> *] -> *
 type Env = \z. List (Mu (Sigma z))
 
+type Err : R[R[* -> *] -> * -> *]
+type Err = {'Err := \expr. \val. Unit }
+
 type ValA : R[R[* -> *] -> * -> *]
-type ValA = { 'Nat := \expr. \val. Nat, 'Err := \expr. \val. Unit }
+type ValA = Err + { 'Nat := \expr. \val. Nat }
 
 evalA : forall valr. ValA < valr =>
         Xh ArithF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
@@ -45,7 +48,7 @@ evalA = \exp rec env.
            )
 
 type ValB : R[R[* -> *] -> * -> *]
-type ValB = { 'Bool := \expr. \val. Bool, 'Err := \expr. \val. Unit }
+type ValB = Err + { 'Bool := \expr. \val. Bool }
 
 evalB : forall valr. ValB < valr =>
         Xh BoolF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))
@@ -60,7 +63,7 @@ evalB = \exp rec env.
            )
 
 type ValF : R[R[* -> *] -> * -> *]
-type ValF = { 'Clos := \expr. \val. Pair (List val) (Mu (Sigma expr)), 'Err := \expr. \val. Unit }
+type ValF = Err + { 'Clos := \expr. \val. Pair (List val) (Mu (Sigma expr)) }
 
 evalF : forall valr. ValF < valr =>
         Xh LamF (\expr. Env (valr expr) -> Mu (Sigma (valr expr)))

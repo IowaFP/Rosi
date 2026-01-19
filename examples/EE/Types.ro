@@ -74,24 +74,17 @@ showRecF = \d. ('names := ('Fix := "Fix"), 'shows := ('Fix := d))
 -------------------------------------------------------------------------------
 -- Shorthand
 
-type ABF : R [* -> *]
-type ABF = { 'IConst := \t. Nat, 'Plus := \t. Pair t t,
-             'BConst := \t. Bool, 'If := \t. Triple t t t }
+type ABF : R[* -> *]
+type ABF = ArithF + BoolF
 
 type LBF : R [* -> *]
-type LBF = { 'Var := \t. Nat, 'Lam := Id, 'App := \t. Pair t t,
-             'BConst := \t. Bool, 'If := \t. Triple t t t }
+type LBF = LamF + BoolF
 
 type ABLF : R[* -> *]
-type ABLF = { 'BConst := \t. Bool, 'If := \t. Triple t t t
-            , 'IConst := \t. Nat, 'Plus := \t. Pair t t
-            , 'Var := Const Nat, 'Lam := Id, 'App := \t. Pair t t }
+type ABLF = ABF + LamF
 
 type AllF : R [* -> *]
-type AllF = { 'Var := \t. Nat, 'Lam := Id, 'App := \t. Pair t t,
-              'BConst := \t. Bool, 'If := \t. Triple t t t,
-              'IConst := \t. Nat, 'Plus := \t. Pair t t,
-              'Fix := \t. t }
+type AllF = ABLF + RecF
 
 functorLBF : Pi (Functor LBF)
 functorLBF = functorBool ++ functorLam
