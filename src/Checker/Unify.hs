@@ -427,24 +427,3 @@ unify0 t u
 unifyP :: Pred -> Pred -> UnifyM Evid
 unifyP (PLeq y z) (PLeq y' z') = VEqLeq <$> unify' y y' <*> unify' z z'
 unifyP (PPlus x y z) (PPlus x' y' z') = VEqPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'
-
-typeGoal, expectedGoal :: MonadCheck m => String -> m Ty
-typeGoal s = typeGoalWithLevel s =<< theLevel
-expectedGoal s = typeGoalWithLevel s Top
-
-typeGoalWithLevel s l =
-  do s' <- fresh s
-     TUnif . (flip (UV 0 l) KType) . Goal . (s',) <$> newRef Nothing
-
-typeGoal', expectedGoal' :: MonadCheck m => String -> Kind -> m Ty
-typeGoal' s k = typeGoalWithLevel' s k =<< theLevel
-expectedGoal' s k = typeGoalWithLevel' s k Top
-
-typeGoalWithLevel' s k l =
-  do s' <- fresh s
-     TUnif . (flip (UV 0 l) k) . Goal . (s',) <$> newRef Nothing
-
-ctorGoal :: MonadCheck m => String -> m TyCon
-ctorGoal s =
-  do s' <- fresh s
-     TCUnif . Goal . (s',) <$> newRef Nothing

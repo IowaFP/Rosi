@@ -21,7 +21,6 @@ import System.IO (hPutStrLn, stderr, stdout, hSetBuffering, BufferMode(..))
 import Checker
 import Interp.Erased as E
 import Parser
-import Plusses
 import Printer
 import Scope
 import Syntax
@@ -101,8 +100,7 @@ main = do nowArgs <- getArgs
           when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
-          desugared <- reportErrors flags $ desugarPluses decls
-          scoped <- reportErrors flags $ runScopeM $ scopeProg desugared
+          scoped <- reportErrors flags $ runScopeM $ scopeProg decls
           checked <- goCheck flags [] [] scoped
           when (doPrintTyped flags) $
             mapM_ (putDocWLn 120 flags . pprTyping) checked
@@ -112,11 +110,11 @@ main = do nowArgs <- getArgs
           when (printOkay flags) $ putStrLn "okay"
   where goCheck _ d g [] = return []
         goCheck flags d g (TyDecl x k t : ds) =
-          do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ checkTy t k)
+          do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints t k))
                -- Shouldn't be any holes in types...
              goCheck flags (KBDefn k t' : d) g ds
         goCheck flags d g (TmDecl v (Just ty) te : ds) =
-          do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< checkTy ty KType))
+          do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints ty KType)))
              (te', holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              te'' <- flattenE te'
              reportHoles flags holes

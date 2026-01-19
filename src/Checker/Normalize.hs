@@ -69,7 +69,7 @@ normalize' eqns t =
 
 etaContract :: Ty -> (Ty, Evid)
 etaContract ty@(TLam s1 (Just k) (TApp t (TVar 0 s3)))
-  | not (tvFreeIn 0 t) = (shiftTN 0 (-1) t , VEqEta)
+  | not (tvFreeIn [0] t) = (shiftTN 0 (-1) t , VEqEta)
 etaContract t = (t , VEqRefl)
 
 normalize :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)

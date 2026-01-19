@@ -244,3 +244,6 @@ bracket (UM before) (UM body) (UM after) =
           z <- body `catchError` (\e -> do after; throwError e)
           after
           return z
+
+-- testing code
+

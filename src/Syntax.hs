@@ -136,35 +136,39 @@ funTy = TApp . TApp TFun
 
 infixr 5 `funTy`
 
--- Does De Bruijn index n occur free in type t?
-tvFreeIn :: Int -> Ty -> Bool
-tvFreeIn n (TVar i _) = i == n
-tvFreeIn n (TUnif u) = False
-tvFreeIn n TFun = False
-tvFreeIn n (TThen p t) = tvFreeInP p || tvFreeIn n t where
-  tvFreeInP (PEq t u) = tvFreeIn n t || tvFreeIn n u
-  tvFreeInP (PLeq y z) = tvFreeIn n y || tvFreeIn n z
-  tvFreeInP (PPlus x y z) = tvFreeIn n x || tvFreeIn n y || tvFreeIn n z
-  tvFreeInP (PFold z) = tvFreeIn n z
-tvFreeIn n (TForall s _ t) = tvFreeIn (n + 1) t
-tvFreeIn n (TLam s _ t) = tvFreeIn (n + 1) t
-tvFreeIn n (TApp t u) = tvFreeIn n t || tvFreeIn n u
-tvFreeIn n (TLab s) = False
-tvFreeIn n (TSing t) = tvFreeIn n t
-tvFreeIn n (TLabeled t u) = tvFreeIn n t || tvFreeIn n u
-tvFreeIn n (TRow ts) = any (tvFreeIn n) ts
-tvFreeIn n (TConApp c t) = tvFreeIn n t
-tvFreeIn n (TMap t) = tvFreeIn n t
-tvFreeIn n (TCompl t u) = tvFreeIn n t || tvFreeIn n u
-tvFreeIn n TString = False
-tvFreeIn n (TInst is t) = tvFreeInIs is || tvFreeIn n t where
+-- Do De Bruijn index ns occur free in type t?
+tvFreeIn :: [Int] -> Ty -> Bool
+tvFreeIn ns (TVar i _) = i `elem` ns
+tvFreeIn ns (TUnif u) = False
+tvFreeIn ns TFun = False
+tvFreeIn ns (TThen p t) = tvFreeInP ns p || tvFreeIn ns t
+tvFreeIn ns (TForall s _ t) = tvFreeIn (map (1+) ns) t
+tvFreeIn ns (TLam s _ t) = tvFreeIn (map (1+) ns) t
+tvFreeIn ns (TApp t u) = tvFreeIn ns t || tvFreeIn ns u
+tvFreeIn ns (TLab s) = False
+tvFreeIn ns (TSing t) = tvFreeIn ns t
+tvFreeIn ns (TLabeled t u) = tvFreeIn ns t || tvFreeIn ns u
+tvFreeIn ns (TRow ts) = any (tvFreeIn ns) ts
+tvFreeIn ns (TConApp c t) = tvFreeIn ns t
+tvFreeIn ns (TMap t) = tvFreeIn ns t
+tvFreeIn ns (TCompl t u) = tvFreeIn ns t || tvFreeIn ns u
+tvFreeIn ns TString = False
+tvFreeIn ns (TInst is t) = tvFreeInIs is || tvFreeIn ns t where
   tvFreeInIs (Unknown {}) = False
   tvFreeInIs (Known is) = any tvFreeInI is
-  tvFreeInI (TyArg t) = tvFreeIn n t
+  tvFreeInI (TyArg t) = tvFreeIn ns t
   tvFreeInI (PrArg {}) = False
-tvFreeIn n (TMapApp t) = tvFreeIn n t
-tvFreeIn n (TPlus y z) = tvFreeIn n y || tvFreeIn n z
-tvFreeIn n (TConOrd _ _ t) = tvFreeIn n t
+tvFreeIn ns (TMapApp t) = tvFreeIn ns t
+tvFreeIn ns (TPlus y z) = tvFreeIn ns y || tvFreeIn ns z
+tvFreeIn ns (TConOrd _ _ t) = tvFreeIn ns t
+
+tvFreeInP ns (PEq t u) = tvFreeIn ns t || tvFreeIn ns u
+tvFreeInP ns (PLeq y z) = tvFreeIn ns y || tvFreeIn ns z
+tvFreeInP ns (PPlus x y z) = tvFreeIn ns x || tvFreeIn ns y || tvFreeIn ns z
+tvFreeInP ns (PFold z) = tvFreeIn ns z
+
+
+
 
 label, labeled :: Ty -> Maybe Ty
 concreteLabel :: Ty -> Maybe String
@@ -287,6 +291,8 @@ flattenIs (Known is) = Known <$> mapM flattenI is
   where flattenI (TyArg t) = TyArg <$> flattenT t
         flattenI (PrArg v) = PrArg <$> flattenV v
 
+-- shiftTNV vs j n t shifts variables, but *not uvars in `vs`*, at or above `j`
+-- up by `n`
 shiftTNV :: HasCallStack => [UVar] -> Int -> Int -> Ty -> Ty
 shiftTNV _ _ 0 t = t
 shiftTNV _ j n (TVar i x)

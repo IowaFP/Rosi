@@ -4,10 +4,13 @@ import Control.Monad
 import Control.Monad.Error.Class
 import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
+import Control.Monad.Writer
 import Data.IORef
 import Data.List
 
-import Checker.Monad hiding (trace)
+import Checker.Monad hiding (collect, trace)
+import Checker.Normalize
+import Checker.Utils
 import Printer
 import Syntax
 
@@ -34,12 +37,6 @@ bindRef (Goal (s, r)) (Just k) =
                            case k' of
                              Just k'' -> check k''
                              Nothing -> return True
-
-kindGoal :: MonadCheck m => String -> m Kind
-kindGoal s =
-  do s' <- fresh s
-     kr <- newRef Nothing
-     return (KUnif (Goal (s', kr)))
 
   -- Note: just returning a `Ty` here out of convenience; it's always an exactly the input `Ty`.
 expectK :: MonadCheck m => Ty -> Kind -> Kind -> m Ty
@@ -96,16 +93,66 @@ kindMismatch t actual expected =
      expected' <- flattenK expected
      typeError (ErrContextType t (ErrKindMismatch actual' expected'))
 
-checkTy' :: Term -> Ty -> Kind -> CheckM Ty
+--
+
+type KCOut = [(Pred, UVar)]
+newtype KindM a = K {runKindM :: WriterT KCOut CheckM a}
+  deriving (Functor, Applicative, Monad, MonadFail, MonadIO, MonadReader TCIn, MonadWriter KCOut)
+
+instance MonadRef KindM where
+  newRef = K . lift . newRef
+  readRef = K . lift . readRef
+  writeRef r = K . lift . writeRef r
+
+instance MonadCheck KindM where
+  require p = K . lift . require p
+  typeError = K . lift . typeError
+  fresh = K . lift . fresh
+  mark = K (lift mark)
+  reset = K . lift . reset
+
+collect :: KindM a -> KindM (a, KCOut)
+collect = censor (const []) . listen
+
+toCheckM :: KindM a -> CheckM a
+toCheckM m =
+  do (x, ps) <- runWriterT (runKindM m)
+     if null ps
+     then return x
+     else typeError $ ErrOther $ "Unhandled desugared predicates"
+
+--
+
+checkTy' :: Term -> Ty -> Kind -> KindM Ty
 checkTy' e t k = typeErrorContext (ErrContextTerm e . ErrContextType t) $ checkTy t k
 
-checkTy :: Ty -> Kind -> CheckM Ty
+checkTy :: Ty -> Kind -> KindM Ty
 checkTy t k =
   do trace $ "checkTy " ++ renderString (ppr t) ++ " : " ++ renderString (ppr k)
      typeErrorContext (ErrContextType t) (checkTy0 t k)
 
+--
+
+implicitConstraints :: Ty -> Kind -> KindM Ty
+implicitConstraints t expected =
+  do ks' <- mapM (maybe (kindGoal "d") return) ks
+     (t2, pairs) <- collect $ foldr bindTy (checkTy t' expected) ks'
+     let (here, there) = partition (tvFreeInP [0..length bs - 1] . fst) pairs
+         (ps, uvs) = unzip here
+         t3 = shiftTNV uvs 0 (length uvs) (foldr TThen t2 ps)
+         insts = [(goalRef (uvGoal v), Just (TVar i [s, ""])) | (v, i) <- zip (reverse uvs) [0..], let s = goalName (uvGoal v)]
+         t4 = rebind (zip xs (map Just ks') ++ [(x, Just k) | v <- uvs, let x = goalName (uvGoal v), let k = uvKind v]) t3
+     tell there
+     mapM_ (uncurry writeRef) insts
+     return t4
+  where (bs, t') = tybinders t
+        (xs, ks) = unzip bs
+
+--
+
+checkTy0 :: Ty -> Kind -> KindM Ty
 checkTy0 (TVar (-1) x) expected =
-  throwError (ErrOther $ "scoping error: " ++ head x ++ " not resolved")
+  typeError (ErrOther $ "scoping error: " ++ head x ++ " not resolved")
 checkTy0 (TVar i v) expected =
   do k <- asks (kbKind . (!! i) . kctxt)
      expectK (TVar i v) k expected
@@ -115,11 +162,13 @@ checkTy0 (TThen pi t) expected =
   TThen <$>
     checkPred pi <*>
     (assume pi $ checkTy t expected)
-checkTy0 (TForall x Nothing t) expected =
-  do k <- kindGoal "d"
-     checkTy (TForall x (Just k) t) expected
-checkTy0 (TForall x (Just k) t) expected =
-  TForall x (Just k) <$> bindTy k (checkTy t expected)
+checkTy0 t@(TForall {}) expected =
+  implicitConstraints t expected
+-- checkTy0 (TForall x Nothing t) expected =
+--   do k <- kindGoal "d"
+--      checkTy (TForall x (Just k) t) expected
+-- checkTy0 (TForall x (Just k) t) expected =
+--   TForall x (Just k) <$> bindTy k (checkTy t expected)
 checkTy0 t@(TLam x Nothing u) expected =
   do k <- kindGoal "d"
      checkTy (TLam x (Just k) u) expected
@@ -198,8 +247,31 @@ checkTy0 t@(TCompl r0 r1) expected =
      return (TCompl r0' r1')
 checkTy0 TString expected =
   expectK TString KType expected
+checkTy0 t@(TPlus x y) expected =
+  do k <- kindGoal "e"
+     expectK t (KRow k) expected
+     x' <- (fst <$>) . normalize [] =<< checkTy x (KRow k)
+     y' <- (fst <$>) . normalize [] =<< checkTy y (KRow k)
+     case (x', y') of
+       (TRow xr, TRow yr)
+         | Just xs <- mapM splitConcrete xr, Just ys <- mapM splitConcrete yr ->
+           if any (`elem` xs) ys
+           then typeError (ErrTypeDesugaring t)
+           else return (TRow (map (uncurry TLabeled) (xs ++ ys)))
+       _ -> do z@(TUnif v) <- typeGoal' "z" (KRow k)
+               tell [(PPlus x' y' z, v)]
+               return z
+    where splitConcrete (TLabeled (TLab s) x) = Just (TLab s, x)
+          splitConcrete _ = Nothing
+checkTy0 t@(TConOrd k rel u) expected =
+  do u' <- checkTy u (KRow expected)
+     z@(TUnif v) <- typeGoal' "z" (KRow expected)
+     tell [(case rel of
+              Leq -> PLeq z u'
+              Geq -> PLeq u' z, v)]
+     return (TConApp k z)
 
-checkPred :: Pred -> CheckM Pred
+checkPred :: Pred -> KindM Pred
 checkPred p@(PLeq y z) =
   typeErrorContext (ErrContextPred p)  $
   do kelem <- kindGoal "e"

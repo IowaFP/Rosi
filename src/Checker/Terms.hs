@@ -9,8 +9,9 @@ import Data.Generics (everywhereM, mkM)
 import Data.IORef
 import Data.List (intercalate)
 
-import Checker.Types hiding (trace)
+import Checker.Types hiding (trace, collect)
 import Checker.Unify
+import Checker.Utils
 import Checker.Normalize
 import Checker.Monad
 import Checker.Preds
@@ -92,7 +93,7 @@ checkTerm0 (ELam v Nothing e) expected =
      checkTerm0 (ELam v (Just tdom) e) expected
 checkTerm0 e0@(ELam v (Just t) e) expected =
   do tcod <- expectedGoal "cod"
-     t' <- fst <$> (normalize' [] =<< checkTy' e0 t KType)
+     t' <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
      q <- expectT e0 (funTy t' tcod) expected
      wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
 checkTerm0 e0@(EApp f e) expected =
@@ -114,12 +115,12 @@ checkTerm0 e0@(EInst e is) expected =
         checkInst :: Inst -> CheckM Inst
         checkInst (TyArg t) =
           do k <- kindGoal "k"
-             (t', q) <- normalize [] =<< checkTy' e0 t k
+             (t', q) <- normalize [] =<< toCheckM (checkTy' e0 t k)
              return (TyArg t')
         checkInst (PrArg _) =
           error "internal: why am I type checking a predicate instantiation?"
 checkTerm0 e0@(ESing t) expected =
-  do t' <- checkTy' e0 t =<< kindGoal "k"
+  do t' <- toCheckM . checkTy' e0 t =<< kindGoal "k"
      q <- expectT e0 (TSing t') expected
      return (wrap q (ESing t'))
 checkTerm0 e0@(ELabel Nothing el e) expected =
@@ -230,7 +231,7 @@ checkTerm0 e@(EConst c) expected =
           return (TString `funTy` TString `funTy` TString)
 
 checkTerm0 e0@(ETyped e t) expected =
-  do (t', _) <- normalize [] =<< checkTy' e0 t KType
+  do (t', _) <- normalize [] =<< toCheckM (checkTy' e0 t KType)
      e' <- checkTerm e t'  -- any reason to preserve the type ascription?
      elimForm expected $ \expected ->
        do q <- expectT e0 t' expected

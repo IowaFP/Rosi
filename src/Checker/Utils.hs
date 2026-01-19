@@ -3,8 +3,13 @@ module Checker.Utils where
 import Control.Monad.Reader.Class
 
 import Checker.Monad
-import Checker.Types
 import Syntax
+
+kindGoal :: MonadCheck m => String -> m Kind
+kindGoal s =
+  do s' <- fresh s
+     kr <- newRef Nothing
+     return (KUnif (Goal (s', kr)))
 
 kindOf :: MonadCheck m => Ty -> m Kind
 kindOf (TVar i _) = flattenK =<< asks (kbKind . (!! i) . kctxt)
@@ -53,3 +58,25 @@ kindOf (TMapApp f) =
      return $ KFun kd (KRow kc)
 kindOf (TCompl r _) = kindOf r
 kindOf TString = return KType
+
+typeGoal, expectedGoal :: MonadCheck m => String -> m Ty
+typeGoal s = typeGoalWithLevel s =<< theLevel
+expectedGoal s = typeGoalWithLevel s Top
+
+typeGoalWithLevel s l =
+  do s' <- fresh s
+     TUnif . (flip (UV 0 l) KType) . Goal . (s',) <$> newRef Nothing
+
+typeGoal', expectedGoal' :: MonadCheck m => String -> Kind -> m Ty
+typeGoal' s k = typeGoalWithLevel' s k =<< theLevel
+expectedGoal' s k = typeGoalWithLevel' s k Top
+
+typeGoalWithLevel' s k l =
+  do s' <- fresh s
+     TUnif . (flip (UV 0 l) k) . Goal . (s',) <$> newRef Nothing
+
+ctorGoal :: MonadCheck m => String -> m TyCon
+ctorGoal s =
+  do s' <- fresh s
+     TCUnif . Goal . (s',) <$> newRef Nothing
+
