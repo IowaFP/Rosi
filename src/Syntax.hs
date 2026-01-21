@@ -455,7 +455,7 @@ data Evid =
   --
   -- Fold proofs
   --
-  | VFold Int
+  | VFold Int | VFoldMap Evid
   deriving (Data, Eq, Show, Typeable)
 
 isRefl :: Evid -> Bool

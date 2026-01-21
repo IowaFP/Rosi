@@ -209,18 +209,21 @@ checkTerm0 e@(EConst c) expected =
                  TVar 0 ["t",""]
 
         constType CFold =
-          return $
-            TForall "r" (Just (KRow KType)) $
-            TForall "t" (Just KType) $
-              PFold (TVar 1 ["r",""]) `TThen`
-              (TForall "l" (Just KLabel) $
-               TForall "u" (Just KType) $
-                  PLeq (TRow [TLabeled (TVar 1 ["l",""]) (TVar 0 ["u",""])]) (TVar 3 ["r",""]) `TThen`
-                  TSing (TVar 1 ["l",""]) `funTy` TVar 0 ["u",""] `funTy` TVar 2 ["t",""]) `funTy`
-              (TVar 0 ["t",""] `funTy` TVar 0 ["t",""] `funTy` TVar 0 ["t",""]) `funTy`
-              TVar 0 ["t",""] `funTy`
-              TConApp Pi (TVar 1 ["r",""]) `funTy`
-              TVar 0 ["t",""]
+          do k <- kindGoal "e"
+             return $
+               TForall "f" (Just (KFun k KType)) $
+               TForall "z" (Just (KRow k)) $
+               TForall "t" (Just KType) $
+                 PFold (TVar 1 ["r",""]) `TThen`
+                 TSing (TVar 2 ["f", ""]) `funTy`
+                 (TForall "l" (Just KLabel) $
+                  TForall "u" (Just k) $
+                     PLeq (TRow [TLabeled (TVar 1 ["l",""]) (TVar 0 ["u",""])]) (TVar 3 ["z",""]) `TThen`
+                     TSing (TVar 1 ["l",""]) `funTy` (TVar 4 ["f", ""] `TApp` TVar 0 ["u",""]) `funTy` TVar 2 ["t",""]) `funTy`
+                 (TVar 0 ["t",""] `funTy` TVar 0 ["t",""] `funTy` TVar 0 ["t",""]) `funTy`
+                 TVar 0 ["t",""] `funTy`
+                 TConApp Pi (TVar 1 ["z",""]) `funTy`
+                 TVar 0 ["t",""]
 
         constType CFix =
           do let a = TVar 0 ["a",""]

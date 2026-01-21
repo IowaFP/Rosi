@@ -77,23 +77,26 @@ type Bool : *
 type Bool = Sigma { 'True := Unit, 'False := Unit }
 
 True : Bool
-True = con #'True tt
+True = 'True: tt
 
 False : Bool
-False = con #'False tt
+False = 'False: tt
 
 ite : Bool -> t -> t -> t
 ite = 'True: u -> (\t1 t2. t1)
-    | 'False: u ->  (\t1 t2. t2)
+    | 'False: u -> (\t1 t2. t2)
 
 not : Bool -> Bool
-not = \ b. ite b False True
+not = \b. ite b False True
 
 and : Bool -> Bool -> Bool
-and = \ b. ite b id (const False)
+and = \b. ite b id (const False)
 
 or : Bool -> Bool -> Bool
-or = \ b. ite b (const True) id
+or = \b. ite b (const True) id
+
+xor : Bool -> Bool -> Bool
+xor = \b. ite b not id
 
 --------------------------------------------------------------------------------
 -- Bot elimination
@@ -118,7 +121,7 @@ decompose = \ d t. syn #(\ X. X) (\ l. d.l t)
 recompose : forall z : R[*] , t. (t -> Pi z) -> Pi (t -> z)
 recompose = /\ z t. \ f. syn #(\ X. t -> X) (\ l u. sel (f u) l)
 
-every : forall a : *, z : R[*]. a -> Pi (Const a z)
+every : a -> Pi ((Const a)* z)
 every = /\a. \x. syn #(\X. a) (\l. x)
 
 type Eq : * -> *
@@ -130,8 +133,8 @@ eqS = \ d v. ana #(\X. X)
                          ( l: x -> d.l x y
                          | otherwise -> False))
 
-eqP : forall z: R[*]. Fold z => Pi (Eq z) -> Eq (Pi z)
-eqP = \ d r. fold (\l x. d.l r.l x) and True
+eqP : Fold z => Pi (Eq z) -> Eq (Pi z)
+eqP = \ d r. fold #(\t. t) (\l x. d.l r.l x) and True
 
 -- Branching is derivable
 branch : (Sigma x -> t) -> (Sigma y -> t) -> Sigma (x + y) -> t

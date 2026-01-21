@@ -344,6 +344,9 @@ solve (cin, p, r) =
          UnificationFails _ -> throwError (ErrTypeMismatchPred p t u)
   prim p@(PFold (TRow xs)) =
     return (Just (VFold (length xs)))
+  prim p@(PFold (TApp (TMap f) z)) =
+    do Just v <- defer (PFold z)
+       return (Just (VFoldMap v))
   prim _ = return Nothing
 
   funCallsFrom :: [Ty] -> Maybe ([Ty], [Ty], [Ty])

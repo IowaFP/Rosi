@@ -110,11 +110,11 @@ main = do nowArgs <- getArgs
           when (printOkay flags) $ putStrLn "okay"
   where goCheck _ d g [] = return []
         goCheck flags d g (TyDecl x k t : ds) =
-          do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints t k))
+          do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
                -- Shouldn't be any holes in types...
              goCheck flags (KBDefn k t' : d) g ds
         goCheck flags d g (TmDecl v (Just ty) te : ds) =
-          do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints ty KType)))
+          do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints True ty KType)))
              (te', holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              te'' <- flattenE te'
              reportHoles flags holes

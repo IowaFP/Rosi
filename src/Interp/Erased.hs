@@ -190,6 +190,7 @@ eval' h (EConst CFold) =
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
+  VLam h $ Prim $ \h ->
   VLam h $ Prim $ \case
     (VVFold n : _, r : def : comp : single : _) ->
       let vs = recordFrom r
@@ -217,6 +218,7 @@ evalV h v@(VPlusLiftR {})  = VPlus $ evalPlus h v
 evalV h v@(VPlusComplL {}) = VPlus $ evalPlus h v
 evalV h v@(VPlusComplR {}) = VPlus $ evalPlus h v
 evalV h (VFold n)          = VVFold n
+evalV h (VFoldMap v)       = evalV h v
 evalV h v                  = VEq
 
 evalLeq :: Env -> Evid -> EList Int

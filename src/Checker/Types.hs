@@ -133,11 +133,13 @@ checkTy t k =
 
 --
 
-implicitConstraints :: Ty -> Kind -> KindM Ty
-implicitConstraints t expected =
+implicitConstraints :: Bool -> Ty -> Kind -> KindM Ty
+implicitConstraints topLevel t expected =
   do ks' <- mapM (maybe (kindGoal "d") return) ks
      (t2, pairs) <- collect $ foldr bindTy (checkTy t' expected) ks'
-     let (here, there) = partition (tvFreeInP [0..length bs - 1] . fst) pairs
+     let (here, there)
+            | topLevel = (pairs, [])
+            | otherwise = partition ((tvFreeInP [0..length bs - 1]) . fst) pairs
          (ps, uvs) = unzip here
          t3 = shiftTNV uvs 0 (length uvs) (foldr TThen t2 ps)
          insts = [(goalRef (uvGoal v), Just (TVar i [s, ""])) | (v, i) <- zip (reverse uvs) [0..], let s = goalName (uvGoal v)]
@@ -163,7 +165,7 @@ checkTy0 (TThen pi t) expected =
     checkPred pi <*>
     (assume pi $ checkTy t expected)
 checkTy0 t@(TForall {}) expected =
-  implicitConstraints t expected
+  implicitConstraints False t expected
 checkTy0 t@(TLam x Nothing u) expected =
   do k <- kindGoal "d"
      (t', bs) <- collect $ checkTy (TLam x (Just k) u) expected
