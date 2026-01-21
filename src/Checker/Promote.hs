@@ -102,6 +102,7 @@ promoteP :: MonadCheck m => UVar -> Int -> Pred -> m (Maybe Pred)
 promoteP v n (PEq t u) = liftM2 PEq <$> promoteN v n t <*> promoteN v n u
 promoteP v n (PLeq y z) = liftM2 PLeq <$> promoteN v n y <*> promoteN v n z
 promoteP v n (PPlus x y z) = liftM3 PPlus <$> promoteN v n x <*> promoteN v n y <*> promoteN v n z
+promoteP v n (PFold z) = liftM PFold <$> promoteN v n z
 
 -- TODO: the Evid returned here is always and only VEqRefl... why needed?
 solveUV :: (HasCallStack, MonadCheck m) => UVar -> Ty -> m (Maybe Evid)
