@@ -258,18 +258,18 @@ atype = choice [ TLab <$> lexeme lidentifier
               --  , TConApp Pi <$> (symbol "Pi" >> atype)
               --  , TConApp (Mu Nothing) <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
-               , const TString <$> symbol "String"
+               , const TString <$> reserved "String"
                , TVar (-1) <$> (lexeme qidentifier)
                , parens ty ]
 
 pr :: Parser Pred
-pr = choice [ do symbol "Fold"
+pr = choice [ do reserved "Fold"
                  PFold <$> arrTy
             , do t <- arrTy
                  choice
-                   [ do symbol "<"
+                   [ do reserved "<"
                         PLeq t <$> arrTy
-                  , do symbol "~"
+                  , do reserved "~"
                        u <- arrTy
                        return $ case t of
                          TPlus x y -> PPlus x y u
@@ -349,11 +349,9 @@ term = prefixes typedTerm where
 
   caseTerm =
         do p <- try (pattern <* symbol "->")
-           t <- caseTerm
-           return (buildCase p t)
+           buildCase p <$> caseTerm
     <|> do try (symbol "otherwise" >> symbol "->")
-           t <- caseTerm
-           return (EApp (EVar (-1) (reverse ["Ro", "Base", "otherwise"])) t)
+           EApp (EVar (-1) (reverse ["Ro", "Base", "otherwise"])) <$> caseTerm
     <|> composeTerm
     where
     pattern =
@@ -443,12 +441,16 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                  , ESing <$> (char '#' >> atype)
                  , buildNumber <$> number
                  , EStringLit <$> stringLit
-                 , parens
-                   (do ts <- commaSep1 term
-                       case (ts, mapM labeledTerm ts) of
-                          ([t], _) -> return t
-                          (_, Just (t : ts)) -> return (foldl (\t1 t2 -> EApp (EApp (EConst CConcat) t1) t2) t ts)
-                          (_, Nothing) -> unexpected $ Label (fromList "unlabeled term"))
+                 , do symbol "("
+                      t <- do ts <- commaSep1 term
+                              case (ts, mapM labeledTerm ts) of
+                                 ([t], _) -> return t
+                                 (_, Just (t : ts)) -> return (foldl (\t1 t2 -> EApp (EApp (EConst CConcat) t1) t2) t ts)
+                                 (_, Nothing) -> unexpected $ Label (fromList "unlabeled term")
+                      guardIndent (string ")")
+                      s <- optional stor
+                      whitespace
+                      return $ maybe t (`EApp` t) s
                  ]
 
   labeledTerm :: Term -> Maybe Term

@@ -61,12 +61,12 @@ wand7 = \l m n. prj (m ++ n) / l
 -- And syntax for selection
 
 wand8 : x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
-wand8 = \l m n. .l (m ++ n)
+wand8 = \l m n. (m ++ n).l
 
 -- And syntax for plusses...
 
 wand9 : {l := t} < x + y => #l -> Pi x -> Pi y -> t
-wand9 = \l m n. .l (m ++ n)
+wand9 = \l m n. (m ++ n).l
 
 -- Let's dualize the above
 
