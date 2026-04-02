@@ -10,18 +10,17 @@ import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple, EE.Types
 -- being an untyped language, so we don't have to account for polymorphism.
 
 app : forall z. LamF < z => Mu (Sigma z) -> Mu (Sigma z) -> Mu (Sigma z)
-app = \f e. con #'App (pair f e)
+app = \f e. 'App: (pair f e)
 
 desugarB : forall z.
            LamF < z =>
            Xh BoolF (\w. Mu (Sigma z))
 desugarB = \exp rec.
             match exp
-            (case #'BConst
-               ( case #'True (\u. con #'Lam (con #'Lam (con #'Var one)))
-               | case #'False (\u. con #'Lam (con #'Lam (con #'Var zero)))
-               )
-            | case #'If (\t. app (app (rec (fst t)) (rec (snd t))) (rec (thd t)))
+            ('BConst: b ->
+               if b ('Lam: ('Lam: ('Var: 1)))
+                    ('Lam: ('Lam: ('Var: 0)))
+            | 'If: t -> app (app (rec t.'1) (rec t.'2)) (rec t.'3)
             )
 
 -------------------------------------------------------------------------------
@@ -38,7 +37,7 @@ desugar : forall y. BoolF < y, LamF < y - BoolF =>
 desugar = \d. desugarB | ext d
 
 xpNott : Mu (Sigma LBF)
-xpNott = con #'Lam (con #'If (triple (con #'Var zero) (con #'BConst False) (con #'BConst True)))
+xpNott = 'Lam: ('If: (triple ('Var: 0) ('BConst: False) ('BConst: True)))
 
 desNott : Mu (Sigma LamF)
 desNott = histo (desugar functorLam) xpNott

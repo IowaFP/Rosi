@@ -26,7 +26,7 @@ type Unit : *
 type Unit = Pi {}
 
 tt : Unit
-tt = prj (#'x := /\ a. \x. x)
+tt = prj ('x := /\ a. \x. x)
 
 -------------------------------------------------------------------------------
 -- the any label
@@ -36,6 +36,9 @@ any = /\ l. #l
 
 -------------------------------------------------------------------------------
 -- Convenience functions for records and variants
+--
+-- Note: sel, con, match, case, and otherwise are used in desugaring! In
+-- particular, this means they can't be implemented with sugar themselves!
 
 -- sel : {l := t} < z => Pi z -> #l -> t
 sel : Pi> {l := t} -> #l -> t
@@ -52,6 +55,8 @@ case = \ l f x. f (x / l)
 
 otherwise : a -> b -> a
 otherwise = const
+
+-------------------------------------------------------------------------------
 
 brnl : x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
 brnl = \ f g. f | (g . inj)
@@ -82,21 +87,21 @@ True = 'True: tt
 False : Bool
 False = 'False: tt
 
-ite : Bool -> t -> t -> t
-ite = 'True: u -> (\t1 t2. t1)
-    | 'False: u -> (\t1 t2. t2)
+if : Bool -> t -> t -> t
+if = 'True: u -> (\t1 t2. t1)
+   | 'False: u -> (\t1 t2. t2)
 
 not : Bool -> Bool
-not = \b. ite b False True
+not = \b. if b False True
 
 and : Bool -> Bool -> Bool
-and = \b. ite b id (const False)
+and = \b. if b id (const False)
 
 or : Bool -> Bool -> Bool
-or = \b. ite b (const True) id
+or = \b. if b (const True) id
 
 xor : Bool -> Bool -> Bool
-xor = \b. ite b not id
+xor = \b. if b not id
 
 --------------------------------------------------------------------------------
 -- Bot elimination
@@ -177,13 +182,13 @@ type Either : * -> * -> *
 type Either = \a b. Sigma { 'Left := a, 'Right := b }
 
 Left : forall a b. a -> Either a b
-Left = \a. con #'Left a
+Left = 'Left:
 
 Right : forall a b. b -> Either a b
-Right = \b. con #'Right b
+Right = 'Right:
 
 either : forall a b c. (a -> c) -> (b -> c) -> Either a b -> c
-either = \ f g. (case #'Left f | case #'Right g)
+either = \ f g. (case 'Left f | case 'Right g)
 
 -------------------------------------------------------------------------------
 
