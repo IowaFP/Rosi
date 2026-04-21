@@ -55,7 +55,7 @@ intBool = /\ l t. sel (#'n := 1 , #'b := True) (any [ l ])
 -- of course, a first-class label is often just a type annotation
 -- in disguise.
 n : Nat
-n = ite (intBool ['b] [Bool]) (succ (intBool ['n] [Nat])) 0
+n = if (intBool ['b] [Bool]) (succ (intBool ['n] [Nat])) 0
 
 -- §4.2 Overloading
 type Plus : R[ * ]

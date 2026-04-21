@@ -295,6 +295,8 @@ Rosi supports an arbitrary fixed point operator `fix : forall a. (a -> a) -> a`
 
 Rosi's type inference mechanism attempts to support first-class polymorphism. Initial results are promising (such as the instantiations in the functor example), although some gaps remain. See [examples/Poly.ro](examples/Poly.ro) for the current state.
 
+Conditional expressions are written with `if`, which is just a function defined in `Ro.Base` with type `Bool -> t -> t -> t`. The usual boolean operators (`and`, `not`, `or`, `xor`) are also defined there.
+
 ## Rosi's type errors
 
 Rosi's primitives on records and variants are highly polymorphic, and errors in their use generally arise as failures to solve predicates. For a simple example, consider:

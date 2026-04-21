@@ -146,7 +146,7 @@ type IntBoolAlg = {
 IffExpr : Pi Expr -> Pi Expr -> Pi Expr -> Pi Expr 
 IffExpr = \ e1 e2 e3. (#'eval := 
   as #'Bool (eval e1)
-    (\ b. ite b (eval e2) (eval e3)))
+    (\ b. if b (eval e2) (eval e3)))
 
 BoolExpr : Bool -> Pi Expr
 BoolExpr = \ b. (#'eval := con #'Bool b)
