@@ -102,6 +102,7 @@ eval' h (ELabel (Just k) l e) =
   case k of
     Pi -> VRecord [v]
     Sigma -> VVariant 0 v
+    TCUnif _ -> VRecord [v]
   where v = eval h e
 eval' h e0@(EUnlabel (Just k) e l) = -- eval h e
   case (k, v) of
