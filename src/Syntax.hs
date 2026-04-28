@@ -123,6 +123,13 @@ data Ty =
   | TInst Insts Ty | TMapApp Ty | TPlus Ty Ty | TConOrd TyCon TyOrdering Ty
   deriving (Data, Eq, Show, Typeable)
 
+tUnit :: Ty
+tUnit = TConApp Pi (TRow [])
+
+-- TODO: Have Garrett check this
+tBool :: Ty
+tBool = TConApp Sigma (TRow [TLabeled (TLab "False") tUnit, TLabeled (TLab "True") tUnit])
+
 data Inst = TyArg Ty | PrArg Evid
   deriving (Data, Eq, Show, Typeable)
 
@@ -345,7 +352,7 @@ shiftT j = shiftTN j 1
 --------------------------------------------------------------------------------
 
 data Const =
-    CPrj | CConcat | CInj | CBranch | CSyn | CAna | CFold | CFix | CStringCat
+    CPrj | CConcat | CInj | CBranch | CSyn | CAna | CFold | CFix | CStringCat | CStringEq
     deriving (Data, Eq, Show, Typeable)
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?

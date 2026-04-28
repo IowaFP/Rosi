@@ -381,15 +381,17 @@ term = prefixes typedTerm where
 
   labTerm :: Parser Term
   labTerm =
-    do t <- catTerm
+    do t <- stringEqTerm
        choice
          [ do symbol ":="
               ELabel Nothing t <$> term
          , do symbol "/"
-              EUnlabel Nothing t <$> catTerm
+              EUnlabel Nothing t <$> stringEqTerm
          , return t ]
 
     -- chainl1 catTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
+ 
+  stringEqTerm = chainl1 catTerm $ op "~" (ebinary CStringEq)
 
   catTerm = chainl1 appTerm $ op "^" (ebinary CStringCat)
 
@@ -467,7 +469,8 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                     ("ana", CAna),
                     ("fold", CFold),
                     ("fix", CFix),
-                    ("(^)", CStringCat)]]
+                    ("(^)", CStringCat),
+                    ("(~)", CStringEq)]]
 
   buildNumber :: Int -> Term
   buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
