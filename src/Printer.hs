@@ -179,6 +179,7 @@ instance Printable Ty where
   ppr t = "<missing: " <> ppre (show t) <> ">"
 
 instance Printable Pred where
+  ppr :: Pred -> RDoc ann
   ppr (PLeq t u) = fillSep [ppr t <+> "<", ppr u ]
   ppr (PPlus t u v) = fillSep [ppr t <+> "+", ppr u <+> "~", ppr v]
   ppr (PEq t u) = fillSep [ppr t <+> "~", ppr u]
@@ -200,6 +201,8 @@ instance Printable Term where
     with 1 $ fillSep [at 2 (ppr e1), "|", ppr e2]
   ppr (EApp (EApp (EConst CStringCat) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "^", ppr e2]
+  ppr (EApp (EApp (EConst CStringEq) e1) e2) =
+    with 1 $ fillSep [at 2 (ppr e1), "~", ppr e2]
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr (ETyLam x (Just k) m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
   ppr (ETyLam x Nothing m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <> ".", ppr m]
@@ -223,6 +226,7 @@ instance Printable Term where
     name CBranch = "(|)"
     name CFix = "fix"
     name CStringCat = "(^)"
+    name CStringEq = "(~)"
     name CSyn = "syn"
     name CAna = "ana"
     name CFold = "fold"

@@ -233,6 +233,10 @@ checkTerm0 e@(EConst c) expected =
         constType CStringCat =
           return (TString `funTy` TString `funTy` TString)
 
+        constType CStringEq =
+          -- TODO: Have Garrett check this
+          return (TString `funTy` TString `funTy` tBool)
+
 checkTerm0 e0@(ETyped e t) expected =
   do (t', _) <- normalize [] =<< toCheckM (checkTy' e0 t KType)
      e' <- checkTerm e t'  -- any reason to preserve the type ascription?
