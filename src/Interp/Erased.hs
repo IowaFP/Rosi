@@ -38,7 +38,6 @@ vUnit = VRecord []
 -- type Bool : *
 -- type Bool = Sigma { 'True := Unit, 'False := Unit }
 vBool :: Bool -> Value
---TODO: Check if these indices are right.
 vBool False = VVariant 0 vUnit
 vBool True = VVariant 1 vUnit
 
@@ -186,7 +185,6 @@ eval' h (EConst CStringCat) =
     (_, VString s1 : VString s0 : _) ->
        VString (s0 ++ s1)
     _ -> error $ "bad environment for (^): " ++ show h
--- TODO: check this
 eval' h (EConst CStringEq) =
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \case

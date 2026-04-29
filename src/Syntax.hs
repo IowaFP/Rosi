@@ -126,7 +126,6 @@ data Ty =
 tUnit :: Ty
 tUnit = TConApp Pi (TRow [])
 
--- TODO: Have Garrett check this
 tBool :: Ty
 tBool = TConApp Sigma (TRow [TLabeled (TLab "False") tUnit, TLabeled (TLab "True") tUnit])
 
