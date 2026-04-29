@@ -123,11 +123,11 @@ data Ty =
   | TInst Insts Ty | TMapApp Ty | TPlus Ty Ty | TConOrd TyCon TyOrdering Ty
   deriving (Data, Eq, Show, Typeable)
 
-tUnit :: Ty
-tUnit = TConApp Pi (TRow [])
+unitTy :: Ty
+unitTy = TConApp Pi (TRow [])
 
-tBool :: Ty
-tBool = TConApp Sigma (TRow [TLabeled (TLab "False") tUnit, TLabeled (TLab "True") tUnit])
+boolTy :: Ty
+boolTy = TConApp Sigma (TRow [TLabeled (TLab "False") unitTy, TLabeled (TLab "True") unitTy])
 
 data Inst = TyArg Ty | PrArg Evid
   deriving (Data, Eq, Show, Typeable)

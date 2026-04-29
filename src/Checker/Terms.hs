@@ -234,7 +234,7 @@ checkTerm0 e@(EConst c) expected =
           return (TString `funTy` TString `funTy` TString)
 
         constType CStringEq =
-          return (TString `funTy` TString `funTy` tBool)
+          return (TString `funTy` TString `funTy` boolTy)
 
 checkTerm0 e0@(ETyped e t) expected =
   do (t', _) <- normalize [] =<< toCheckM (checkTy' e0 t KType)
