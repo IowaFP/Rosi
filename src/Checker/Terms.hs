@@ -234,7 +234,6 @@ checkTerm0 e@(EConst c) expected =
           return (TString `funTy` TString `funTy` TString)
 
         constType CStringEq =
-          -- TODO: Have Garrett check this
           return (TString `funTy` TString `funTy` tBool)
 
 checkTerm0 e0@(ETyped e t) expected =
