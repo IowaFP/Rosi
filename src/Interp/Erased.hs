@@ -9,6 +9,7 @@ import Syntax
 import qualified Debug.Trace as T
 import GHC.Stack
 import System.IO.Unsafe
+import Data.Maybe (fromMaybe)
 
 traceEvaluation :: IORef Bool
 traceEvaluation = unsafePerformIO (newIORef False)
@@ -27,7 +28,7 @@ instance Show Body where
   show (Prim _) = "<<prim>>"
 
 data Value = VPrLam Env Body | VLam Env Body
-           | VSing | VVariant Int Value | VRecord [Value] | VSyn (Int -> Value)
+           | VSing (Maybe String) | VVariant Int Value (Maybe String) | VRecord [Value] | VSyn (Int -> Value)
            | VString String
 
 -- Alias for Unit (as implemented in Base)
@@ -38,15 +39,16 @@ vUnit = VRecord []
 -- type Bool : *
 -- type Bool = Sigma { 'True := Unit, 'False := Unit }
 vBool :: Bool -> Value
-vBool False = VVariant 0 vUnit
-vBool True = VVariant 1 vUnit
+vBool False = VVariant 0 vUnit (Just "False")
+vBool True = VVariant 1 vUnit (Just "True")
 
 
 instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
   show (VLam _ b) = "\\ " ++ show b
-  show VSing = "()"
-  show (VVariant k w) = "<" ++ show k ++ ", " ++ show w ++ ">"
+  show (VSing (Just s)) = s
+  show (VSing Nothing) = "??"
+  show (VVariant k w l) = "<" ++ fromMaybe (show k) l ++ ": " ++ show w ++ ">"
   show (VRecord vs) = "(" ++ intercalate ", " (map show vs) ++ ")"
   show (VSyn t) = "<<syn>>"
   show (VString s) = "\"" ++ s ++ "\""
@@ -89,9 +91,47 @@ recordSize (VRecord vs) = length vs
 recordSize (VSyn f)     = error "unbounded"
 recordSize v            = 1
 
-variantFrom :: HasCallStack => Value -> (Int, Value)
-variantFrom (VVariant k v) = (k, v)
-variantFrom v              = (0, v)
+variantFrom :: HasCallStack => Value -> (Int, Value, Maybe String)
+variantFrom (VVariant k v s) = (k, v, s)
+variantFrom v              = (0, v, Just "Test")
+
+labelFromTerm :: Env -> Term -> Maybe String
+labelFromTerm h (ESing t) = labelFromTy t
+labelFromTerm h (EInst t (Known is)) = Just (show (inst (eval h t) is)) where
+  inst v []             = v
+  inst v (TyArg _ : is) = inst v is
+  inst v (PrArg q : is) = inst (prapp v (evalV h q)) is
+
+labelFromTy :: Ty -> Maybe String
+labelFromTy (TLab s) = Just s
+labelFromTy (TSing l) = labelFromTy l
+labelFromTy (TVar i qname) = Just "TVar"
+
+labelFromTy (TUnif uvar) = Just "TUnif"
+labelFromTy TFun = Just "TFun"
+labelFromTy (TThen pred ty ) = Just "TTHen"
+labelFromTy (TForall s (Just kind) ty ) = Just "TForall 1"
+labelFromTy (TForall s Nothing ty ) = Just "TForall 2"
+labelFromTy (TLam s (Just kind) ty ) = Just "TLam 1"
+labelFromTy (TLam s Nothing ty ) = Just "TLam 2"
+labelFromTy (TApp ty1 ty2) = Just "TApp"
+
+labelFromTy (TLabeled ty1 ty2 ) = Just "TLabeled"
+labelFromTy (TRow [] ) = Just "TRow"
+labelFromTy (TRow (ty:tys)) = Just "TRow"
+labelFromTy (TConApp tyCon ty) = Just "TConApp"
+
+labelFromTy (TMap ty ) = Just "TMap"
+labelFromTy (TCompl ty1 ty2) = Just "TCompl"
+labelFromTy TString = Just "TString"
+-- Internals and temporaries
+labelFromTy (TInst insts ty ) = Just "TInst"
+labelFromTy (TMapApp ty ) = Just "TMapApp"
+labelFromTy (TPlus ty1 ty2 ) = Just "TPlus"
+labelFromTy (TConOrd tyCon tyOrdering ty) = Just "TConOrd"
+-- labelFromTy _ = Nothing
+
+
 
 eval, eval' :: HasCallStack => Env -> Term -> Value
 eval h e = -- trace ("Eval: " ++ renderString (ppr e)) $
@@ -109,16 +149,16 @@ eval' h (EInst t (Known is)) = inst (eval h t) is where
   inst v []             = v
   inst v (TyArg _ : is) = inst v is
   inst v (PrArg q : is) = inst (prapp v (evalV h q)) is
-eval' h (ESing _) = VSing
+eval' h (ESing t) = VSing (labelFromTy t)
 eval' h (ELabel (Just k) l e) =
   case k of
     Pi -> VRecord [v]
-    Sigma -> VVariant 0 v
+    Sigma -> VVariant 0 v (labelFromTerm h l)
     TCUnif _ -> VRecord [v]
   where v = eval h e
 eval' h e0@(EUnlabel (Just k) e l) = -- eval h e
   case (k, v) of
-    (Sigma, VVariant _ v) -> v
+    (Sigma, VVariant _ v _) -> v
     (Pi, VRecord [v]) -> v
     (Pi, VSyn f) -> f 0
   where v = eval h e
@@ -140,8 +180,8 @@ eval' h (EConst CInj) = -- VPrLam h (Value (VLam h (Const CPrj)))
   VLam h $ Prim $ \ h ->
     case h of
       (VLeq is : _, v : _) ->
-        let (k, w) = variantFrom v in
-        VVariant (is <!> k) w
+        let (k, w, s) = variantFrom v in
+        VVariant (is <!> k) w s
       _ -> error $ "bad environment for inj: " ++ show h
 eval' h (EConst CConcat) = -- VPrLam h (Value (VLam h (Value (VLam h (Const CConcat)))))
   VPrLam h $ Prim $ \h ->
@@ -169,13 +209,13 @@ eval' h (EConst CBranch) = -- VPrLam h (Value (VLam h (Value (VLam h (Value (VLa
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \case
     (VPlus is : _, v : g : f : _) ->
-      let (k, w) = variantFrom v in
+      let (k, w, s) = variantFrom v in
       trace ("branch: constructor is " ++ show k ++
               " and evidence is " ++ show is ++ " so calling " ++
               (case is <!> k of Left _ -> show f; Right _ -> show g)) $
       case is <!> k of
-        Left i  -> app f (VVariant i w)
-        Right i -> app g (VVariant i w)
+        Left i  -> app f (VVariant i w s)
+        Right i -> app g (VVariant i w s)
     _ -> error $ "bad environment for branch: " ++ show h
 eval' h (EConst CFix) = -- VLam h (Const CFix)
   eval h (ELam "f" Nothing (EApp (EVar 0 ["f", ""]) (EApp (EConst CFix) (EVar 0 ["f", []]))))
@@ -195,13 +235,13 @@ eval' h (EConst CSyn) =
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \case
     (_, f : _) ->
-      VSyn (\i -> app (prapp f (VLeq (Bounded [i]))) VSing)
+      VSyn (\i -> app (prapp f (VLeq (Bounded [i]))) (VSing (Just "In Syn")))
 eval' h (EConst CAna) =
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \case
-    (_, VVariant k w : f : _) ->
-      app (app (prapp f (VLeq (Bounded [k]))) VSing) w
+    (_, VVariant k w _ : f : _) ->
+      app (app (prapp f (VLeq (Bounded [k]))) (VSing (Just "In Ana"))) w
     (_, v : e : _) ->
       error $ "bad argument for (ana" ++ show e ++ "): " ++ show v
 eval' h (EConst CFold) =
@@ -213,7 +253,7 @@ eval' h (EConst CFold) =
   VLam h $ Prim $ \case
     (VVFold n : _, r : def : comp : single : _) ->
       let vs = recordFrom r
-          one k = app (app (prapp single (VLeq $ Bounded [k])) VSing) (vs k)
+          one k = app (app (prapp single (VLeq $ Bounded [k])) (VSing (Just "In Fold"))) (vs k)
       in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1..n - 1])
 eval' h (ECast e q) = q `seq` eval h e
 eval' h (ETyped e _) = eval h e

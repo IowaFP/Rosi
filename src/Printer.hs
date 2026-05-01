@@ -245,6 +245,7 @@ instance Printable Evid where
 pprTyDecl :: QName -> Ty -> RDoc ann
 pprTyDecl x ty = fillSep [ppr x <+> ":", ppr ty]
 
+pprTyping :: (Printable t1, Printable t2, Printable t3) => (t1, t2, t3) -> RDoc ann
 pprTyping (x, ty, e) =
   vcat [fillSep [ppr x <+> ":", ppr ty], fillSep [ppr x <+> "=", ppr e]]
 
