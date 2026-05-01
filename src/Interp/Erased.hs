@@ -75,8 +75,8 @@ instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
   show (VLam _ b) = "\\ " ++ show b
   show (VSing (Just s)) = s
-  -- TODO(mctano): Find out what this should be
-  show (VSing Nothing) = "{EMPTY_SINGLETON}"
+  -- TODO(mctano): Does this case still have a valid use?
+  show (VSing Nothing) = "()"
   -- Special cases
   show (VVariant k w l)
     -- lists
