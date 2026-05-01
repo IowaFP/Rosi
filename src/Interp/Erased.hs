@@ -264,8 +264,8 @@ eval' h (EConst CAna) =
   VLam h $ Prim $ \h ->
     VLam h $ Prim $ \h ->
       VLam h $ Prim $ \case
-        (_, VVariant k w _ : f : _) ->
-          app (app (prapp f (VLeq (Bounded [k]))) (VSing Nothing)) w
+        (_, VVariant k w s : f : _) ->
+          app (app (prapp f (VLeq (Bounded [k]))) (VSing s)) w
         (_, v : e : _) ->
           error $ "bad argument for (ana" ++ show e ++ "): " ++ show v
 eval' h (EConst CFold) =
