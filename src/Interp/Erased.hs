@@ -33,13 +33,13 @@ data Value
   | -- TODO(mctano) add names to VRecord
     VSing (Maybe String)
   | VVariant Int Value (Maybe String)
-  | VRecord [Value]
+  | VRecord [Value] [Maybe String]
   | VSyn (Int -> Value)
   | VString String
 
 -- Alias for Unit (as implemented in Base)
 vUnit :: Value
-vUnit = VRecord []
+vUnit = VRecord [] []
 
 -- Alias for Bool (as implemented in Base)
 -- type Bool : *
@@ -50,15 +50,19 @@ vBool True = VVariant 1 vUnit (Just "True")
 
 fromPeano :: Value -> Maybe Int
 fromPeano (VVariant _ p (Just "Succ")) = fmap (+ 1) (fromPeano p)
-fromPeano (VVariant _ (VRecord []) (Just "Zero")) = Just 0
+fromPeano (VVariant _ (VRecord [] []) (Just "Zero")) = Just 0
 fromPeano _ = Nothing
 
 listFromVariant :: Value -> Maybe [String]
-listFromVariant (VVariant _ (VRecord [x, xs]) (Just "Cons")) = case listFromVariant xs of
+-- Match on names = ["1", "2"] 
+listFromVariant (VVariant _ (VRecord [x, xs] _) (Just "Cons")) = case listFromVariant xs of
   Nothing -> Nothing
   Just ys -> Just (show x : ys)
-listFromVariant (VVariant _ (VRecord []) (Just "Nil")) = Just []
+listFromVariant (VVariant _ (VRecord [] []) (Just "Nil")) = Just []
 listFromVariant _ = Nothing
+
+showRecordEntry :: Show v => Maybe String -> v -> Int -> String
+showRecordEntry k v i = fromMaybe (show i) k ++ ": " ++ show v
 
 instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
@@ -71,7 +75,8 @@ instance Show Value where
     | Just ss <- listFromVariant (VVariant k w l) = "[" ++ intercalate ", " ss ++ "]"
     | Just n <- fromPeano (VVariant k w l) = show n
     | otherwise = "<" ++ fromMaybe (show k) l ++ ": " ++ show w ++ ">"
-  show (VRecord vs) = "(" ++ intercalate ", " (map show vs) ++ ")"
+  show (VRecord vs names) = "(" ++ intercalate ", " (zipWith3 showRecordEntry names vs [0..]) ++ ")"
+  -- TODO(mctano): Deal with labels for synthesized records
   show (VSyn t) = "<<syn>>"
   show (VString s) = "\"" ++ s ++ "\""
 
@@ -103,13 +108,13 @@ prapp f@(VPrLam (hp, he) f') v =
 prapp f v =
   error $ "don't know how to apply " ++ show f ++ " to " ++ show v
 
-recordFrom :: (HasCallStack) => Value -> Int -> Value
-recordFrom (VRecord vs) i = vs !! i
-recordFrom (VSyn f) i = f i
-recordFrom v _ = v
+recordFrom :: (HasCallStack) => Value -> Int -> (Value, Maybe String)
+recordFrom (VRecord vs names) i = (vs !! i, names !! i)
+recordFrom (VSyn f) i = (f i, Nothing)
+recordFrom v _ = (v, Nothing)
 
 recordSize :: (HasCallStack) => Value -> Int
-recordSize (VRecord vs) = length vs
+recordSize (VRecord vs _) = length vs
 recordSize (VSyn f) = error "unbounded"
 recordSize v = 1
 
@@ -124,10 +129,11 @@ labelFromTerm h (EInst t (Known is)) = Just (show (inst (eval h t) is))
     inst v [] = v
     inst v (TyArg _ : is) = inst v is
     inst v (PrArg q : is) = inst (prapp v (evalV h q)) is
+labelFromTerm _ _ = Nothing
 
 labelFromTy :: Ty -> Maybe String
 labelFromTy (TLab s) = Just s
-labelFromTy _ = Just "?MISSINGLABEL"
+labelFromTy _ = Nothing
 
 eval, eval' :: (HasCallStack) => Env -> Term -> Value
 eval h e =
@@ -149,16 +155,17 @@ eval' h (EInst t (Known is)) = inst (eval h t) is
 eval' h (ESing t) = VSing (labelFromTy t)
 eval' h (ELabel (Just k) l e) =
   case k of
-    Pi -> VRecord [v]
+
+    Pi -> VRecord [v] [labelFromTerm h l]
     Sigma -> VVariant 0 v (labelFromTerm h l)
-    TCUnif _ -> VRecord [v]
+    TCUnif _ -> VRecord [v] [labelFromTerm h l]
   where
     v = eval h e
 eval' h e0@(EUnlabel (Just k) e l) =
   -- eval h e
   case (k, v) of
     (Sigma, VVariant _ v _) -> v
-    (Pi, VRecord [v]) -> v
+    (Pi, VRecord [v] _) -> v
     (Pi, VSyn f) -> f 0
   where
     v = eval h e
@@ -168,13 +175,16 @@ eval' h (EConst CPrj) =
     VLam h $ Prim $ \h ->
       case h of
         (VLeq (Bounded is) : _, VSyn f : _) ->
-          VRecord (map f is)
+          -- TODO(mctano): handle this case
+          VRecord (map f is) (replicate  (length is) Nothing) 
         (VLeq (Unbounded is) : _, VSyn f : _) ->
           VSyn (\i -> f (is !! i))
-        (VLeq (Bounded is) : _, VRecord vs : _) ->
-          VRecord (map (vs !!) is)
-        (VLeq (Unbounded is) : _, VRecord vs : _) ->
-          VRecord [vs !! j | j <- takeWhile (< length vs) is]
+        (VLeq (Bounded is) : _, VRecord vs _ : _) ->
+          -- TODO(mctano): handle this case
+          VRecord (map (vs !!) is) (replicate  (length is) Nothing) 
+        (VLeq (Unbounded is) : _, VRecord vs _ : _) ->
+          -- TODO(mctano): handle this case
+          VRecord [vs !! j | j <- takeWhile (< length vs) is] (replicate  (length is) Nothing) 
         _ -> error $ "bad environment for prj: " ++ show h
 eval' h (EConst CInj) =
   -- VPrLam h (Value (VLam h (Const CPrj)))
@@ -195,17 +205,21 @@ eval' h (EConst CConcat) =
               vs = recordFrom v
               pick (Left i) = vs i
               pick (Right j) = ws j
-           in VRecord [pick i | i <- is]
-        (VPlus (Unbounded is) : _, VRecord ws : VRecord vs : _) ->
-          let pick (Left i) = vs !! i
-              pick (Right i) = ws !! i
-           in VRecord [pick (is !! i) | i <- [0 .. length vs + length ws - 1]]
+              (values, names) = unzip [pick i | i <- is]
+           in VRecord values names
+           --TODO(mctano): double-check this.
+        (VPlus (Unbounded is) : _, VRecord ws wNames : VRecord vs vNames : _) ->
+          let pick (Left i) = (vs !! i, vNames !! i)
+              pick (Right i) = (ws !! i, wNames !! i)
+              (values, names) = unzip [pick (is !! i) | i <- [0 .. length vs + length ws - 1]]
+           in VRecord values names
         (VPlus (Unbounded is) : _, w : v : _) ->
           let vs = recordFrom v
               ws = recordFrom w
               pick (Left i) = vs i
               pick (Right i) = ws i
-           in VSyn (\i -> pick (is !! i))
+           --TODO(mctano): handle synth properly
+           in VSyn (\i -> fst (pick (is !! i)))
 eval' h (EConst CBranch) =
   -- VPrLam h (Value (VLam h (Value (VLam h (Value (VLam h (Const CBranch)))))))
   VPrLam h $ Prim $ \h ->
@@ -263,7 +277,8 @@ eval' h (EConst CFold) =
             VLam h $ Prim $ \case
               (VVFold n : _, r : def : comp : single : _) ->
                 let vs = recordFrom r
-                    one k = app (app (prapp single (VLeq $ Bounded [k])) (VSing Nothing)) (vs k)
+                    -- TODO(mctano): "handle labeling for fold"
+                    one k = app (app (prapp single (VLeq $ Bounded [k])) (VSing Nothing)) (fst (vs k))
                  in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1 .. n - 1])
 eval' h (ECast e q) = q `seq` eval h e
 eval' h (ETyped e _) = eval h e
