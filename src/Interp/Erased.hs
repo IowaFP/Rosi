@@ -80,7 +80,7 @@ instance Show Value where
   -- Special cases
   show (VVariant k w l)
     -- lists
-    | Just ss <- listFromVariant (VVariant k w l) = "[" ++ intercalate ", " ss ++ "]"
+    | Just ss <- listFromVariant (VVariant k w l) = "[\n" ++ intercalate ", \n" ss ++ "\n]"
     -- Nats
     | Just n <- fromPeano (VVariant k w l) = show n
     | otherwise = "<" ++ fromMaybe (show k) l ++ ": " ++ show w ++ ">"
