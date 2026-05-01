@@ -123,7 +123,7 @@ prapp f v =
 
 recordFrom :: (HasCallStack) => Value -> Int -> (Value, Maybe String)
 recordFrom (VRecord vs names) i = (vs !! i, names !! i)
-recordFrom (VSyn f) i = (f i, Just "recordFrom VSyn")
+recordFrom (VSyn f) i = (f i, Nothing)
 recordFrom v _ = (v, Nothing)
 
 recordSize :: (HasCallStack) => Value -> Int
@@ -220,12 +220,11 @@ eval' h (EConst CConcat) =
               pick (Right j) = ws j
               (values, names) = unzip [pick i | i <- is]
            in VRecord values names
-           --TODO(mctano): double-check this.
         (VPlus (Unbounded is) : _, VRecord ws wNames : VRecord vs vNames : _) ->
           let pick (Left i) = (vs !! i, vNames !! i)
               pick (Right i) = (ws !! i, wNames !! i)
               (values, names) = unzip [pick (is !! i) | i <- [0 .. length vs + length ws - 1]]
-           in VRecord values (repeat $ Just "case 2")
+           in VRecord values names
         (VPlus (Unbounded is) : _, w : v : _) ->
           let vs = recordFrom v
               ws = recordFrom w
