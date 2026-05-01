@@ -83,6 +83,8 @@ instance Show Value where
     | Just ss <- listFromVariant (VVariant k w l) = "[\n" ++ intercalate ", \n" ss ++ "\n]"
     -- Nats
     | Just n <- fromPeano (VVariant k w l) = show n
+    -- label present and mapped to Unit. e.g. Bool, Nothing. Check after previous cases so it won't match Zero or Nil
+    | (VRecord [] [], Just s) <- (w, l) = s
     | otherwise = "<" ++ fromMaybe (show k) l ++ ": " ++ show w ++ ">"
   show (VRecord vs names) | isTuple names = showTuple vs
   show (VRecord vs names) = "(" ++ intercalate ", " (zipWith3 showRecordEntry names vs [0..]) ++ ")"
