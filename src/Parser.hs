@@ -134,7 +134,6 @@ lidentifier :: Parser String
 lidentifier =
   char '\'' >> some (alphaNumChar <|> char '\'' <|> char '_')
 
-qidentifier :: ParsecT Void [Char] (State [(Ordering, Pos)]) [[Char]]
 qidentifier  =
   do x <- identifier
      xs <- many (try (string "." >> identifier))
@@ -414,7 +413,6 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                         , EVar (-1) <$> qidentifier ]
             char ':'
             return (EApp (EVar (-1) (reverse ["Ro", "Base", "con"])) x)
-
 
   sing x = [x]
   buildSel x l = EApp (EApp (EVar (-1) (reverse ["Ro", "Base", "sel"])) x) l

@@ -28,6 +28,7 @@ instance Show Body where
   show (Prim _) = "<<prim>>"
 
 data Value = VPrLam Env Body | VLam Env Body
+-- TODO(mctano) add names to VRecord
            | VSing (Maybe String) | VVariant Int Value (Maybe String) | VRecord [Value] | VSyn (Int -> Value)
            | VString String
 
@@ -47,7 +48,7 @@ instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
   show (VLam _ b) = "\\ " ++ show b
   show (VSing (Just s)) = s
-  show (VSing Nothing) = "??"
+  show (VSing Nothing) = "()"
   show (VVariant k w l) = "<" ++ fromMaybe (show k) l ++ ": " ++ show w ++ ">"
   show (VRecord vs) = "(" ++ intercalate ", " (map show vs) ++ ")"
   show (VSyn t) = "<<syn>>"
@@ -104,32 +105,7 @@ labelFromTerm h (EInst t (Known is)) = Just (show (inst (eval h t) is)) where
 
 labelFromTy :: Ty -> Maybe String
 labelFromTy (TLab s) = Just s
-labelFromTy (TSing l) = labelFromTy l
-labelFromTy (TVar i qname) = Just "TVar"
-
-labelFromTy (TUnif uvar) = Just "TUnif"
-labelFromTy TFun = Just "TFun"
-labelFromTy (TThen pred ty ) = Just "TTHen"
-labelFromTy (TForall s (Just kind) ty ) = Just "TForall 1"
-labelFromTy (TForall s Nothing ty ) = Just "TForall 2"
-labelFromTy (TLam s (Just kind) ty ) = Just "TLam 1"
-labelFromTy (TLam s Nothing ty ) = Just "TLam 2"
-labelFromTy (TApp ty1 ty2) = Just "TApp"
-
-labelFromTy (TLabeled ty1 ty2 ) = Just "TLabeled"
-labelFromTy (TRow [] ) = Just "TRow"
-labelFromTy (TRow (ty:tys)) = Just "TRow"
-labelFromTy (TConApp tyCon ty) = Just "TConApp"
-
-labelFromTy (TMap ty ) = Just "TMap"
-labelFromTy (TCompl ty1 ty2) = Just "TCompl"
-labelFromTy TString = Just "TString"
--- Internals and temporaries
-labelFromTy (TInst insts ty ) = Just "TInst"
-labelFromTy (TMapApp ty ) = Just "TMapApp"
-labelFromTy (TPlus ty1 ty2 ) = Just "TPlus"
-labelFromTy (TConOrd tyCon tyOrdering ty) = Just "TConOrd"
--- labelFromTy _ = Nothing
+labelFromTy _ = Just "?MISSINGLABEL"
 
 
 
@@ -235,13 +211,13 @@ eval' h (EConst CSyn) =
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \case
     (_, f : _) ->
-      VSyn (\i -> app (prapp f (VLeq (Bounded [i]))) (VSing (Just "In Syn")))
+      VSyn (\i -> app (prapp f (VLeq (Bounded [i]))) (VSing Nothing))
 eval' h (EConst CAna) =
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \h ->
   VLam h $ Prim $ \case
     (_, VVariant k w _ : f : _) ->
-      app (app (prapp f (VLeq (Bounded [k]))) (VSing (Just "In Ana"))) w
+      app (app (prapp f (VLeq (Bounded [k]))) (VSing Nothing)) w
     (_, v : e : _) ->
       error $ "bad argument for (ana" ++ show e ++ "): " ++ show v
 eval' h (EConst CFold) =
@@ -253,7 +229,7 @@ eval' h (EConst CFold) =
   VLam h $ Prim $ \case
     (VVFold n : _, r : def : comp : single : _) ->
       let vs = recordFrom r
-          one k = app (app (prapp single (VLeq $ Bounded [k])) (VSing (Just "In Fold"))) (vs k)
+          one k = app (app (prapp single (VLeq $ Bounded [k])) (VSing Nothing)) (vs k)
       in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1..n - 1])
 eval' h (ECast e q) = q `seq` eval h e
 eval' h (ETyped e _) = eval h e
