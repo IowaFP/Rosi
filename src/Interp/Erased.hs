@@ -64,6 +64,13 @@ listFromVariant _ = Nothing
 showRecordEntry :: Show v => Maybe String -> v -> Int -> String
 showRecordEntry k v i = fromMaybe (show i) k ++ ": " ++ show v
 
+isTuple :: [Maybe String] -> Bool
+isTuple names = and [s == Just (show n) | (s, n) <- zip names [1..]]
+
+showTuple :: [Value] -> String
+showTuple vs = "(" ++ intercalate ", " (map show vs) ++ ")"
+
+
 instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
   show (VLam _ b) = "\\ " ++ show b
@@ -72,9 +79,12 @@ instance Show Value where
   show (VSing Nothing) = "{EMPTY_SINGLETON}"
   -- Special cases
   show (VVariant k w l)
+    -- lists
     | Just ss <- listFromVariant (VVariant k w l) = "[" ++ intercalate ", " ss ++ "]"
+    -- Nats
     | Just n <- fromPeano (VVariant k w l) = show n
     | otherwise = "<" ++ fromMaybe (show k) l ++ ": " ++ show w ++ ">"
+  show (VRecord vs names) | isTuple names = showTuple vs
   show (VRecord vs names) = "(" ++ intercalate ", " (zipWith3 showRecordEntry names vs [0..]) ++ ")"
   -- TODO(mctano): Deal with labels for synthesized records
   show (VSyn t) = "<<syn>>"
