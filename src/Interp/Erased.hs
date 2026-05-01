@@ -10,6 +10,7 @@ import GHC.Stack
 import Printer
 import Syntax
 import System.IO.Unsafe
+import qualified Debug.Trace
 
 traceEvaluation :: IORef Bool
 traceEvaluation = unsafePerformIO (newIORef False)
@@ -30,8 +31,7 @@ instance Show Body where
 data Value
   = VPrLam Env Body
   | VLam Env Body
-  | -- TODO(mctano) add names to VRecord
-    VSing (Maybe String)
+  | VSing (Maybe String)
   | VVariant Int Value (Maybe String)
   | VRecord [Value] [Maybe String]
   | VSyn (Int -> Value)
@@ -90,6 +90,7 @@ instance Show Value where
   show (VSyn t) = "<<syn>>"
   show (VString s) = "\"" ++ s ++ "\""
 
+
 data EList t = Bounded [t] | Unbounded [t]
   deriving (Show, Foldable, Functor, Traversable)
 
@@ -120,7 +121,7 @@ prapp f v =
 
 recordFrom :: (HasCallStack) => Value -> Int -> (Value, Maybe String)
 recordFrom (VRecord vs names) i = (vs !! i, names !! i)
-recordFrom (VSyn f) i = (f i, Nothing)
+recordFrom (VSyn f) i = (f i, Just "recordFrom VSyn")
 recordFrom v _ = (v, Nothing)
 
 recordSize :: (HasCallStack) => Value -> Int
@@ -186,15 +187,15 @@ eval' h (EConst CPrj) =
       case h of
         (VLeq (Bounded is) : _, VSyn f : _) ->
           -- TODO(mctano): handle this case
-          VRecord (map f is) (replicate  (length is) Nothing) 
+          VRecord (map f is) (replicate  (length is) Nothing)
         (VLeq (Unbounded is) : _, VSyn f : _) ->
           VSyn (\i -> f (is !! i))
-        (VLeq (Bounded is) : _, VRecord vs _ : _) ->
-          -- TODO(mctano): handle this case
-          VRecord (map (vs !!) is) (replicate  (length is) Nothing) 
-        (VLeq (Unbounded is) : _, VRecord vs _ : _) ->
-          -- TODO(mctano): handle this case
-          VRecord [vs !! j | j <- takeWhile (< length vs) is] (replicate  (length is) Nothing) 
+        (VLeq (Bounded is) : _, VRecord vs vNames : _) ->
+          let (values, names) = unzip (map (zip vs vNames !!) is)
+          in VRecord values names
+        (VLeq (Unbounded is) : _, VRecord vs vNames : _) ->
+          let (names, values) = unzip [zip vs vNames !! j | j <- takeWhile (< length vs) is]
+          in VRecord names values
         _ -> error $ "bad environment for prj: " ++ show h
 eval' h (EConst CInj) =
   -- VPrLam h (Value (VLam h (Const CPrj)))
@@ -222,7 +223,7 @@ eval' h (EConst CConcat) =
           let pick (Left i) = (vs !! i, vNames !! i)
               pick (Right i) = (ws !! i, wNames !! i)
               (values, names) = unzip [pick (is !! i) | i <- [0 .. length vs + length ws - 1]]
-           in VRecord values names
+           in VRecord values (repeat $ Just "case 2")
         (VPlus (Unbounded is) : _, w : v : _) ->
           let vs = recordFrom v
               ws = recordFrom w
@@ -269,6 +270,7 @@ eval' h (EConst CSyn) =
   VLam h $ Prim $ \h ->
     VLam h $ Prim $ \case
       (_, f : _) ->
+        -- TODO(mctano): handle syn
         VSyn (\i -> app (prapp f (VLeq (Bounded [i]))) (VSing Nothing))
 eval' h (EConst CAna) =
   VLam h $ Prim $ \h ->
