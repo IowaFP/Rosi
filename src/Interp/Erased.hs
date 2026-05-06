@@ -48,10 +48,11 @@ vBool :: Bool -> Value
 vBool False = VVariant 0 vUnit (Just "False")
 vBool True = VVariant 1 vUnit (Just "True")
 
-fromPeano :: Value -> Maybe Int
-fromPeano (VVariant _ p (Just "Succ")) = fmap (+ 1) (fromPeano p)
-fromPeano (VVariant _ (VRecord [] []) (Just "Zero")) = Just 0
-fromPeano _ = Nothing
+instance FromPeano Value where
+  fromPeano :: Value -> Maybe Int
+  fromPeano (VVariant _ p (Just "Succ")) = fmap (+ 1) (fromPeano p)
+  fromPeano (VVariant _ (VRecord [] []) (Just "Zero")) = Just 0
+  fromPeano _ = Nothing
 
 listFromVariant :: Value -> Maybe [String]
 -- Match on names = ["1", "2"] 

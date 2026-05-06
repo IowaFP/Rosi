@@ -192,12 +192,15 @@ instance Printable Pred where
 --   :=               2
 --   application      3
 
+class FromPeano a where
+  fromPeano :: a -> Maybe Int
+
+instance FromPeano Term where
 -- TODO(mctano): Handle other cases for terms representing a Nat
--- TODO(mctano): maybe make a typeclass for types that support fromPeano
-fromPeanoTerm :: Term -> Maybe Int
-fromPeanoTerm (EVar _ ["zero","Nat","Data"]) = Just 0
-fromPeanoTerm (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeanoTerm p)
-fromPeanoTerm _ = Nothing
+  fromPeano :: Term -> Maybe Int
+  fromPeano (EVar _ ["zero","Nat","Data"]) = Just 0
+  fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
+  fromPeano _ = Nothing
 
 instance Printable Term where
   ppr (EVar _ s) = ppr s
@@ -211,7 +214,7 @@ instance Printable Term where
     with 1 $ fillSep [at 2 (ppr e1), "^", ppr e2]
   ppr (EApp (EApp (EConst CStringEq) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "~", ppr e2]
-  ppr t | Just n <- fromPeanoTerm t =  ppre (show n)
+  ppr t | Just n <- fromPeano t =  ppre (show n)
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr (ETyLam x (Just k) m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
   ppr (ETyLam x Nothing m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <> ".", ppr m]
