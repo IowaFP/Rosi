@@ -147,6 +147,9 @@ instance Printable Ty where
   ppr (TLab s) = "'" <> ppre s
   ppr (TSing t) = "#" <> at 5 (ppr t)
   ppr (TLabeled l t) = fillSep [ppr l <+> ":=", ppr t]
+  -- Special case to print Nat type
+  -- Mu (\n : *. Sigma {'Succ := n, 'Zero := Pi {}})}
+  ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar 0 ["n",""]),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = ppre "Nat"
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
   ppr (TMap t) =
