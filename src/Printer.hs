@@ -13,7 +13,6 @@ import qualified Prettyprinter.Util as P
 import System.IO.Unsafe
 
 import Syntax
-import Debug.Trace (trace)
 
 data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool, printInstantiations :: Bool }
 type RDoc ann = ReaderT PrinterOptions IO (P.Doc ann)
