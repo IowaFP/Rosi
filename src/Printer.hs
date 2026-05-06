@@ -146,10 +146,20 @@ instance Printable Ty where
   ppr (TLab s) = "'" <> ppre s
   ppr (TSing t) = "#" <> at 5 (ppr t)
   ppr (TLabeled l t) = fillSep [ppr l <+> ":=", ppr t]
-  -- Special case to print Nat type
-  -- Mu (\n : *. Sigma {'Succ := n, 'Zero := Pi {}})}
-  ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar 0 ["n",""]),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = ppre "Nat"
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
+  -- Special cases:
+  -- TODO(mctano): special case for Tuple
+  -- Nat = Mu (\n : *. Sigma {'Succ := n, 'Zero := Pi {}})}
+  ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar _ _),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = ppre "Nat"
+  -- Special case for Maybe type
+  -- Maybe a = Sigma { 'Nothing := Unit, 'Just := a }
+  ppr (TConApp Sigma (TRow [TLabeled (TLab "Just") (TVar _ [s, _]), TLabeled (TLab "Nothing") (TConApp Pi (TRow []))])) = ppre ("Maybe " ++ s)
+  -- Special case for Bool type
+  -- Bool = Sigma { 'True := Unit, 'False := Unit }
+  ppr (TConApp Sigma (TRow [TLabeled (TLab "False") (TConApp Pi (TRow [])),TLabeled (TLab "True") (TConApp Pi (TRow []))])) = ppre "Bool"
+  -- Special case for Unit type
+  -- Unit = Pi {}
+  ppr (TConApp Pi (TRow [])) = ppre "Unit"
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
   ppr (TMap t) =
     do b <- asks printMaps
