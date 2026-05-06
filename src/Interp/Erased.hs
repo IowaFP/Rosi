@@ -81,7 +81,8 @@ instance Show Value where
   -- Special cases
   show (VVariant k w l)
     -- lists
-    | Just ss <- listFromVariant (VVariant k w l) = "[\n" ++ intercalate ", \n" ss ++ "\n]"
+    | Just [] <- listFromVariant (VVariant k w l) = "[]"
+    | Just ss <- listFromVariant (VVariant k w l) = "[\n  " ++ intercalate ", \n  " ss ++ "\n]"
     -- Nats
     | Just n <- fromPeano (VVariant k w l) = show n
     -- label present and mapped to Unit. e.g. Bool, Nothing. Check after previous cases so it won't match Zero or Nil
