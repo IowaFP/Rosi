@@ -153,7 +153,7 @@ instance Printable Ty where
   ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar _ _),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = ppre "Nat"
   -- Special case for Maybe type
   -- Maybe a = Sigma { 'Nothing := Unit, 'Just := a }
-  ppr (TConApp Sigma (TRow [TLabeled (TLab "Just") t, TLabeled (TLab "Nothing") (TConApp Pi (TRow []))])) = ppre "Maybe " <+> at 4 (ppr t)
+  ppr (TConApp Sigma (TRow [TLabeled (TLab "Just") t, TLabeled (TLab "Nothing") (TConApp Pi (TRow []))])) = ppre "Maybe" <+> at 4 (ppr t)
   -- Special case for Bool type
   -- Bool = Sigma { 'True := Unit, 'False := Unit }
   ppr (TConApp Sigma (TRow [TLabeled (TLab "False") (TConApp Pi (TRow [])),TLabeled (TLab "True") (TConApp Pi (TRow []))])) = ppre "Bool"
