@@ -169,7 +169,6 @@ instance Printable Ty where
   -- Special case for Tuple type
   -- Tuple = \ t ... . Pi {'1 := t , ...}
   ppr (TConApp Pi (TRow entries)) | Just ts <- getTupleContents entries 1 = parens (fillSep (punctuate "," (map ppr ts)))
-  ppr (TConApp Pi t) = T.traceShow t (ppr Pi <+> at 4 (ppr t))
   -- Special case for List type
   -- List = \a. Mu ((\a. Sigma { 'Nil := Const Unit, 'Cons := \l. Pair a l }) a)
   ppr (TConApp (Mu _) (TConApp Sigma (TRow [
