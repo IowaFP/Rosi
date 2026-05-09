@@ -296,7 +296,7 @@ generalize e =
         uvars level (TApp t u) = cat <$> uvars level t <*> uvars level u
         uvars _ (TLab {}) = return []
         uvars level (TSing t) = uvars level t
-        uvars level (TLabeled l t) = cat <$> uvars level t <*> uvars level t
+        uvars level (TLabeled l t) = cat <$> uvars level l <*> uvars level t
         uvars level (TRow ts) = foldl cat [] <$> mapM (uvars level) ts
         uvars level (TConApp k t) = uvars level t
         uvars level (TMap t) = uvars level t
@@ -307,6 +307,7 @@ generalize e =
           iuvars (PrArg {}) = return []
         uvars level (TMapApp t) = uvars level t
         uvars _ TString = return []
+        uvars level (TCompl t1 t2) = cat <$> uvars level t1 <*> uvars level t2
 
         puvars :: Level -> Pred -> CheckM [UVar]
         puvars level (PEq t u) = cat <$> uvars level t <*> uvars level u
