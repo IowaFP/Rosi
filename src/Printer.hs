@@ -132,6 +132,12 @@ instance Printable TyCon where
          Just k -> ppr k
          Nothing -> ppre (goalName g)
 
+getTupleContents :: [Ty] -> Int -> Maybe [Ty]
+getTupleContents [] 1 = Nothing
+getTupleContents [] n = Just []
+getTupleContents (TLabeled (TLab l) t:ts) n | show n == l = (t:) <$> getTupleContents ts (n + 1)
+getTupleContents _ _ = Nothing
+
 instance Printable Ty where
   ppr (TVar _ x) = ppr x
   ppr (TUnif v) = ppr v
@@ -160,7 +166,15 @@ instance Printable Ty where
   -- Special case for Unit type
   -- Unit = Pi {}
   ppr (TConApp Pi (TRow [])) = ppre "Unit"
+  -- Special case for Tuple type
+  -- Tuple = \ t ... . Pi {'1 := t , ...}
+  ppr (TConApp Pi (TRow entries)) | Just ts <- getTupleContents entries 1 = parens (fillSep (punctuate "," (map ppr ts)))
+  -- Special case for List type
   -- List = \a. Mu ((\a. Sigma { 'Nil := Const Unit, 'Cons := \l. Pair a l }) a)
+  ppr (TConApp (Mu _) (TConApp Sigma (TRow [
+                        TLabeled (TLab "Cons") (TLam _ (Just KType) (TConApp Pi (TRow [TLabeled (TLab "1") t,
+                        TLabeled (TLab "2") (TVar 0 _)]))),
+                        TLabeled (TLab "Nil") (TLam _ (Just KType) (TConApp Pi (TRow [])))]))) = ppre "List" <+> at 4 (ppr t)
   ppr (TConApp (Mu _) (TConApp Sigma (TRow [
     TLabeled (TLab "Cons") (TLam _ _ (TConApp Pi (TRow [TLabeled (TLab "1") t, _]))), _]))) = ppre "List" <+> at 4 (parens (ppr t))
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
