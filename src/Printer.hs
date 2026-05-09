@@ -172,11 +172,9 @@ instance Printable Ty where
   -- Special case for List type
   -- List = \a. Mu ((\a. Sigma { 'Nil := Const Unit, 'Cons := \l. Pair a l }) a)
   ppr (TConApp (Mu _) (TConApp Sigma (TRow [
-                        TLabeled (TLab "Cons") (TLam _ (Just KType) (TConApp Pi (TRow [TLabeled (TLab "1") t,
-                        TLabeled (TLab "2") (TVar 0 _)]))),
-                        TLabeled (TLab "Nil") (TLam _ (Just KType) (TConApp Pi (TRow [])))]))) = ppre "List" <+> at 4 (ppr t)
-  ppr (TConApp (Mu _) (TConApp Sigma (TRow [
-    TLabeled (TLab "Cons") (TLam _ _ (TConApp Pi (TRow [TLabeled (TLab "1") t, _]))), _]))) = ppre "List" <+> at 4 (parens (ppr t))
+                        TLabeled (TLab "Cons") (TLam _ (Just KType) (TConApp Pi (TRow [TLabeled (TLab "1") t, TLabeled (TLab "2") (TVar 0 _)]))),
+                        TLabeled (TLab "Nil") (TLam _ (Just KType) (TConApp Pi (TRow [])))])))
+                        = ppre "List" <+> at 4 (ppr t)
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
   ppr (TMap t) =
     do b <- asks printMaps
