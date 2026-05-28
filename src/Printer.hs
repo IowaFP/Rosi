@@ -132,6 +132,12 @@ instance Printable TyCon where
          Just k -> ppr k
          Nothing -> ppre (goalName g)
 
+getTupleContents :: [Ty] -> Int -> Maybe [Ty]
+getTupleContents [] 1 = Nothing
+getTupleContents [] n = Just []
+getTupleContents (TLabeled (TLab l) t:ts) n | show n == l = (t:) <$> getTupleContents ts (n + 1)
+getTupleContents _ _ = Nothing
+
 instance Printable Ty where
   ppr (TVar _ x) = ppr x
   ppr (TUnif v) = ppr v
@@ -147,6 +153,27 @@ instance Printable Ty where
   ppr (TSing t) = "#" <> at 5 (ppr t)
   ppr (TLabeled l t) = fillSep [ppr l <+> ":=", ppr t]
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
+  -- Special cases:
+  -- Nat = Mu (\n : *. Sigma {'Succ := n, 'Zero := Pi {}})}
+  ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar _ _),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = ppre "Nat"
+  -- Special case for Maybe type
+  -- Maybe a = Sigma { 'Nothing := Unit, 'Just := a }
+  ppr (TConApp Sigma (TRow [TLabeled (TLab "Just") t, TLabeled (TLab "Nothing") (TConApp Pi (TRow []))])) = ppre "Maybe" <+> at 4 (ppr t)
+  -- Special case for Bool type
+  -- Bool = Sigma { 'True := Unit, 'False := Unit }
+  ppr (TConApp Sigma (TRow [TLabeled (TLab "False") (TConApp Pi (TRow [])),TLabeled (TLab "True") (TConApp Pi (TRow []))])) = ppre "Bool"
+  -- Special case for Unit type
+  -- Unit = Pi {}
+  ppr (TConApp Pi (TRow [])) = ppre "Unit"
+  -- Special case for Tuple type
+  -- Tuple = \ t ... . Pi {'1 := t , ...}
+  ppr (TConApp Pi (TRow entries)) | Just ts <- getTupleContents entries 1 = parens (fillSep (punctuate "," (map ppr ts)))
+  -- Special case for List type
+  -- List = \a. Mu ((\a. Sigma { 'Nil := Const Unit, 'Cons := \l. Pair a l }) a)
+  ppr (TConApp (Mu _) (TConApp Sigma (TRow [
+                        TLabeled (TLab "Cons") (TLam _ (Just KType) (TConApp Pi (TRow [TLabeled (TLab "1") t, TLabeled (TLab "2") (TVar 0 _)]))),
+                        TLabeled (TLab "Nil") (TLam _ (Just KType) (TConApp Pi (TRow [])))])))
+                        = ppre "List" <+> at 4 (ppr t)
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
   ppr (TMap t) =
     do b <- asks printMaps
@@ -191,6 +218,15 @@ instance Printable Pred where
 --   :=               2
 --   application      3
 
+class FromPeano a where
+  fromPeano :: a -> Maybe Int
+
+instance FromPeano Term where
+  fromPeano :: Term -> Maybe Int
+  fromPeano (EVar _ ["zero","Nat","Data"]) = Just 0
+  fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
+  fromPeano _ = Nothing
+
 instance Printable Term where
   ppr (EVar _ s) = ppr s
   ppr (ELam x (Just t) m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
@@ -203,6 +239,7 @@ instance Printable Term where
     with 1 $ fillSep [at 2 (ppr e1), "^", ppr e2]
   ppr (EApp (EApp (EConst CStringEq) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "~", ppr e2]
+  ppr t | Just n <- fromPeano t =  ppre (show n)
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr (ETyLam x (Just k) m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
   ppr (ETyLam x Nothing m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <> ".", ppr m]
