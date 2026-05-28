@@ -166,7 +166,7 @@ unifyInstantiating t u unify =
         match (Unknown n g : is@(Known _ : _)) qs = (Right (n, g, reverse thens) :) <$> match is rest where
           isThen (QuThen _) = True
           isThen _          = False
-          (thens, rest) = partition isThen qs
+          (thens, rest) = partition isThen qs -- surely this should be a takeWhile. Also, why is this valid? Do we use it?
         match (Unknown n g : is@(Unknown _ _ : _)) qs
           | QuForall {} : _ <- qs = Nothing
           | otherwise = (Right (n, g, []) :) <$> match is qs
@@ -427,3 +427,5 @@ unify0 t u
 unifyP :: Pred -> Pred -> UnifyM Evid
 unifyP (PLeq y z) (PLeq y' z')        = VEqLeq <$> unify' y y' <*> unify' z z'
 unifyP (PPlus x y z) (PPlus x' y' z') = VEqPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'
+
+

@@ -414,7 +414,7 @@ guesses prs =
     where (tcin, p, v) = prs !! i
 
   guessers :: [Guesser]
-  guessers = [guessInstInst, guessInst, guessAppApp, guessApp]
+  guessers = [{- guessInstInst, -} guessInst, guessAppApp, guessApp]
 
   guessInstInst, guessInst, guessAppApp, guessApp :: Guesser
 

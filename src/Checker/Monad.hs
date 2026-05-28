@@ -16,6 +16,7 @@ import Data.List            (elemIndex, nub)
 import GHC.Stack
 import System.IO.Unsafe     (unsafePerformIO)
 
+import Printer hiding (level)
 import Syntax
 
 {-# NOINLINE traceKindInference #-}
@@ -116,6 +117,20 @@ instance MonadRef CheckM where
        modify (pushUpdate r old)
        liftIO (writeIORef r new)
 
+checkXType :: MonadIO m => Ty -> m ()
+checkXType t =
+  liftIO $ do b <- readIORef traceTypeInference
+              when b $
+                do x <- isXType t
+                   when x $ trace $ "binding x-type: " ++ renderString (ppr t)
+
+checkXPred :: MonadIO m => String -> Pred -> m ()
+checkXPred s p =
+  liftIO $ do b <- readIORef traceTypeInference
+              when b $
+                do x <- isXPred p
+                   when x $ trace $ s ++ " x-pred: " ++ renderString (ppr p)
+
 class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => MonadCheck m where
   bindTy :: Kind -> m a -> m a
   bindTy k = local (\env -> env { kctxt = KBVar k (level env) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPNV [] 0 1) (pctxt env) })
@@ -124,10 +139,14 @@ class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => Monad
   defineTy k t = local (\env -> env { kctxt = KBDefn k t : kctxt env, tctxt = shiftE (tctxt env), level = level env + 1 })
 
   bind :: String -> Ty -> m a -> m a
-  bind x t = local (\env -> env { tctxt = ([x, ""], t) : tctxt env })  -- assuming that we only call `bind` with local variables
+  bind x t m =
+    do checkXType t
+       local (\env -> env { tctxt = ([x, ""], t) : tctxt env }) m -- assuming that we only call `bind` with local variables
 
   assume :: Pred -> m a -> m a
-  assume g = local (\env -> env { pctxt = g : pctxt env })
+  assume g m =
+    do checkXPred "assuming" g
+       local (\env -> env { pctxt = g : pctxt env }) m
 
   require :: Pred -> IORef (Maybe Evid) -> m ()
 

@@ -1,3 +1,4 @@
+{- HLINT ignore "Move brackets to avoid $" -}
 module Checker.Terms where
 
 import Control.Monad
