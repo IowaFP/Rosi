@@ -40,12 +40,12 @@ data Value
 vUnit :: Value
 vUnit = VRecord [] []
 
--- Alias for Bool (as implemented in Base)
+-- Convert a Bool to its Ro.Base implementation
 -- type Bool : *
 -- type Bool = Sigma { 'True := Unit, 'False := Unit }
-vBool :: Bool -> Value
-vBool False = VVariant 0 vUnit (Just "False")
-vBool True  = VVariant 1 vUnit (Just "True")
+fromBool :: Bool -> Value
+fromBool False = VVariant 0 vUnit (Just "False")
+fromBool True  = VVariant 1 vUnit (Just "True")
 
 instance FromPeano Value where
   fromPeano :: Value -> Maybe Int
@@ -266,7 +266,7 @@ eval' h (EConst CStringEq) =
   VLam h $ Prim $ \h ->
     VLam h $ Prim $ \case
       (_, VString s1 : VString s0 : _) ->
-        vBool (s0 == s1)
+        fromBool (s0 == s1)
       _ -> error $ "bad environment for (~): " ++ show h
 eval' h (EConst CSyn) =
   VLam h $ Prim $ \h ->
