@@ -31,7 +31,9 @@ mult = \m. fix (\mult . case #'Zero (const zero)
                       | case #'Succ (\nn. add m (mult nn)))
 
 monus : Nat -> Nat -> Nat
-monus = fix (\ monus m n. (case #'Zero (\u. m) | case #'Succ (\nn. monus (decr m) nn)) n)
+monus = fix (\ monus m.
+               ( 'Zero: u -> m
+               | 'Succ: n' -> monus (decr m) n'))
 
 max : Nat -> Nat -> Nat
 max = fix (\max m n.
@@ -54,6 +56,15 @@ equal = fix (\equal m n.
                 match n
                 ( case #'Zero (const False)
                 | case #'Succ (\nn. equal mm nn)))))
+
+lte : Nat -> Nat -> Bool
+lte = fix (\lte m n.
+            match m
+            ( 'Zero: u -> True
+            | 'Succ: m' ->
+              match n
+              ( 'Zero: u -> False
+              | 'Succ: n' -> lte m' n')))
 
 --
 
