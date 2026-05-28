@@ -1,16 +1,15 @@
 module Interp.Erased where
 
-import Control.Monad.Reader
-import Data.IORef
-import Data.List (elemIndex, intercalate, sortOn)
-import Data.Maybe (fromMaybe, isJust)
-import Debug.Trace qualified as T
-import Foreign (toBool)
-import GHC.Stack
-import Printer
-import Syntax
-import System.IO.Unsafe
-import qualified Debug.Trace
+import           Control.Monad.Reader
+import           Data.IORef
+import           Data.List            (elemIndex, intercalate, sortOn)
+import           Data.Maybe           (fromMaybe, isJust)
+import qualified Debug.Trace          as T
+import           Foreign              (toBool)
+import           GHC.Stack
+import           Printer
+import           Syntax
+import           System.IO.Unsafe
 
 traceEvaluation :: IORef Bool
 traceEvaluation = unsafePerformIO (newIORef False)
@@ -46,7 +45,7 @@ vUnit = VRecord [] []
 -- type Bool = Sigma { 'True := Unit, 'False := Unit }
 vBool :: Bool -> Value
 vBool False = VVariant 0 vUnit (Just "False")
-vBool True = VVariant 1 vUnit (Just "True")
+vBool True  = VVariant 1 vUnit (Just "True")
 
 instance FromPeano Value where
   fromPeano :: Value -> Maybe Int
@@ -55,7 +54,7 @@ instance FromPeano Value where
   fromPeano _ = Nothing
 
 listFromVariant :: Value -> Maybe [String]
--- Match on names = ["1", "2"] 
+-- Match on names = ["1", "2"]
 listFromVariant (VVariant _ (VRecord [x, xs] _) (Just "Cons")) = case listFromVariant xs of
   Nothing -> Nothing
   Just ys -> Just (show x : ys)
@@ -99,11 +98,11 @@ data EList t = Bounded [t] | Unbounded [t]
   deriving (Show, Foldable, Functor, Traversable)
 
 (<!>) :: EList t -> Int -> t
-Bounded xs <!> n = xs !! n
+Bounded xs <!> n   = xs !! n
 Unbounded xs <!> n = xs !! n
 
 listFrom :: EList t -> (Bool, [t])
-listFrom (Bounded xs) = (True, xs)
+listFrom (Bounded xs)   = (True, xs)
 listFrom (Unbounded xs) = (False, xs)
 
 data EValue = VLeq (EList Int) | VPlus (EList (Either Int Int)) | VEq | VVFold Int
@@ -125,30 +124,30 @@ prapp f v =
 
 recordFrom :: (HasCallStack) => Value -> Int -> (Value, Maybe String)
 recordFrom (VRecord vs names) i = (vs !! i, names !! i)
-recordFrom (VSyn f) i = (f i, Nothing)
-recordFrom v _ = (v, Nothing)
+recordFrom (VSyn f) i           = (f i, Nothing)
+recordFrom v _                  = (v, Nothing)
 
 recordSize :: (HasCallStack) => Value -> Int
 recordSize (VRecord vs _) = length vs
-recordSize (VSyn f) = error "unbounded"
-recordSize v = 1
+recordSize (VSyn f)       = error "unbounded"
+recordSize v              = 1
 
 variantFrom :: (HasCallStack) => Value -> (Int, Value, Maybe String)
 variantFrom (VVariant k v s) = (k, v, s)
-variantFrom v = (0, v, Just "Test")
+variantFrom v                = (0, v, Just "Test")
 
 labelFromTerm :: Env -> Term -> Maybe String
 labelFromTerm h (ESing t) = labelFromTy t
 labelFromTerm h (EInst t (Known is)) = Just (show (inst (eval h t) is))
   where
-    inst v [] = v
+    inst v []             = v
     inst v (TyArg _ : is) = inst v is
     inst v (PrArg q : is) = inst (prapp v (evalV h q)) is
 labelFromTerm _ _ = Nothing
 
 labelFromTy :: Ty -> Maybe String
 labelFromTy (TLab s) = Just s
-labelFromTy _ = Nothing
+labelFromTy _        = Nothing
 
 eval, eval' :: (HasCallStack) => Env -> Term -> Value
 eval h e =
@@ -164,15 +163,15 @@ eval' h (ETyLam _ _ e) = eval h e
 eval' h (EPrLam _ e) = VPrLam h (Term e)
 eval' h (EInst t (Known is)) = inst (eval h t) is
   where
-    inst v [] = v
+    inst v []             = v
     inst v (TyArg _ : is) = inst v is
     inst v (PrArg q : is) = inst (prapp v (evalV h q)) is
 eval' h (ESing t) = VSing (labelFromTy t)
 eval' h (ELabel (Just k) l e) =
   case k of
 
-    Pi -> VRecord [v] [labelFromTerm h l]
-    Sigma -> VVariant 0 v (labelFromTerm h l)
+    Pi       -> VRecord [v] [labelFromTerm h l]
+    Sigma    -> VVariant 0 v (labelFromTerm h l)
     TCUnif _ -> VRecord [v] [labelFromTerm h l]
   where
     v = eval h e
@@ -180,8 +179,8 @@ eval' h e0@(EUnlabel (Just k) e l) =
   -- eval h e
   case (k, v) of
     (Sigma, VVariant _ v _) -> v
-    (Pi, VRecord [v] _) -> v
-    (Pi, VSyn f) -> f 0
+    (Pi, VRecord [v] _)     -> v
+    (Pi, VSyn f)            -> f 0
   where
     v = eval h e
 eval' h (EConst CPrj) =
@@ -218,19 +217,19 @@ eval' h (EConst CConcat) =
         (VPlus (Bounded is) : _, w : v : _) ->
           let ws = recordFrom w
               vs = recordFrom v
-              pick (Left i) = vs i
+              pick (Left i)  = vs i
               pick (Right j) = ws j
               (values, names) = unzip [pick i | i <- is]
            in VRecord values names
         (VPlus (Unbounded is) : _, VRecord ws wNames : VRecord vs vNames : _) ->
-          let pick (Left i) = (vs !! i, vNames !! i)
+          let pick (Left i)  = (vs !! i, vNames !! i)
               pick (Right i) = (ws !! i, wNames !! i)
               (values, names) = unzip [pick (is !! i) | i <- [0 .. length vs + length ws - 1]]
            in VRecord values names
         (VPlus (Unbounded is) : _, w : v : _) ->
           let vs = recordFrom v
               ws = recordFrom w
-              pick (Left i) = vs i
+              pick (Left i)  = vs i
               pick (Right i) = ws i
            --TODO(mctano): handle synth properly
            in VSyn (\i -> fst (pick (is !! i)))
@@ -251,7 +250,7 @@ eval' h (EConst CBranch) =
                       ++ (case is <!> k of Left _ -> show f; Right _ -> show g)
                   )
                   $ case is <!> k of
-                    Left i -> app f (VVariant i w s)
+                    Left i  -> app f (VVariant i w s)
                     Right i -> app g (VVariant i w s)
           _ -> error $ "bad environment for branch: " ++ show h
 eval' h (EConst CFix) =
@@ -301,24 +300,24 @@ eval' h (EStringLit s) = VString s
 eval' h e = error $ "eval' missing " ++ show e
 
 evalV :: Env -> Evid -> EValue
-evalV (hp, he) (VVar i) = hp !! i
-evalV h (VPredEq _ v) = evalV h v
-evalV h v@(VLeqRefl) = VLeq $ evalLeq h v
-evalV h v@(VLeqTrans {}) = VLeq $ evalLeq h v
-evalV h v@(VLeqSimple {}) = VLeq $ evalLeq h v
-evalV h v@(VLeqLiftL {}) = VLeq $ evalLeq h v
-evalV h v@(VLeqLiftR {}) = VLeq $ evalLeq h v
-evalV h v@(VPlusLeqL {}) = VLeq $ evalLeq h v
-evalV h v@(VPlusLeqR {}) = VLeq $ evalLeq h v
-evalV h v@(VComplLeq {}) = VLeq $ evalLeq h v
+evalV (hp, he) (VVar i)    = hp !! i
+evalV h (VPredEq _ v)      = evalV h v
+evalV h v@(VLeqRefl)       = VLeq $ evalLeq h v
+evalV h v@(VLeqTrans {})   = VLeq $ evalLeq h v
+evalV h v@(VLeqSimple {})  = VLeq $ evalLeq h v
+evalV h v@(VLeqLiftL {})   = VLeq $ evalLeq h v
+evalV h v@(VLeqLiftR {})   = VLeq $ evalLeq h v
+evalV h v@(VPlusLeqL {})   = VLeq $ evalLeq h v
+evalV h v@(VPlusLeqR {})   = VLeq $ evalLeq h v
+evalV h v@(VComplLeq {})   = VLeq $ evalLeq h v
 evalV h v@(VPlusSimple {}) = VPlus $ evalPlus h v
-evalV h v@(VPlusLiftL {}) = VPlus $ evalPlus h v
-evalV h v@(VPlusLiftR {}) = VPlus $ evalPlus h v
+evalV h v@(VPlusLiftL {})  = VPlus $ evalPlus h v
+evalV h v@(VPlusLiftR {})  = VPlus $ evalPlus h v
 evalV h v@(VPlusComplL {}) = VPlus $ evalPlus h v
 evalV h v@(VPlusComplR {}) = VPlus $ evalPlus h v
-evalV h (VFold n) = VVFold n
-evalV h (VFoldMap v) = evalV h v
-evalV h v = VEq
+evalV h (VFold n)          = VVFold n
+evalV h (VFoldMap v)       = evalV h v
+evalV h v                  = VEq
 
 evalLeq :: Env -> Evid -> EList Int
 evalLeq h@(hp, _) = go False
@@ -372,12 +371,12 @@ evalPlus' h (VPlusComplL q) = Unbounded $ map pick [0 ..]
   where
     is = evalLeq h q
     pick i = case elemIndex i (snd $ listFrom is) of
-      Just j -> Right j
+      Just j  -> Right j
       Nothing -> Left (i - length [j | j <- snd (listFrom is), j < i])
 evalPlus' h (VPlusComplR q) = Unbounded $ map pick [0 ..]
   where
     is = evalLeq h q
     pick i = case elemIndex i (snd $ listFrom is) of
-      Just j -> Left j
+      Just j  -> Left j
       Nothing -> Right (i - length [j | j <- snd (listFrom is), j < i])
 evalPlus' _ v = error $ "bad evidence for plus: " ++ show v
