@@ -176,6 +176,23 @@ is = \ l. case l Just | otherwise Nothing
 fromMaybe : a -> Maybe a -> a
 fromMaybe = \z. maybe z id
 
+maybeSigma : Sigma (Maybe* z) -> Maybe (Sigma z)
+maybeSigma = ana #Maybe (\k. maybe Nothing (Just . k:))
+
+isJust : Maybe a -> Bool
+isJust = maybe False (const True)
+
+isJusts : Fold z => Pi (Maybe* z) -> Bool
+isJusts = fold #Maybe (const isJust) and True
+
+fromJust : Maybe a -> a
+fromJust = fromMaybe (fix id)
+
+maybePi : Fold z => Pi (Maybe* z) -> Maybe (Pi z)
+maybePi = \r. if (isJusts r)
+                 (Just (syn #Id (\k. fromJust r.k)))
+                 Nothing
+
 -------------------------------------------------------------------------------
 
 type Either : * -> * -> *
