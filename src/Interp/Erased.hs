@@ -76,7 +76,7 @@ instance Show Value where
   show (VLam _ b) = "\\ " ++ show b
   show (VSing (Just s)) = s
   -- TODO(mctano): Does this case still have a valid use?
-  show (VSing Nothing) = "()"
+  show (VSing Nothing) = "<<unknown>>"
   -- Special cases
   show (VVariant k w l)
     -- lists
