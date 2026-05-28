@@ -1,30 +1,31 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Parser where
 
-import Syntax
+import           Syntax
 
-import Control.Monad (foldM, guard, mplus, replicateM, void, when)
+import           Control.Monad              (foldM, guard, mplus, replicateM,
+                                             void, when)
 -- import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Reader
-import Control.Monad.State
+import           Control.Monad.Reader
+import           Control.Monad.State
 
-import Data.Char (isSpace)
-import Data.Data
-import Data.IORef (newIORef)
-import Data.List (delete, intercalate)
-import Data.List.NonEmpty (fromList)
-import Data.List.Split (splitOn)
-import Data.Maybe (fromMaybe, isNothing)
-import Data.Void (Void)
-import System.IO (hPutStrLn, stderr)
-import System.Exit (exitFailure)
+import           Data.Char                  (isSpace)
+import           Data.Data
+import           Data.IORef                 (newIORef)
+import           Data.List                  (delete, intercalate)
+import           Data.List.NonEmpty         (fromList)
+import           Data.List.Split            (splitOn)
+import           Data.Maybe                 (fromMaybe, isNothing)
+import           Data.Void                  (Void)
+import           System.Exit                (exitFailure)
+import           System.IO                  (hPutStrLn, stderr)
 
-import Text.Megaparsec hiding (State)
-import Text.Megaparsec.Char
+import           Text.Megaparsec            hiding (State)
+import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as P
-import Text.Megaparsec.Error
+import           Text.Megaparsec.Error
 
-import Debug.Trace
+import           Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Combinators I miss from Parsec
@@ -38,7 +39,7 @@ chainr1 p op =
                       rhs <- p
                       return (f, rhs))
      return (down lhs rhss)
-  where down lhs [] = lhs
+  where down lhs []                 = lhs
         down lhs ((op, rhs) : rhss) = op lhs (down rhs rhss)
 
 chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
@@ -48,7 +49,7 @@ chainl1 p op =
                       rhs <- p
                       return (f, rhs))
      return (down lhs rhss)
-  where down lhs [] = lhs
+  where down lhs []                 = lhs
         down lhs ((op, rhs) : rhss) = down (op lhs rhs) rhss
 
 ps :: Show t => Parser t -> String -> IO ()
@@ -68,7 +69,7 @@ theIndent :: Parser (Maybe (Ordering, Pos))
 theIndent =
   do is <- lift get
      case is of
-       [] -> return Nothing
+       []    -> return Nothing
        i : _ -> return (Just i)
 
 guardIndent :: Parser a -> Parser a
@@ -236,7 +237,7 @@ labeledTy =
   do t <- labTy
      case t of
        TLabeled _ _ -> return t
-       _ -> unexpected (Label $ fromList "unlabeled type")
+       _            -> unexpected (Label $ fromList "unlabeled type")
 
 
 tcon = choice [ ordered (string "Pi") Pi
@@ -332,7 +333,7 @@ term = prefixes typedTerm where
     do mp <- optional (try prefix)
        case mp of
          Nothing -> rest
-         Just f -> f <$> prefixes rest
+         Just f  -> f <$> prefixes rest
 
   op :: String -> Parser a -> Parser a
   op s k = symbol s >> k
@@ -390,7 +391,7 @@ term = prefixes typedTerm where
          , return t ]
 
     -- chainl1 catTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
- 
+
   stringEqTerm = chainl1 catTerm $ op "~" (ebinary CStringEq)
 
   catTerm = chainl1 appTerm $ op "^" (ebinary CStringCat)
@@ -402,8 +403,8 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
              app t ts where
 
   app :: AppTerm -> [AppTerm] -> Parser Term
-  app (Term t) [] = return t
-  app (Type _) _ = unexpected (Label $ fromList "type argument")
+  app (Term t) []            = return t
+  app (Type _) _             = unexpected (Label $ fromList "type argument")
   app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
   app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
 

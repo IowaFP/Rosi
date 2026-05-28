@@ -1,25 +1,25 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Checker.Unify (module Checker.Unify) where
 
-import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Reader
-import Control.Monad.State
-import Control.Monad.Writer
-import Data.Bifunctor (first)
-import Data.List (elemIndex, partition, sortOn)
-import Data.Maybe (fromJust, isNothing)
+import           Control.Monad
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import           Control.Monad.State
+import           Control.Monad.Writer
+import           Data.Bifunctor       (first)
+import           Data.List            (elemIndex, partition, sortOn)
+import           Data.Maybe           (fromJust, isNothing)
 
-import Checker.Monad
-import Checker.Normalize
-import Checker.Promote
-import Checker.Types hiding (trace)
-import Checker.Utils
-import Printer
-import Syntax
+import           Checker.Monad
+import           Checker.Normalize
+import           Checker.Promote
+import           Checker.Types        hiding (trace)
+import           Checker.Utils
+import           Printer
+import           Syntax
 
-import GHC.Stack
-import qualified Debug.Trace as T
+import qualified Debug.Trace          as T
+import           GHC.Stack
 
 {--
 
@@ -219,7 +219,7 @@ unifyInstantiating t u unify =
 
         reverseIs :: Insts -> Insts
         reverseIs is@(Unknown {}) = is
-        reverseIs (Known is) = Known (reverse is)
+        reverseIs (Known is)      = Known (reverse is)
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify0 (TVar i _) (TVar j _)
@@ -352,9 +352,9 @@ unify0 (TConApp (Mu count) f) (TConApp (Mu count') g) =
   VEqCon (Mu count'') <$> unify' f g where
     count'' = case (count, count') of
                 (Nothing, Nothing) -> Nothing
-                (Nothing, Just n) -> Just n
-                (Just m, Nothing) -> Just m
-                (Just m, Just n) -> Just (min m n)
+                (Nothing, Just n)  -> Just n
+                (Just m, Nothing)  -> Just m
+                (Just m, Just n)   -> Just (min m n)
 unify0 t u
   | (TConApp (Mu count) f, ts) <- spine t, noHeadUnif u, Just count' <- decr count =
     unify' (foldl TApp f (TConApp (Mu count') f : ts)) u
@@ -365,7 +365,7 @@ unify0 t u
           | otherwise = True
         decr (Just 0) = Nothing
         decr (Just n) = Just (Just (n - 1))
-        decr Nothing = Just (Just 20)
+        decr Nothing  = Just (Just 20)
 unify0 t0@(TConApp (TCUnif g) t) u =
   do mk <- readRef (goalRef g)
      case mk of

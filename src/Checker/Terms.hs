@@ -1,22 +1,22 @@
 module Checker.Terms where
 
-import Control.Monad
-import Control.Monad.IO.Class
-import Control.Monad.Error.Class
-import Control.Monad.Reader.Class
-import Control.Monad.Writer.Class
-import Data.Generics (everywhereM, mkM)
-import Data.IORef
-import Data.List (intercalate)
+import           Control.Monad
+import           Control.Monad.Error.Class
+import           Control.Monad.IO.Class
+import           Control.Monad.Reader.Class
+import           Control.Monad.Writer.Class
+import           Data.Generics              (everywhereM, mkM)
+import           Data.IORef
+import           Data.List                  (intercalate)
 
-import Checker.Types hiding (trace, collect)
-import Checker.Unify
-import Checker.Utils
-import Checker.Normalize
-import Checker.Monad
-import Checker.Preds
-import Printer
-import Syntax
+import           Checker.Monad
+import           Checker.Normalize
+import           Checker.Preds
+import           Checker.Types              hiding (collect, trace)
+import           Checker.Unify
+import           Checker.Utils
+import           Printer
+import           Syntax
 
 
 expectT :: Term -> Ty -> Ty -> CheckM Evid
@@ -302,8 +302,8 @@ generalize e =
         uvars level (TMap t) = uvars level t
         uvars level (TInst is t) = cat <$> isuvars is <*> uvars level t where
           isuvars (Unknown {}) = return []
-          isuvars (Known is) = foldl cat [] <$> mapM iuvars is
-          iuvars (TyArg t) = uvars level t
+          isuvars (Known is)   = foldl cat [] <$> mapM iuvars is
+          iuvars (TyArg t)  = uvars level t
           iuvars (PrArg {}) = return []
         uvars level (TMapApp t) = uvars level t
         uvars _ TString = return []
@@ -359,7 +359,7 @@ generalize e =
           fixInst t@(TUnif v) =
             do mu <- readRef (ref v)
                case mu of
-                 Just u -> fixInsts u >> return t
+                 Just u  -> fixInsts u >> return t
                  Nothing -> return t
           fixInst t@(TInst (Unknown _ (Goal (_, iref))) _) =
             do mi <- readRef iref
@@ -374,11 +374,11 @@ generalize e =
           (tyLams ts names (prLams ps e), quantifiers ts names (qualifiers ps t))
           where quantifiers [] _ t = t
                 quantifiers (u : us) (b : bs) t = TForall b (Just (uvKind u)) (quantifiers us bs t)
-                qualifiers [] t = t
+                qualifiers [] t            = t
                 qualifiers ((p, _) : ps) t = TThen p (qualifiers ps t)
                 tyLams [] _ e = e
                 tyLams (u : us) (b : bs) e = ETyLam b (Just (uvKind u)) (tyLams us bs e)
-                prLams [] e = e
+                prLams [] e            = e
                 prLams ((p, _) : ps) e = EPrLam p (prLams ps e)
 
 checkTop :: Term -> Maybe Ty -> CheckM (Term, Ty)

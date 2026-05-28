@@ -3,16 +3,16 @@
 {-# HLINT ignore "Eta reduce" #-}
 module Printer where
 
-import Control.Monad.Reader
-import Data.IORef (readIORef)
-import Data.List (intercalate)
-import Data.String
-import qualified Prettyprinter as P
+import           Control.Monad.Reader
+import           Data.IORef                  (readIORef)
+import           Data.List                   (intercalate)
+import           Data.String
+import qualified Prettyprinter               as P
 import qualified Prettyprinter.Render.String as P
-import qualified Prettyprinter.Util as P
-import System.IO.Unsafe
+import qualified Prettyprinter.Util          as P
+import           System.IO.Unsafe
 
-import Syntax
+import           Syntax
 
 data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool, printInstantiations :: Bool }
 type RDoc ann = ReaderT PrinterOptions IO (P.Doc ann)
@@ -76,9 +76,9 @@ brackets = fmap P.brackets
 parens = fmap P.parens
 
 stringFromQName :: QName -> String
-stringFromQName [x] = x
+stringFromQName [x]     = x
 stringFromQName [x, ""] = x
-stringFromQName xs = intercalate "." (reverse xs)
+stringFromQName xs      = intercalate "." (reverse xs)
 
 instance Printable QName where
   ppr = ppre . stringFromQName
@@ -129,7 +129,7 @@ instance Printable TyCon where
   ppr (TCUnif g) =
     do mk <- liftIO (readIORef (goalRef g))
        case mk of
-         Just k -> ppr k
+         Just k  -> ppr k
          Nothing -> ppre (goalName g)
 
 getTupleContents :: [Ty] -> Int -> Maybe [Ty]
@@ -207,10 +207,10 @@ instance Printable Ty where
 
 instance Printable Pred where
   ppr :: Pred -> RDoc ann
-  ppr (PLeq t u) = fillSep [ppr t <+> "<", ppr u ]
+  ppr (PLeq t u)    = fillSep [ppr t <+> "<", ppr u ]
   ppr (PPlus t u v) = fillSep [ppr t <+> "+", ppr u <+> "~", ppr v]
-  ppr (PEq t u) = fillSep [ppr t <+> "~", ppr u]
-  ppr (PFold z) = fillSep ["Fold", ppr z]
+  ppr (PEq t u)     = fillSep [ppr t <+> "~", ppr u]
+  ppr (PFold z)     = fillSep ["Fold", ppr z]
 
 -- Precedence table:
 --   lambda           0
@@ -223,9 +223,9 @@ class FromPeano a where
 
 instance FromPeano Term where
   fromPeano :: Term -> Maybe Int
-  fromPeano (EVar _ ["zero","Nat","Data"]) = Just 0
+  fromPeano (EVar _ ["zero","Nat","Data"])          = Just 0
   fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
-  fromPeano _ = Nothing
+  fromPeano _                                       = Nothing
 
 instance Printable Term where
   ppr (EVar _ s) = ppr s
@@ -257,16 +257,16 @@ instance Printable Term where
   ppr (EUnlabel Nothing m l) = with 3 (fillSep [ppr m <+> "/", at 3 (ppr l)])
   ppr (EUnlabel (Just k) m l) = with 3 (fillSep [ppr m <+> "/" <> ppr k, at 3 (ppr l)])
   ppr (EConst c) = name c where
-    name CPrj = "prj"
-    name CConcat = "(++)"
-    name CInj = "inj"
-    name CBranch = "(|)"
-    name CFix = "fix"
+    name CPrj       = "prj"
+    name CConcat    = "(++)"
+    name CInj       = "inj"
+    name CBranch    = "(|)"
+    name CFix       = "fix"
     name CStringCat = "(^)"
-    name CStringEq = "(~)"
-    name CSyn = "syn"
-    name CAna = "ana"
-    name CFold = "fold"
+    name CStringEq  = "(~)"
+    name CSyn       = "syn"
+    name CAna       = "ana"
+    name CFold      = "fold"
   ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> "in", ppr n]
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   -- Not printing internals (yet)

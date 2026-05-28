@@ -1,11 +1,11 @@
 {-# LANGUAGE PatternGuards #-}
 module Syntax (module Syntax) where
 
-import Control.Monad.IO.Class
-import Data.Bifunctor (first)
-import Data.Generics hiding (TyCon(..), GT)
-import Data.IORef
-import GHC.Stack
+import           Control.Monad.IO.Class
+import           Data.Bifunctor         (first)
+import           Data.Generics          hiding (GT, TyCon (..))
+import           Data.IORef
+import           GHC.Stack
 
 --------------------------------------------------------------------------------
 -- Top-level entities
@@ -74,29 +74,29 @@ data Level = Top | Lv Int
   deriving (Eq, Data, Typeable)
 
 instance Ord Level where
-  compare Top Top = EQ
-  compare Top _   = GT
-  compare _ Top   = LT
+  compare Top Top       = EQ
+  compare Top _         = GT
+  compare _ Top         = LT
   compare (Lv i) (Lv j) = compare i j
 
 tops :: (Int -> Int -> Int) -> Level -> Level -> Level
-tops f Top x = Top
-tops f x Top = Top
+tops f Top x         = Top
+tops f x Top         = Top
 tops f (Lv i) (Lv j) = Lv (f i j)
 
 instance Num Level where
   (+) = tops (+)
   (*) = tops (*)
-  abs Top = Top
+  abs Top    = Top
   abs (Lv i) = Lv i
-  signum Top = Lv 1
+  signum Top    = Lv 1
   signum (Lv x) = Lv (signum x)
   fromInteger = Lv . fromInteger
-  negate Top = Top
+  negate Top    = Top
   negate (Lv i) = Lv (negate i)
 
 instance Show Level where
-  show Top = "T"
+  show Top    = "T"
   show (Lv i) = show i
 
 data UVar = UV { uvShift :: Int, uvLevel :: Level, uvGoal :: Goal Ty, uvKind :: Kind }
@@ -161,17 +161,17 @@ tvFreeIn ns (TCompl t u) = tvFreeIn ns t || tvFreeIn ns u
 tvFreeIn ns TString = False
 tvFreeIn ns (TInst is t) = tvFreeInIs is || tvFreeIn ns t where
   tvFreeInIs (Unknown {}) = False
-  tvFreeInIs (Known is) = any tvFreeInI is
-  tvFreeInI (TyArg t) = tvFreeIn ns t
+  tvFreeInIs (Known is)   = any tvFreeInI is
+  tvFreeInI (TyArg t)  = tvFreeIn ns t
   tvFreeInI (PrArg {}) = False
 tvFreeIn ns (TMapApp t) = tvFreeIn ns t
 tvFreeIn ns (TPlus y z) = tvFreeIn ns y || tvFreeIn ns z
 tvFreeIn ns (TConOrd _ _ t) = tvFreeIn ns t
 
-tvFreeInP ns (PEq t u) = tvFreeIn ns t || tvFreeIn ns u
-tvFreeInP ns (PLeq y z) = tvFreeIn ns y || tvFreeIn ns z
+tvFreeInP ns (PEq t u)     = tvFreeIn ns t || tvFreeIn ns u
+tvFreeInP ns (PLeq y z)    = tvFreeIn ns y || tvFreeIn ns z
 tvFreeInP ns (PPlus x y z) = tvFreeIn ns x || tvFreeIn ns y || tvFreeIn ns z
-tvFreeInP ns (PFold z) = tvFreeIn ns z
+tvFreeInP ns (PFold z)     = tvFreeIn ns z
 
 
 
@@ -180,13 +180,13 @@ label, labeled :: Ty -> Maybe Ty
 concreteLabel :: Ty -> Maybe String
 
 label (TLabeled l _) = Just l
-label _ = Nothing
+label _              = Nothing
 
 concreteLabel (TLabeled (TLab s) _) = Just s
 concreteLabel _                     = Nothing
 
 labeled (TLabeled _ t) = Just t
-labeled _ = Nothing
+labeled _              = Nothing
 
 splitLabel :: Ty -> Maybe (Ty, Ty)
 splitLabel (TLabeled l t) = Just (l, t)
@@ -209,18 +209,18 @@ data Quant = QuForall String Kind | QuThen Pred
 
 quants :: Ty -> ([Quant], Ty)
 quants (TForall x (Just k) t) = first (QuForall x k :) (quants t)
-quants (TForall x Nothing t) = error "quants: forall without kind"
-quants (TThen p t) = first (QuThen p :) (quants t)
-quants t = ([], t)
+quants (TForall x Nothing t)  = error "quants: forall without kind"
+quants (TThen p t)            = first (QuThen p :) (quants t)
+quants t                      = ([], t)
 
 quantify :: [Quant] -> Ty -> Ty
-quantify [] t = t
+quantify [] t                   = t
 quantify (QuForall x k : qus) t = TForall x (Just k) (quantify qus t)
-quantify (QuThen p : qus) t = TThen p (quantify qus t)
+quantify (QuThen p : qus) t     = TThen p (quantify qus t)
 
 insts :: Ty -> ([Insts], Ty)
 insts (TInst is t) = first (is :) (insts t)
-insts t = ([], t)
+insts t            = ([], t)
 
 spine :: Ty -> (Ty, [Ty])
 spine (TApp f t) = (f', ts ++ [t])
@@ -389,7 +389,7 @@ flattenE :: MonadIO m => Term -> m Term
 flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) <=< everywhereM (mkM flattenTC) where
   (f <=< g) x = g x >>= f
   flattenInsts (EInst m is) = EInst m <$> flattenIs is
-  flattenInsts m = return m
+  flattenInsts m            = return m
 
 hasHoles :: Term -> Bool
 hasHoles (EHole {})       = True
@@ -465,9 +465,9 @@ data Evid =
   deriving (Data, Eq, Show, Typeable)
 
 isRefl :: Evid -> Bool
-isRefl VEqRefl = True
+isRefl VEqRefl  = True
 isRefl VLeqRefl = True
-isRefl v = False
+isRefl v        = False
 
 foldUnary :: (Evid -> Evid) -> Evid -> Evid
 foldUnary k q
@@ -490,7 +490,7 @@ flattenV (VPredEq v1 v2) =
      v2' <- flattenV v2
      return $ case v1' of
        VEqRefl -> v2'
-       _     -> VPredEq v1' v2'
+       _       -> VPredEq v1' v2'
 flattenV VLeqRefl = return VLeqRefl
 flattenV VEqRefl = return VEqRefl
 flattenV (VLeqTrans v1 v2) =
@@ -499,14 +499,14 @@ flattenV (VLeqTrans v1 v2) =
      return $ case (v1', v2') of
        (VLeqRefl, _) -> v2'
        (_, VLeqRefl) -> v1'
-       _          -> VLeqTrans v1' v2'
+       _             -> VLeqTrans v1' v2'
 flattenV (VEqTrans v1 v2) =
   do v1' <- flattenV v1
      v2' <- flattenV v2
      return $ case (v1', v2') of
        (VEqRefl, _) -> v2'
        (_, VEqRefl) -> v1'
-       _          -> VEqTrans v1' v2'
+       _            -> VEqTrans v1' v2'
 flattenV (VLeqLiftL t v) = foldUnary (VLeqLiftL t) <$> flattenV v
 flattenV (VLeqLiftR v t) = foldUnary (`VLeqLiftR` t) <$> flattenV v
 flattenV (VPlusLeqL v) = VPlusLeqL <$> flattenV v
@@ -517,7 +517,7 @@ flattenV (VEqSym v) = foldUnary VEqSym <$> flattenV v
 flattenV v@(VEqRowPermute is)
   | countUp is 0 = return VEqRefl
   | otherwise    = return v
-  where countUp [] _ = True
+  where countUp [] _       = True
         countUp (i : is) j = i == j && countUp is (j + 1)
 flattenV (VEqThen v1 v2) = foldBinary VEqThen <$> flattenV v1 <*> flattenV v2
 flattenV (VEqLambda v) = foldUnary VEqLambda <$> flattenV v

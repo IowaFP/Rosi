@@ -1,32 +1,32 @@
 {-# LANGUAGE ParallelListComp #-}
 module Checker.Preds where
 
-import Control.Monad
-import Control.Monad.Error.Class
-import Control.Monad.Reader.Class
-import Control.Monad.Writer.Class
-import Data.Bifunctor
-import Data.Either (isLeft, isRight)
-import Data.IORef
-import Data.List
-import Data.Maybe (catMaybes)
+import           Control.Monad
+import           Control.Monad.Error.Class
+import           Control.Monad.Reader.Class
+import           Control.Monad.Writer.Class
+import           Data.Bifunctor
+import           Data.Either                (isLeft, isRight)
+import           Data.IORef
+import           Data.List
+import           Data.Maybe                 (catMaybes)
 
-import Control.Monad.IO.Class
-import System.IO
+import           Control.Monad.IO.Class
+import           System.IO
 
 
-import Checker.Monad
-import Checker.Normalize
-import Checker.Promote
-import Checker.Types (checkPred)
-import Checker.Unify
-import Checker.Utils
-import Printer
-import Syntax
+import           Checker.Monad
+import           Checker.Normalize
+import           Checker.Promote
+import           Checker.Types              (checkPred)
+import           Checker.Unify
+import           Checker.Utils
+import           Printer
+import           Syntax
 
-import GHC.Stack
+import           GHC.Stack
 
-import qualified Debug.Trace as T
+import qualified Debug.Trace                as T
 
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
@@ -42,7 +42,7 @@ solve (cin, p, r) =
      trace ("Normalized goal to " ++ show p')
      mv <- everything as'' p'
      case mv of
-       Just v -> writeRef r (Just v) >> return True
+       Just v  -> writeRef r (Just v) >> return True
        Nothing -> return False
 
   where
@@ -61,9 +61,9 @@ solve (cin, p, r) =
 
   pickEqns :: [(Pred, Evid)] -> [Eqn]
   pickEqns ps = go ps where
-    go [] = []
+    go []                             = []
     go ((PEq (TCompl z x) y, v) : ps) = (TCompl z x, (y, v)) : go ps
-    go (_ : ps) = go ps
+    go (_ : ps)                       = go ps
 
   everything as p =
     do trace ("Solving " ++ show p)
@@ -102,8 +102,8 @@ solve (cin, p, r) =
         Just yt ->
           do q <- unify [] xt yt
              case q of
-               Left _ -> fundeps p
-               Right _  -> return ()) xs
+               Left _  -> fundeps p
+               Right _ -> return ()) xs
 
   matchLeqDirect, matchLeqMap, matchPlusDirect, matchPlusMap, matchEqDirect, matchFoldDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
   match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q <|> matchPlusMap p q <|> matchEqDirect p q <|> matchFoldDirect p q
@@ -168,7 +168,7 @@ solve (cin, p, r) =
             do q <- unify [] t t'
                case q of
                  Left _ -> fundeps p
-                 _       -> return (Just v)
+                 _      -> return (Just v)
   matchPlusDirect _ _ = return Nothing
 
   {-
@@ -275,14 +275,14 @@ solve (cin, p, r) =
       seen = map fst (qs ++ ps)
       ps' = filter ((`notElem` seen) . fst) (expand1 p ++ concatMap (expand2 p) qs)
 
-  byAssump [] p = return Nothing
+  byAssump [] p       = return Nothing
   byAssump (a : as) p = match p a <|> byAssump as p
 
   force p t u =
     do q <- unify [] t u
        case q of
-         Left _ -> fundeps p
-         Right _  -> return ()
+         Left _  -> fundeps p
+         Right _ -> return ()
 
   prim p@(PLeq (TRow y) (TRow z))
     | Just yd <- mapM concreteLabel y, Just zd <- mapM concreteLabel z =
@@ -299,7 +299,7 @@ solve (cin, p, r) =
           Just is ->
             do mapM_ align (zip is z)
                return (Just (VPlusSimple is))
-    where align (Left i, TLabeled _ t) = force p t u where TLabeled _ u = x !! i
+    where align (Left i, TLabeled _ t)  = force p t u where TLabeled _ u = x !! i
           align (Right i, TLabeled _ t) = force p t u where TLabeled _ u = y !! i
   prim p@(PPlus (TRow x) y (TRow z))
     | Just xs <- mapM splitConcreteLabel x, Just zs <- mapM splitConcreteLabel z, Just is <- mapM (flip elemIndex (map fst zs)) (map fst xs) =
@@ -339,8 +339,8 @@ solve (cin, p, r) =
   prim p@(PEq t u) =
     do result <- unifyProductive [] t u
        case result of
-         Productive v -> return (Just v)
-         Unproductive -> return Nothing
+         Productive v       -> return (Just v)
+         Unproductive       -> return Nothing
          UnificationFails _ -> throwError (ErrTypeMismatchPred p t u)
   prim p@(PFold (TRow xs)) =
     return (Just (VFold (length xs)))
@@ -543,7 +543,7 @@ guesses prs =
       walkIs (Unknown n g) =
         do mis <- readRef (goalRef g)
            case mis of
-             Nothing -> return (Unknown n g)
+             Nothing  -> return (Unknown n g)
              Just is' -> walkIs (shiftIsV [] 0 n is')
       walkI (TyArg t) = TyArg <$> walk x u m t
       walkI (PrArg v) = return (PrArg v)
@@ -690,7 +690,7 @@ guess (pr@(tcin, PEq t u, v) : prs) =
           walkIs (Unknown n g) =
             do mis <- readRef (goalRef g)
                case mis of
-                 Nothing -> return (Unknown n g)
+                 Nothing  -> return (Unknown n g)
                  Just is' -> walkIs (shiftIsV [] 0 n is')
           walkI (TyArg t) = TyArg <$> walk x u m t
           walkI (PrArg v) = return (PrArg v)
@@ -730,7 +730,7 @@ solverLoop ps =
              once (b || b')
                   (if b' then qs else p : qs)
                   (ps ++ ps')
-        guessLoop [] = return ps
+        guessLoop []       = return ps
         guessLoop (g : gs) = solverLoop =<< g
 
 

@@ -1,18 +1,18 @@
 module Checker.Types where
 
-import Control.Monad
-import Control.Monad.Error.Class
-import Control.Monad.IO.Class
-import Control.Monad.Reader.Class
-import Control.Monad.Writer
-import Data.IORef
-import Data.List
+import           Control.Monad
+import           Control.Monad.Error.Class
+import           Control.Monad.IO.Class
+import           Control.Monad.Reader.Class
+import           Control.Monad.Writer
+import           Data.IORef
+import           Data.List
 
-import Checker.Monad hiding (collect, trace)
-import Checker.Normalize
-import Checker.Utils
-import Printer
-import Syntax
+import           Checker.Monad              hiding (collect, trace)
+import           Checker.Normalize
+import           Checker.Utils
+import           Printer
+import           Syntax
 
 trace :: MonadIO m => String -> m ()
 trace s = liftIO $
@@ -36,7 +36,7 @@ bindRef (Goal (s, r)) (Just k) =
           | otherwise = do k' <- readRef r'
                            case k' of
                              Just k'' -> check k''
-                             Nothing -> return True
+                             Nothing  -> return True
 
   -- Note: just returning a `Ty` here out of convenience; it's always an exactly the input `Ty`.
 expectK :: MonadCheck m => Ty -> Kind -> Kind -> m Ty
@@ -83,7 +83,7 @@ unifyK' (KRow rActual) kExpected = ((1+) <$>) <$> unifyK rActual kExpected
 unifyK' (KFun dActual cActual) (KFun dExpected cExpected) =
   (*&*) <$> unifyK dActual dExpected <*> unifyK cActual cExpected where
   Just 0 *&* Just 0 = Just 0
-  _ *&* _ = Nothing
+  _ *&* _           = Nothing
 unifyK' _ _ =
   return Nothing
 
@@ -261,7 +261,7 @@ checkTy0 t@(TPlus x y) expected =
                tell [(PPlus x' y' z, v)]
                return z
     where splitConcrete (TLabeled (TLab s) x) = Just (TLab s, x)
-          splitConcrete _ = Nothing
+          splitConcrete _                     = Nothing
 checkTy0 t@(TConOrd k rel u) expected =
   do u' <- checkTy u (KRow expected)
      z@(TUnif v) <- typeGoal' "z" (KRow expected)

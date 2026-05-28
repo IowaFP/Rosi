@@ -1,15 +1,15 @@
 module Checker.Promote where
 
-import Control.Monad
-import Control.Monad.Reader
+import           Control.Monad
+import           Control.Monad.Reader
 
-import Checker.Monad
-import Checker.Types hiding (trace)
-import Checker.Utils
-import Printer
-import Syntax
+import           Checker.Monad
+import           Checker.Types        hiding (trace)
+import           Checker.Utils
+import           Printer
+import           Syntax
 
-import GHC.Stack
+import           GHC.Stack
 
 {--
 
@@ -93,7 +93,7 @@ promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promo
                                    return (Just (newIs 0))
         promoteIs (Known is) = liftM Known . sequence <$> mapM promoteI is
         promoteI :: MonadCheck m => Inst -> m (Maybe Inst)
-        promoteI (TyArg t) = liftM TyArg <$> promoteN v n t
+        promoteI (TyArg t)   = liftM TyArg <$> promoteN v n t
         promoteI i@(PrArg v) = return (Just i)
 promoteN v n (TMapApp f) = liftM TMapApp <$> promoteN v n f
 promoteN v n t = error $ "promote: missing " ++ show t

@@ -1,15 +1,15 @@
 module Checker.Normalize where
 
-import Control.Monad.Reader
-import Data.Bifunctor (first)
-import Data.List
-import Data.Maybe
+import           Control.Monad.Reader
+import           Data.Bifunctor       (first)
+import           Data.List
+import           Data.Maybe
 
-import Checker.Monad
-import Checker.Utils
-import Syntax
+import           Checker.Monad
+import           Checker.Utils
+import           Syntax
 
-import GHC.Stack
+import           GHC.Stack
 
 
 class HasTyVars t where
