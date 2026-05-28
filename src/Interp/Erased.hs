@@ -75,7 +75,6 @@ instance Show Value where
   show (VPrLam _ b) = "\\p " ++ show b
   show (VLam _ b) = "\\ " ++ show b
   show (VSing (Just s)) = s
-  -- TODO(mctano): Does this case still have a valid use?
   show (VSing Nothing) = "<<unknown>>"
   -- Special cases
   show (VVariant k w l)
@@ -89,7 +88,6 @@ instance Show Value where
     | otherwise = "<" ++ fromMaybe (show k) l ++ ": " ++ show w ++ ">"
   show (VRecord vs names) | isTuple names = showTuple vs
   show (VRecord vs names) = "(" ++ intercalate ", " (zipWith3 showRecordEntry names vs [0..]) ++ ")"
-  -- TODO(mctano): Deal with labels for synthesized records
   show (VSyn t) = "<<syn>>"
   show (VString s) = "\"" ++ s ++ "\""
 
@@ -189,7 +187,6 @@ eval' h (EConst CPrj) =
     VLam h $ Prim $ \h ->
       case h of
         (VLeq (Bounded is) : _, VSyn f : _) ->
-          -- TODO(mctano): handle this case
           VRecord (map f is) (replicate  (length is) Nothing)
         (VLeq (Unbounded is) : _, VSyn f : _) ->
           VSyn (\i -> f (is !! i))
@@ -231,7 +228,6 @@ eval' h (EConst CConcat) =
               ws = recordFrom w
               pick (Left i)  = vs i
               pick (Right i) = ws i
-           --TODO(mctano): handle synth properly
            in VSyn (\i -> fst (pick (is !! i)))
 eval' h (EConst CBranch) =
   -- VPrLam h (Value (VLam h (Value (VLam h (Value (VLam h (Const CBranch)))))))
@@ -272,7 +268,6 @@ eval' h (EConst CSyn) =
   VLam h $ Prim $ \h ->
     VLam h $ Prim $ \case
       (_, f : _) ->
-        -- TODO(mctano): handle syn
         VSyn (\i -> app (prapp f (VLeq (Bounded [i]))) (VSing Nothing))
 eval' h (EConst CAna) =
   VLam h $ Prim $ \h ->
@@ -291,7 +286,6 @@ eval' h (EConst CFold) =
             VLam h $ Prim $ \case
               (VVFold n : _, r : def : comp : single : _) ->
                 let vs = recordFrom r
-                    -- TODO(mctano): "handle labeling for fold"
                     one k = app (app (prapp single (VLeq $ Bounded [k])) (VSing Nothing)) (fst (vs k))
                  in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1 .. n - 1])
 eval' h (ECast e q) = q `seq` eval h e

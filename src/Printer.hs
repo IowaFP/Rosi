@@ -154,7 +154,6 @@ instance Printable Ty where
   ppr (TLabeled l t) = fillSep [ppr l <+> ":=", ppr t]
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
   -- Special cases:
-  -- TODO(mctano): special case for Tuple
   -- Nat = Mu (\n : *. Sigma {'Succ := n, 'Zero := Pi {}})}
   ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar _ _),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = ppre "Nat"
   -- Special case for Maybe type
@@ -223,7 +222,6 @@ class FromPeano a where
   fromPeano :: a -> Maybe Int
 
 instance FromPeano Term where
--- TODO(mctano): Handle other cases for terms representing a Nat
   fromPeano :: Term -> Maybe Int
   fromPeano (EVar _ ["zero","Nat","Data"]) = Just 0
   fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
