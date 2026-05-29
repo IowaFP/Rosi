@@ -227,10 +227,17 @@ instance FromPeano Term where
   fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
   fromPeano _                                       = Nothing
 
+collectBinders :: Term -> RDoc ann
+collectBinders = go "\\" where
+  go s (ELam x Nothing m) = go (s <+> ppre x) m
+  go s (ELam x (Just t) m) = go (s <+> parens (ppre x <:> ppr t)) m
+  go s (ETyLam x Nothing m) = go (s <+> "@" <> ppre x) m
+  go s (ETyLam x (Just k) m) = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
+  go s t = s <+> "." <+> ppr t
+
 instance Printable Term where
   ppr (EVar _ s) = ppr s
-  ppr (ELam x (Just t) m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr t <> ".", ppr m]
-  ppr (ELam x Nothing m) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <> ".", ppr m]
+  ppr m@(ELam {}) = with 0 $ collectBinders m
   ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "++", ppr e2]
   ppr (EApp (EApp (EInst (EConst CBranch) _) e1) e2) =
@@ -241,11 +248,10 @@ instance Printable Term where
     with 1 $ fillSep [at 2 (ppr e1), "~", ppr e2]
   ppr t | Just n <- fromPeano t =  ppre (show n)
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
-  ppr (ETyLam x (Just k) m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <:> ppr k <> ".", ppr m]
-  ppr (ETyLam x Nothing m) = with 0 $ nest 2 $ fillSep ["/\\" <> ppre x <> ".", ppr m]
+  ppr m@(ETyLam {}) = with 0 $ collectBinders m
   ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
-    pprI (TyArg t) = brackets (ppr t)
-    pprI (PrArg v) = brackets (ppre (show v))
+    pprI (TyArg t) = "@" <> parens (ppr t)
+    pprI (PrArg _) = mempty
   ppr (EInst m (Unknown n (Goal (s, r)))) =
     do minst <- liftIO $ readIORef r
        case minst of
