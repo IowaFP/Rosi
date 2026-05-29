@@ -1,15 +1,15 @@
 module Interp.Erased where
 
-import           Control.Monad.Reader
-import           Data.IORef
-import           Data.List            (elemIndex, intercalate, sortOn)
-import           Data.Maybe           (fromMaybe, isJust)
-import qualified Debug.Trace          as T
-import           Foreign              (toBool)
-import           GHC.Stack
-import           Printer
-import           Syntax
-import           System.IO.Unsafe
+import Control.Monad.Reader
+import Data.IORef
+import Data.List            (elemIndex, intercalate, sortOn)
+import Data.Maybe           (fromMaybe, isJust)
+import Debug.Trace          qualified as T
+import Foreign              (toBool)
+import GHC.Stack
+import Printer
+import Syntax
+import System.IO.Unsafe
 
 traceEvaluation :: IORef Bool
 traceEvaluation = unsafePerformIO (newIORef False)
@@ -49,9 +49,9 @@ fromBool True  = VVariant 1 vUnit (Just "True")
 
 instance FromPeano Value where
   fromPeano :: Value -> Maybe Int
-  fromPeano (VVariant _ p (Just "Succ")) = fmap (+ 1) (fromPeano p)
+  fromPeano (VVariant _ p (Just "Succ"))               = fmap (+ 1) (fromPeano p)
   fromPeano (VVariant _ (VRecord [] []) (Just "Zero")) = Just 0
-  fromPeano _ = Nothing
+  fromPeano _                                          = Nothing
 
 listFromVariant :: Value -> Maybe [String]
 -- Match on names = ["1", "2"]
@@ -112,7 +112,7 @@ evalB h (Prim f) = f h
 
 app :: Value -> Value -> Value
 app (VLam (hp, he) f') v = evalB (hp, v : he) f'
-app v w = error $ "don't know how to apply " ++ show v ++ " to " ++ show w
+app v w                  = error $ "don't know how to apply " ++ show v ++ " to " ++ show w
 
 prapp :: Value -> EValue -> Value
 prapp f@(VPrLam (hp, he) f') v =

@@ -1,11 +1,11 @@
 {-# LANGUAGE PatternGuards #-}
 module Syntax (module Syntax) where
 
-import           Control.Monad.IO.Class
-import           Data.Bifunctor         (first)
-import           Data.Generics          hiding (GT, TyCon (..))
-import           Data.IORef
-import           GHC.Stack
+import Control.Monad.IO.Class
+import Data.Bifunctor         (first)
+import Data.Generics          hiding (GT, TyCon (..))
+import Data.IORef
+import GHC.Stack
 
 --------------------------------------------------------------------------------
 -- Top-level entities
@@ -338,10 +338,10 @@ shiftIsV vs j n (Known is) = Known (map shiftI is) where
   shiftI (PrArg v) = PrArg v
 
 shiftPNV :: [UVar] -> Int -> Int -> Pred -> Pred
-shiftPNV vs j n (PEq t u) = PEq (shiftTNV vs j n t) (shiftTNV vs j n u)
-shiftPNV vs j n (PLeq y z) = PLeq (shiftTNV vs j n y) (shiftTNV vs j n z)
+shiftPNV vs j n (PEq t u)     = PEq (shiftTNV vs j n t) (shiftTNV vs j n u)
+shiftPNV vs j n (PLeq y z)    = PLeq (shiftTNV vs j n y) (shiftTNV vs j n z)
 shiftPNV vs j n (PPlus x y z) = PPlus (shiftTNV vs j n x) (shiftTNV vs j n y) (shiftTNV vs j n z)
-shiftPNV vs j n (PFold z) = PFold (shiftTNV vs j n z)
+shiftPNV vs j n (PFold z)     = PFold (shiftTNV vs j n z)
 
 shiftT :: Int -> Ty -> Ty
 shiftT j = shiftTN j 1
@@ -366,21 +366,21 @@ data Term =
   deriving (Data, Eq, Show, Typeable)
 
 shiftENV :: [UVar] -> Int -> Int -> Term -> Term
-shiftENV _ _ _ e@(EVar {})   = e
-shiftENV vs j n (ELam x mt e) = ELam x (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
-shiftENV vs j n (EApp f e)    = EApp (shiftENV vs j n f) (shiftENV vs j n e)
-shiftENV vs j n (ETyLam x mk e) = ETyLam x mk (shiftENV vs (j + 1) n e)
-shiftENV vs j n (EPrLam p e) = EPrLam (shiftPNV vs j n p) e
-shiftENV vs j n (EInst e is) = EInst (shiftENV vs j n e) (shiftIsV [] j n is)
-shiftENV vs j n (ESing t) = ESing (shiftTNV vs j n t)
-shiftENV vs j n (ELabel k l e) = ELabel k (shiftENV vs j n l) (shiftENV vs j n e)
+shiftENV _ _ _ e@(EVar {})       = e
+shiftENV vs j n (ELam x mt e)    = ELam x (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
+shiftENV vs j n (EApp f e)       = EApp (shiftENV vs j n f) (shiftENV vs j n e)
+shiftENV vs j n (ETyLam x mk e)  = ETyLam x mk (shiftENV vs (j + 1) n e)
+shiftENV vs j n (EPrLam p e)     = EPrLam (shiftPNV vs j n p) e
+shiftENV vs j n (EInst e is)     = EInst (shiftENV vs j n e) (shiftIsV [] j n is)
+shiftENV vs j n (ESing t)        = ESing (shiftTNV vs j n t)
+shiftENV vs j n (ELabel k l e)   = ELabel k (shiftENV vs j n l) (shiftENV vs j n e)
 shiftENV vs j n (EUnlabel k e l) = EUnlabel k (shiftENV vs j n e) (shiftENV vs j n l)
-shiftENV _ _ _ e@(EConst {}) = e
-shiftENV vs j n (ELet x e f) = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
-shiftENV vs j n (ECast e q) = ECast (shiftENV vs j n e) q
-shiftENV vs j n (ETyped e t) = ETyped e (shiftTNV vs j n t)
+shiftENV _ _ _ e@(EConst {})     = e
+shiftENV vs j n (ELet x e f)     = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
+shiftENV vs j n (ECast e q)      = ECast (shiftENV vs j n e) q
+shiftENV vs j n (ETyped e t)     = ETyped e (shiftTNV vs j n t)
 shiftENV _ _ _ e@(EStringLit {}) = e
-shiftENV _ _ _ e@(EHole {}) = e
+shiftENV _ _ _ e@(EHole {})      = e
 
 shiftEN :: Int -> Int -> Term -> Term
 shiftEN = shiftENV []

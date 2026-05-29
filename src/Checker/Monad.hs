@@ -4,21 +4,19 @@
 
 module Checker.Monad where
 
-import           Control.Monad        (foldM, liftM, liftM2, liftM3,
-                                       mapAndUnzipM, mplus, replicateM, unless,
-                                       when, zipWithM)
-import           Control.Monad.Except
-import           Control.Monad.Reader
-import           Control.Monad.State
-import           Control.Monad.Writer
-import           Data.Bifunctor       (second)
-import           Data.Dynamic
-import           Data.IORef
-import           Data.List            (elemIndex, nub)
-import           GHC.Stack
-import           System.IO.Unsafe     (unsafePerformIO)
+import Control.Monad        (foldM, liftM, liftM2, liftM3, mapAndUnzipM, mplus, replicateM, unless, when, zipWithM)
+import Control.Monad.Except
+import Control.Monad.Reader
+import Control.Monad.State
+import Control.Monad.Writer
+import Data.Bifunctor       (second)
+import Data.Dynamic
+import Data.IORef
+import Data.List            (elemIndex, nub)
+import GHC.Stack
+import System.IO.Unsafe     (unsafePerformIO)
 
-import           Syntax
+import Syntax
 
 {-# NOINLINE traceKindInference #-}
 traceKindInference :: IORef Bool

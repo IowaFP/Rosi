@@ -3,29 +3,28 @@
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module Main where
 
-import           Control.Monad         (void, when, (<=<))
-import           Control.Monad.Reader  (runReaderT)
-import           Control.Monad.State
-import           Data.IORef
-import           Data.List             (break, findIndex)
-import           Data.List.Split
-import           Data.String
-import qualified Prettyprinter         as P
-import qualified Prettyprinter.Util    as P
-import           System.Console.GetOpt
-import           System.Directory
-import           System.Environment
-import           System.Exit           (exitFailure)
-import           System.FilePath
-import           System.IO             (BufferMode (..), hPutStrLn,
-                                        hSetBuffering, stderr, stdout)
+import Control.Monad         (void, when, (<=<))
+import Control.Monad.Reader  (runReaderT)
+import Control.Monad.State
+import Data.IORef
+import Data.List             (break, findIndex)
+import Data.List.Split
+import Data.String
+import Prettyprinter         qualified as P
+import Prettyprinter.Util    qualified as P
+import System.Console.GetOpt
+import System.Directory
+import System.Environment
+import System.Exit           (exitFailure)
+import System.FilePath
+import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr, stdout)
 
-import           Checker
-import           Interp.Erased         as E
-import           Parser
-import           Printer
-import           Scope
-import           Syntax
+import Checker
+import Interp.Erased         as E
+import Parser
+import Printer
+import Scope
+import Syntax
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doTraceKindInference, doTraceInference

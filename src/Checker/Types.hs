@@ -1,18 +1,18 @@
 module Checker.Types where
 
-import           Control.Monad
-import           Control.Monad.Error.Class
-import           Control.Monad.IO.Class
-import           Control.Monad.Reader.Class
-import           Control.Monad.Writer
-import           Data.IORef
-import           Data.List
+import Control.Monad
+import Control.Monad.Error.Class
+import Control.Monad.IO.Class
+import Control.Monad.Reader.Class
+import Control.Monad.Writer
+import Data.IORef
+import Data.List
 
-import           Checker.Monad              hiding (collect, trace)
-import           Checker.Normalize
-import           Checker.Utils
-import           Printer
-import           Syntax
+import Checker.Monad              hiding (collect, trace)
+import Checker.Normalize
+import Checker.Utils
+import Printer
+import Syntax
 
 trace :: MonadIO m => String -> m ()
 trace s = liftIO $
@@ -222,7 +222,7 @@ checkTy0 (TConApp (Mu count) f) expected = TConApp (Mu count) <$> checkTy f (KFu
 checkTy0 (TConApp (TCUnif g) t) expected =
   do mk <- readRef (goalRef g)
      case mk of
-       Just k -> checkTy0 (TConApp k t) expected
+       Just k  -> checkTy0 (TConApp k t) expected
        Nothing -> fail "don't know how to kind check unknown constructor application"
 checkTy0 (TInst ig t) expected =
   TInst ig <$> checkTy t expected

@@ -1,15 +1,15 @@
 module Checker.Promote where
 
-import           Control.Monad
-import           Control.Monad.Reader
+import Control.Monad
+import Control.Monad.Reader
 
-import           Checker.Monad
-import           Checker.Types        hiding (trace)
-import           Checker.Utils
-import           Printer
-import           Syntax
+import Checker.Monad
+import Checker.Types        hiding (trace)
+import Checker.Utils
+import Printer
+import Syntax
 
-import           GHC.Stack
+import GHC.Stack
 
 {--
 
@@ -99,10 +99,10 @@ promoteN v n (TMapApp f) = liftM TMapApp <$> promoteN v n f
 promoteN v n t = error $ "promote: missing " ++ show t
 
 promoteP :: MonadCheck m => UVar -> Int -> Pred -> m (Maybe Pred)
-promoteP v n (PEq t u) = liftM2 PEq <$> promoteN v n t <*> promoteN v n u
-promoteP v n (PLeq y z) = liftM2 PLeq <$> promoteN v n y <*> promoteN v n z
+promoteP v n (PEq t u)     = liftM2 PEq <$> promoteN v n t <*> promoteN v n u
+promoteP v n (PLeq y z)    = liftM2 PLeq <$> promoteN v n y <*> promoteN v n z
 promoteP v n (PPlus x y z) = liftM3 PPlus <$> promoteN v n x <*> promoteN v n y <*> promoteN v n z
-promoteP v n (PFold z) = liftM PFold <$> promoteN v n z
+promoteP v n (PFold z)     = liftM PFold <$> promoteN v n z
 
 -- TODO: the Evid returned here is always and only VEqRefl... why needed?
 solveUV :: (HasCallStack, MonadCheck m) => UVar -> Ty -> m (Maybe Evid)

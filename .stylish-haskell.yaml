@@ -292,7 +292,7 @@ steps:
       #   > import qualified Data.Foo as F
       #
       # Default: false
-      post_qualify: false
+      post_qualify: true
 
       # Automatically group imports based on their module names, with
       # a blank line separating each group. Groups are ordered in
@@ -451,7 +451,7 @@ steps:
 # Set this to null to disable all line wrapping.
 #
 # Default: 80.
-columns: 80
+columns: 200
 
 # By default, line endings are converted according to the OS. You can override
 # preferred format here.
@@ -463,7 +463,7 @@ columns: 80
 # - crlf: Convert to CRLF ("\r\n").
 #
 # Default: native.
-newline: native
+newline: lf
 
 # Sometimes, language extensions are specified in a cabal file or from the
 # command line instead of using language pragmas in the file. stylish-haskell

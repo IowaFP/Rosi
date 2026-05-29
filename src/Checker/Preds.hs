@@ -1,32 +1,32 @@
 {-# LANGUAGE ParallelListComp #-}
 module Checker.Preds where
 
-import           Control.Monad
-import           Control.Monad.Error.Class
-import           Control.Monad.Reader.Class
-import           Control.Monad.Writer.Class
-import           Data.Bifunctor
-import           Data.Either                (isLeft, isRight)
-import           Data.IORef
-import           Data.List
-import           Data.Maybe                 (catMaybes)
+import Control.Monad
+import Control.Monad.Error.Class
+import Control.Monad.Reader.Class
+import Control.Monad.Writer.Class
+import Data.Bifunctor
+import Data.Either                (isLeft, isRight)
+import Data.IORef
+import Data.List
+import Data.Maybe                 (catMaybes)
 
-import           Control.Monad.IO.Class
-import           System.IO
+import Control.Monad.IO.Class
+import System.IO
 
 
-import           Checker.Monad
-import           Checker.Normalize
-import           Checker.Promote
-import           Checker.Types              (checkPred)
-import           Checker.Unify
-import           Checker.Utils
-import           Printer
-import           Syntax
+import Checker.Monad
+import Checker.Normalize
+import Checker.Promote
+import Checker.Types              (checkPred)
+import Checker.Unify
+import Checker.Utils
+import Printer
+import Syntax
 
-import           GHC.Stack
+import GHC.Stack
 
-import qualified Debug.Trace                as T
+import Debug.Trace                qualified as T
 
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =

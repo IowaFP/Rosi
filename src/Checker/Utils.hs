@@ -1,9 +1,9 @@
 module Checker.Utils where
 
-import           Control.Monad.Reader.Class
+import Control.Monad.Reader.Class
 
-import           Checker.Monad
-import           Syntax
+import Checker.Monad
+import Syntax
 
 kindGoal :: MonadCheck m => String -> m Kind
 kindGoal s =

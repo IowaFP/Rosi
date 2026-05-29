@@ -3,16 +3,16 @@
 {-# HLINT ignore "Eta reduce" #-}
 module Printer where
 
-import           Control.Monad.Reader
-import           Data.IORef                  (readIORef)
-import           Data.List                   (intercalate)
-import           Data.String
-import qualified Prettyprinter               as P
-import qualified Prettyprinter.Render.String as P
-import qualified Prettyprinter.Util          as P
-import           System.IO.Unsafe
+import Control.Monad.Reader
+import Data.IORef                  (readIORef)
+import Data.List                   (intercalate)
+import Data.String
+import Prettyprinter               qualified as P
+import Prettyprinter.Render.String qualified as P
+import Prettyprinter.Util          qualified as P
+import System.IO.Unsafe
 
-import           Syntax
+import Syntax
 
 data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool, printInstantiations :: Bool }
 type RDoc ann = ReaderT PrinterOptions IO (P.Doc ann)
@@ -188,7 +188,7 @@ instance Printable Ty where
        then do minst <- liftIO $ readIORef r
                case minst of
                  Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
-                 Just is  -> ppr (TInst is t)
+                 Just is -> ppr (TInst is t)
        else ppr t
   ppr (TInst (Known is) t) =
     do b <- asks printInstantiations
@@ -288,13 +288,13 @@ pprTyping (x, ty, e) =
 pprTypeError :: Error -> RDoc ann
 pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
   where d <:> (ds, te) = (d : ds, te)
-        contexts (ErrContextDefn d te) = ("Whilst checking the definition of" <+> ppr d) <:> contexts te
-        contexts (ErrContextType ty te) = ("Whilst checking the type" <+> ppr ty) <:> contexts te
-        contexts (ErrContextPred pr te) = ("Whilst checking the predicate" <+> ppr pr) <:> contexts te
-        contexts (ErrContextTerm t te) = ("While checking the term" <+> ppr t) <:> contexts te
+        contexts (ErrContextDefn d te)   = ("Whilst checking the definition of" <+> ppr d) <:> contexts te
+        contexts (ErrContextType ty te)  = ("Whilst checking the type" <+> ppr ty) <:> contexts te
+        contexts (ErrContextPred pr te)  = ("Whilst checking the predicate" <+> ppr pr) <:> contexts te
+        contexts (ErrContextTerm t te)   = ("While checking the term" <+> ppr t) <:> contexts te
         contexts (ErrContextTyEq t u te) = ("While comparing the types" <+> ppr t <+> "and" <+> ppr u) <:> contexts te
-        contexts (ErrContextOther s te) = ppre s <:> contexts te
-        contexts te = ([], te)
+        contexts (ErrContextOther s te)  = ppre s <:> contexts te
+        contexts te                      = ([], te)
 
         (ctxts, te') = contexts te
 

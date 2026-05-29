@@ -1,15 +1,15 @@
 module Checker.Normalize where
 
-import           Control.Monad.Reader
-import           Data.Bifunctor       (first)
-import           Data.List
-import           Data.Maybe
+import Control.Monad.Reader
+import Data.Bifunctor       (first)
+import Data.List
+import Data.Maybe
 
-import           Checker.Monad
-import           Checker.Utils
-import           Syntax
+import Checker.Monad
+import Checker.Utils
+import Syntax
 
-import           GHC.Stack
+import GHC.Stack
 
 
 class HasTyVars t where
@@ -53,10 +53,10 @@ instance HasTyVars Ty where
   subst v t u = error $ "internal: subst " ++ show v ++ " (" ++ show t ++ ") (" ++ show u ++")"
 
 instance HasTyVars Pred where
-  subst v t (PEq u u') = PEq <$> subst v t u <*> subst v t u'
-  subst v t (PLeq y z) = PLeq <$> subst v t y <*> subst v t z
+  subst v t (PEq u u')    = PEq <$> subst v t u <*> subst v t u'
+  subst v t (PLeq y z)    = PLeq <$> subst v t y <*> subst v t z
   subst v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
-  subst v t (PFold z) = PFold <$> subst v t z
+  subst v t (PFold z)     = PFold <$> subst v t z
 
 normalize' :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
 normalize' eqns t =
@@ -125,7 +125,7 @@ normalize eqns (TMapApp z) =
     do k <- kindOf z
        case k of
          KRow (KFun k1 k2) -> return (TLam "X" (Just k1) (TApp (TMap (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 ["Y", ""]) (TVar 1 ["X", ""])))) (shiftTN 0 1 z)), VEqDefn)
-         _ -> fail ("normalize: ill-kinded " ++ show (TMapApp z))
+         _                 -> fail ("normalize: ill-kinded " ++ show (TMapApp z))
 normalize eqns (TApp t1 t2) =
   do (t1', q1) <- normalize eqns t1
      q1' <- flattenV q1
@@ -206,7 +206,7 @@ normalize eqns (TThen p t) =
 normalize eqns t = return (t, VEqRefl)
 
 normalizeP :: MonadCheck m => [Eqn] -> Pred -> m Pred -- no evidence structure for predicate equality yet soooo....
-normalizeP eqns (PLeq x y) = PLeq <$> (fst <$> normalize eqns x) <*> (fst <$> normalize eqns y)
+normalizeP eqns (PLeq x y)    = PLeq <$> (fst <$> normalize eqns x) <*> (fst <$> normalize eqns y)
 normalizeP eqns (PPlus x y z) = PPlus <$> (fst <$> normalize eqns x) <*> (fst <$> normalize eqns y) <*> (fst <$> normalize eqns z)
-normalizeP eqns (PEq t u) = PEq <$> (fst <$> normalize' eqns t) <*> (fst <$> normalize' eqns u)
-normalizeP eqns (PFold z) = PFold <$> (fst <$> normalize' eqns z)
+normalizeP eqns (PEq t u)     = PEq <$> (fst <$> normalize' eqns t) <*> (fst <$> normalize' eqns u)
+normalizeP eqns (PFold z)     = PFold <$> (fst <$> normalize' eqns z)

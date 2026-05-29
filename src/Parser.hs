@@ -1,31 +1,30 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Parser where
 
-import           Syntax
+import Syntax
 
-import           Control.Monad              (foldM, guard, mplus, replicateM,
-                                             void, when)
+import Control.Monad              (foldM, guard, mplus, replicateM, void, when)
 -- import Control.Monad.IO.Class (liftIO)
-import           Control.Monad.Reader
-import           Control.Monad.State
+import Control.Monad.Reader
+import Control.Monad.State
 
-import           Data.Char                  (isSpace)
-import           Data.Data
-import           Data.IORef                 (newIORef)
-import           Data.List                  (delete, intercalate)
-import           Data.List.NonEmpty         (fromList)
-import           Data.List.Split            (splitOn)
-import           Data.Maybe                 (fromMaybe, isNothing)
-import           Data.Void                  (Void)
-import           System.Exit                (exitFailure)
-import           System.IO                  (hPutStrLn, stderr)
+import Data.Char                  (isSpace)
+import Data.Data
+import Data.IORef                 (newIORef)
+import Data.List                  (delete, intercalate)
+import Data.List.NonEmpty         (fromList)
+import Data.List.Split            (splitOn)
+import Data.Maybe                 (fromMaybe, isNothing)
+import Data.Void                  (Void)
+import System.Exit                (exitFailure)
+import System.IO                  (hPutStrLn, stderr)
 
-import           Text.Megaparsec            hiding (State)
-import           Text.Megaparsec.Char
-import qualified Text.Megaparsec.Char.Lexer as P
-import           Text.Megaparsec.Error
+import Text.Megaparsec            hiding (State)
+import Text.Megaparsec.Char
+import Text.Megaparsec.Char.Lexer qualified as P
+import Text.Megaparsec.Error
 
-import           Debug.Trace
+import Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Combinators I miss from Parsec
@@ -447,9 +446,9 @@ appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
                  , do symbol "("
                       t <- do ts <- commaSep1 term
                               case (ts, mapM labeledTerm ts) of
-                                 ([t], _) -> return t
+                                 ([t], _)           -> return t
                                  (_, Just (t : ts)) -> return (foldl (\t1 t2 -> EApp (EApp (EConst CConcat) t1) t2) t ts)
-                                 (_, Nothing) -> unexpected $ Label (fromList "unlabeled term")
+                                 (_, Nothing)       -> unexpected $ Label (fromList "unlabeled term")
                       guardIndent (string ")")
                       s <- optional stor
                       whitespace

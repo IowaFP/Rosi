@@ -1,18 +1,18 @@
 module Checker (runCheckM, runCheckM', checkTy, checkTop, normalize, TCtxt(..), traceKindInference, traceTypeInference, KBinding(..), typeErrorContext, toCheckM, implicitConstraints) where
 
-import           Control.Monad.Except
-import           Control.Monad.Reader
-import           Control.Monad.State
-import           Control.Monad.Writer
-import           Data.Bifunctor       (second)
+import Control.Monad.Except
+import Control.Monad.Reader
+import Control.Monad.State
+import Control.Monad.Writer
+import Data.Bifunctor       (second)
 
-import           Checker.Monad
-import           Checker.Normalize
-import           Checker.Preds
-import           Checker.Terms
-import           Checker.Types
+import Checker.Monad
+import Checker.Normalize
+import Checker.Preds
+import Checker.Terms
+import Checker.Types
 
-import           Syntax
+import Syntax
 
 third f (a, b, c) = (a, b, f c)
 

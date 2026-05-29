@@ -1,12 +1,12 @@
 module Scope where
 
-import           Control.Monad.Except
-import           Control.Monad.Reader
-import           Control.Monad.State
-import           Data.Bifunctor
-import           Data.List
-import           Data.Maybe
-import           Syntax
+import Control.Monad.Except
+import Control.Monad.Reader
+import Control.Monad.State
+import Data.Bifunctor
+import Data.List
+import Data.Maybe
+import Syntax
 
 newtype ScopeM a = ScopeM { runScope :: ReaderT ([QName], [QName]) (Except Error) a }
   deriving (Functor, Applicative, Monad, MonadReader ([QName], [QName]), MonadError Error)
@@ -177,7 +177,7 @@ declName (TmDecl x _ _) = x
 declName (TyDecl x _ _) = x
 
 scopeProg :: [Decl] -> ScopeM [Decl]
-scopeProg [] = return []
+scopeProg []                      = return []
 scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindGVar x (scopeProg ds)
 scopeProg (d@(TyDecl x _ _) : ds) = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)
 
