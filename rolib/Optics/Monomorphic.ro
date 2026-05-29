@@ -167,7 +167,7 @@ inOrder = \ t.
 --   as desired.
 projectLens : forall x y : R[*]. x < y =>
               Lens (Pi y) (Pi x)
-projectLens = /\ x y. (#'get := prj [x] [y] , #'put := \ zs xs. xs ++ prj [y - x] [y] zs)
+projectLens = \ @x @y. (#'get := prj @x @y , #'put := \ zs xs. xs ++ prj @(y - x) @y zs)
 
 
 --------------------------------------------------------------------------------
@@ -191,7 +191,7 @@ projectLens = /\ x y. (#'get := prj [x] [y] , #'put := \ zs xs. xs ++ prj [y - x
 --      = zs
 concatLens : forall x y z : R[ * ]. x + y ~ z =>
              Lens (Pair (Pi x) (Pi y)) (Pi z)
-concatLens = /\ x y z. (#'get := \ p.  fst p ++ snd p , #'put := \ p zs. pair (prj [x] [z] zs) (prj [y] [z] zs))
+concatLens = \ @x @y @z. (#'get := \ p.  fst p ++ snd p , #'put := \ p zs. pair (prj @x @z zs) (prj @y @z zs))
 
 --------------------------------------------------------------------------------
 -- Injection is a prism

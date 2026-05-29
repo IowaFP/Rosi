@@ -27,11 +27,11 @@ type PointF = {
 -- (For the categorically minded: yes, it is not really a *functor*, as it is mixed-variant.)
 fmapPointF : Pi (Functor PointF)
 fmapPointF =
-    ('x := /\ a b. \ f x. x ,
-     'y := /\ a b. \ f y. y ,
-     'move := /\ a b. \ f move p. f (move p)  ,
-     'equal := /\ a b. \ f equal. sorry , -- <-- Negative occurrence in #'equal
-     'get := /\ a b. \ f p. p
+    ('x := \ @a @b f x. x ,
+     'y := \ @a @b f y. y ,
+     'move := \ @a @b f move p. f (move p)  ,
+     'equal := \ @a @b f equal. sorry , -- <-- Negative occurrence in #'equal
+     'get := \@a @b f p. p
      )
 
 type Point : *
@@ -208,8 +208,8 @@ type ColorPoint = Mu (Pi ColorPointF)
 -- Note that the ColorPoint constructor crucially uses its parent constructor
 -- (cartPoint) to construct `super`, then overwrites super's `equal` method.
 colorPoint : Class ColorPointF (TripleRow Nat Nat Color)
-colorPoint = /\ t. \ init p self.
-  let super = (cartPoint [t]
+colorPoint = \@t init p self.
+  let super = (cartPoint @t
                 (\ q. init (triple q.'1 q.'2 p.'3))
                 (pair p.'1 p.'2)
                 self) in

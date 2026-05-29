@@ -26,13 +26,13 @@ type Unit : *
 type Unit = Pi {}
 
 tt : Unit
-tt = prj ('x := /\ a. \x. x)
+tt = prj ('x := \@a x. x)
 
 -------------------------------------------------------------------------------
 -- the any label
 
 any : forall l : L. #l
-any = /\ l. #l
+any = \@l. #l
 
 -------------------------------------------------------------------------------
 -- Convenience functions for records and variants
@@ -117,17 +117,17 @@ reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t
 reflect = \ d w. ana #(\X. X) (\ l u. d.l u) w
 
 reify : forall z t. (Sigma z -> t) -> Pi (z -> t)
-reify = /\ z t. \f. syn #(\X. X -> t) (\l x. f (l: x))
+reify = \ @z @t f. syn #(\X. X -> t) (\l x. f (l: x))
 
 -- Categorical duals to reify / reflect. Don't have great names for these.
 decompose : forall z : R[*] , t. Pi (t -> z) -> (t -> Pi z)
 decompose = \ d t. syn #(\ X. X) (\ l. d.l t)
 
 recompose : forall z : R[*] , t. (t -> Pi z) -> Pi (t -> z)
-recompose = /\ z t. \ f. syn #(\ X. t -> X) (\ l u. sel (f u) l)
+recompose = \ @z @t f. syn #(\ X. t -> X) (\ l u. sel (f u) l)
 
 every : a -> Pi ((Const a)* z)
-every = /\a. \x. syn #(\X. a) (\l. x)
+every = \@a x. syn #(\X. a) (\l. x)
 
 type Eq : * -> *
 type Eq = \t. t -> t -> Bool

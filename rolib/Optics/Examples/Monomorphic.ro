@@ -1,4 +1,4 @@
-import Ro.Base , Optics.Monomorphic 
+import Ro.Base , Optics.Monomorphic
 
 --------------------------------------------------------------------------------
 -- An example nested record type
@@ -16,8 +16,8 @@ type Person = { 'age := Nat , 'place := Pi Place }
 -- Bob, an example Person
 
 Bob : Pi Person
-Bob = (#'age := 2 , 
-       #'place := 
+Bob = (#'age := 2 ,
+       #'place :=
          (#'address     := (#'street := "Abbey Road" , #'zip := 1) ,
           #'isApartment := True))
 
@@ -28,7 +28,7 @@ showAddress : ShowR Address
 showAddress = (#'names := (#'street := "street" , #'zip := "zip") , #'shows := (#'street := id , #'zip := showNat))
 
 showPlace : ShowR Place
-showPlace = (#'names := (#'address := "address" , #'isApartment := "isApartment") , 
+showPlace = (#'names := (#'address := "address" , #'isApartment := "isApartment") ,
              #'shows := (#'address := showP showAddress , #'isApartment := showBool))
 
 showPerson : ShowR Person
@@ -40,33 +40,33 @@ showBob = showP showPerson Bob
 --------------------------------------------------------------------------------
 -- Getting and updating Bob with label lenses
 
-streetLens : Lens (Pi Person) String 
+streetLens : Lens (Pi Person) String
 streetLens = comp (comp (lens #'place) (lens #'address)) (lens #'street)
 
 -- Getting is straightforward
 BobStreet : String
-BobStreet = get streetLens Bob 
+BobStreet = get streetLens Bob
 
 -- Updating is straightforward
-movedBob : Pi Person 
+movedBob : Pi Person
 movedBob = put streetLens Bob "1818 Pleasant St."
 
 -- N.b., evaluating `put` terms causes my compiler to loop.
 -- To reproduce, run:
 --   cabal run Rosi -- -i rolib -i examples Optics.Lenses -e bug
-bug : Pi Person 
+bug : Pi Person
 bug = put (lens #'age) Bob 2
 
 -- Manipulating with other lenses
-ageAndHeight : forall x : R[*]. 
-               {'height := Nat} < x => 
+ageAndHeight : forall x : R[*].
+               {'height := Nat} < x =>
                Pi Person -> Pi x -> Pi {'age := Nat , 'height := Nat}
-ageAndHeight =  /\ x. \ p d. (get (comp concatLens projectLens) (pair p (prj [{'height := Nat}] [x] d)))
+ageAndHeight =  \ @x, p d. (get (comp concatLens projectLens) (pair p (prj @{'height := Nat} @x d)))
 
 -- Challenge: make this extensible, e.g.,
 --   {'height := Nat} < x => Pi Person -> Pi x -> ...
 ageAndHeightPut : Pi Person -> Pi {'height := Nat} -> Pair (Pi Person) (Pi {'height := Nat})
-ageAndHeightPut = \ p d. 
+ageAndHeightPut = \ p d.
   put (comp concatLens projectLens) (pair p d) (#'age := 3 , #'height := 2)
 
 newAgeBob : Pi Person
@@ -78,10 +78,10 @@ newAgeBob = put projectLens Bob (#'age := 3)
 --------------------------------------------------------------------------------
 -- An example from Pickering et al
 
-type Number : * 
-type Number = Nat 
+type Number : *
+type Number = Nat
 
-type ID : * 
+type ID : *
 type ID = String
 
 type Name : *
@@ -91,19 +91,19 @@ type Contact : *
 type Contact = Sigma {'Phone := Number , 'Skype := ID }
 
 showContact : Contact -> String
-showContact = showS 
-    (#'names := (#'Phone := "Phone" , #'Skype := "Skype") , 
+showContact = showS
+    (#'names := (#'Phone := "Phone" , #'Skype := "Skype") ,
      #'shows := (#'Phone := showNat , #'Skype := id))
 
-type Entry : * 
+type Entry : *
 type Entry = Pi {'Entry := Pair Name Contact }
 
 showEntry : Entry -> String
-showEntry = showP 
+showEntry = showP
     (#'names := (#'Entry := "Entry"),
      #'shows := (#'Entry := showPair id showContact))
 
-type Book : * 
+type Book : *
 type Book = List Entry
 
 -- Define a prism onto phone
@@ -118,13 +118,13 @@ contact = comp (lens #'Entry) (lens #'2)
 contactPhone : Traversal Entry Number
 contactPhone = compTraversal (lensTraversal contact) (prismTraversal phone)
 
-alex : Entry 
+alex : Entry
 alex = (#'Entry := pair "alex" (con #'Phone 2))
 
-bob : Entry 
+bob : Entry
 bob = (#'Entry := pair "bob" (con #'Skype "bobSkype"))
 
-book : Book 
+book : Book
 book = cons alex (cons bob nil)
 
 updatedBook : Book

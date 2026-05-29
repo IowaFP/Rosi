@@ -18,11 +18,11 @@ type Functor : (* -> *) -> *
 type Functor = \f. forall a b. (a -> b) -> f a -> f b
 
 fmapS : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
-fmapS = \ d. /\ a b. \ f.
+fmapS = \ d @a @b f.
           mapS #(\ X. X a) #(\ X. X b) (\l. sel d l f)
 
 fmapP : forall z : R[* -> *] . Pi (Functor z) -> Functor (Pi z)
-fmapP = \ d. /\ a b. \ f.
+fmapP = \ d @a @b f.
           mapP #(\ X. X a) #(\ X. X b) (\l. sel d l f)
 
 -- TODO: generalize, but this seems to require kind polymorphism???

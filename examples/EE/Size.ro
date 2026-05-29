@@ -30,13 +30,13 @@ sizeAll = sizeLB
 -- Examples
 
 szId : Nat
-szId = cata (fmapS [AllF] functorAll) sizeAll xpId
+szId = cata (fmapS @AllF functorAll) sizeAll xpId
 
 szConst : Nat
-szConst = cata (fmapS [AllF] functorAll) sizeAll xpConst
+szConst = cata (fmapS @AllF functorAll) sizeAll xpConst
 
 szNot : Nat
-szNot = cata (fmapS [AllF] functorAll) sizeAll xpNot
+szNot = cata (fmapS @AllF functorAll) sizeAll xpNot
 
 -- Sizeg as a bounded algebra
 

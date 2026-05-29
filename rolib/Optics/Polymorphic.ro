@@ -101,10 +101,10 @@ type Traversal = \ a b s t. forall f : * -> *. Applicative f -> (a -> f b) -> s 
 
 -- recovering the more concrete Traversal interface of Monomorphic lenses
 over : forall a b s t. Traversal a b s t -> (a -> b) -> s -> t
-over = \ t. t [Id] applicativeId
+over = \ t. t @Id applicativeId
 
 listOf : forall a s. Traversal a a s s -> s -> List a
-listOf = /\ a. \ t. t [Const (List a)] (applicativeConst monoidList) sing
+listOf = \ @a t. t @(Const (List a)) (applicativeConst monoidList) sing
 
 -- every lens forms a traversal
 lensTraversal : forall a b s t. Lens a b s t -> Traversal a b s t

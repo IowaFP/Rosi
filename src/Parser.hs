@@ -4,14 +4,13 @@ module Parser where
 import Syntax
 
 import Control.Monad              (foldM, guard, mplus, replicateM, void, when)
--- import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader
 import Control.Monad.State
 
 import Data.Char                  (isSpace)
 import Data.Data
 import Data.IORef                 (newIORef)
-import Data.List                  (delete, intercalate)
+import Data.List                  (delete, intercalate, singleton)
 import Data.List.NonEmpty         (fromList)
 import Data.List.Split            (splitOn)
 import Data.Maybe                 (fromMaybe, isNothing)
@@ -166,24 +165,34 @@ kind = chainr1 akind (symbol "->" >> return KFun) where
                   , do symbol "R"
                        KRow <$> brackets kind ]
 
-binders :: Parser t -> Parser [(String, Maybe t)]
-binders p =
-  do xs <- some (lexeme identifier)
-     m <- optional $ do colon >> p
-     return (map (, m) xs)
-
 ty :: Parser Ty
 ty = do pfs <- many prefix
         ty <- thenTy
         return (foldr ($) ty pfs) where
+
+  quantBinders :: Parser [(String, Maybe Kind)]
+  quantBinders =
+    do xs <- some (lexeme identifier)
+       m <- optional $ do colon >> kind
+       return (map (, m) xs)
+
+  lamBinders :: Parser [(String, Maybe Kind)]
+  lamBinders =
+    choice
+      [ singleton . (, Nothing) <$> lexeme identifier
+      , parens $ do xs <- some (lexeme identifier)
+                    k <- colon >> kind
+                    return (map (, Just k) xs) ]
+
+
   prefix :: Parser (Ty -> Ty)
   prefix = choice
              [ do symbol "\\"
-                  bs <- commaSep1 (binders kind)
+                  bs <- some lamBinders
                   dot
                   return (foldr (\(v, k) f -> TLam v k . f) id (concat bs))
              , do reserved "forall"
-                  bs <- commaSep1 (binders kind)
+                  bs <- commaSep1 quantBinders
                   dot
                   return (foldr (\(v, k) f -> TForall v k . f) id (concat bs)) ]
 
@@ -284,39 +293,34 @@ pr = choice [ do reserved "Fold"
 --     ++ ?
 --     := /
 
-prefix :: Parser (Term -> Term)
-prefix = do symbol "\\"
-            bs <- commaSep1 (binders ty)
-            dot
-            return (foldr1 (.) (map (uncurry ELam) (concat bs)))
-       <|>
-         do symbol "/\\"
-            bs <- commaSep1 (binders kind)
-            dot
-            return (foldr1 (.) (map (uncurry ETyLam) (concat bs)))
-       <|>
-         do reserved "let"
-            x <- lexeme identifier
-            mty <- optional $ symbol ":" >> ty
-            symbol "="
-            t <- term
-            reserved "in"
-            let t' = maybe t (ETyped t) mty
-            return (ELet x t')
-
 term :: Parser Term
 term = prefixes typedTerm where
 
+  binders :: Parser [Either (String, Maybe Kind) (String, Maybe Ty)]
+  binders =
+    choice
+      [ singleton . Right . (, Nothing) <$> lexeme identifier
+      , singleton . Left  . (, Nothing) <$> lexeme (char '@' >> identifier)
+      , parens $ do xs <- some (lexeme identifier)
+                    t <- colon >> ty
+                    return (map (Right . (, Just t)) xs)
+      , parens $ do xs <- some (char '@' >> lexeme identifier)
+                    t <- colon >> kind
+                    return (map (Left . (, Just t)) xs)
+      ]
+    -- do xs <- some (lexeme identifier)
+    --    t <- optional $ colon >> ty
+    --    return (map (Right . (, t)) xs)
+    -- <|>
+    -- do xs <- some (lexeme (char '@' >> identifier))
+    --    k <- optional $ colon >> kind
+    --    return (map (Left . (, k)) xs)
+
   prefix :: Parser (Term -> Term)
   prefix = do symbol "\\"
-              bs <- commaSep1 (binders ty)
+              bs <- some binders
               dot
-              return (foldr1 (.) (map (uncurry ELam) (concat bs)))
-         <|>
-           do symbol "/\\"
-              bs <- commaSep1 (binders kind)
-              dot
-              return (foldr1 (.) (map (uncurry ETyLam) (concat bs)))
+              return (foldr1 (.) (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs)))
          <|>
            do symbol "let"
               x <- lexeme identifier
@@ -398,7 +402,7 @@ term = prefixes typedTerm where
 data AppTerm = Type Ty | Term Term
 
 appTerm :: Parser Term
-appTerm = do (t : ts) <- some (Type <$> brackets ty <|> Term <$> aterm)
+appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
              app t ts where
 
   app :: AppTerm -> [AppTerm] -> Parser Term

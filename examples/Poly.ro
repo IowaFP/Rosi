@@ -287,7 +287,7 @@ c7 = append (single suc) (single id)
 -- let C8 : _ → IdTy = λ (g : {A} → List A → List A → A). g (single id) ids;
 
 c8 : (forall a. List a -> List a -> a) -> IdTy   -- doesn't work for me without type signature either
-c8 = \ g : forall a. List a -> List a -> a. g (single id) ids
+c8 = \ (g : forall a. List a -> List a -> a). g (single id) ids
 
 -- let C9 = map poly (single id);
 
@@ -334,12 +334,12 @@ d5 = revapp argST runST
 --   k (λ x. h x) lst;
 
 -- e2 = \ h : Nat -> (forall a. a -> a), k : forall a. a -> List a -> a, lst : List (forall a. Nat -> a -> a).
---        k (/\a. \x. h x [a]) lst
+--        k (\@a, x. h x @a) lst
 
 -- let E3 =
 --   λ (r : ({A} → A → {B} → B → B) → Nat). r (λ x y. y);
 
-e3 = \ r : (forall a. a -> (forall b. b -> b)) -> Nat.
+e3 = \ (r : (forall a. a -> (forall b. b -> b)) -> Nat).
        r (\x y. y)
 
 -- U

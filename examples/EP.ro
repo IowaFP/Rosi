@@ -71,7 +71,7 @@ implementation = (#'eval := evalAlg , #'print := printAlg)
 -- Stated first generically:
 dualize : forall Cases : R[* -> *], Interface : R[*].
          Pi (MAlg (Sigma Cases) Interface) -> Pi ((Cases (Pi Interface)) -> Pi Interface)
-dualize = /\ Cases. /\ Interface. \ d.
+dualize = \ @Cases @Interface, d.
     syn #(\t. t (Pi Interface) -> Pi Interface) (\ caseLabel e.
         syn #(\t. t) (\ interfaceLabel. sel d interfaceLabel (\ v. sel v interfaceLabel) (con caseLabel e)))
 
@@ -84,7 +84,7 @@ dualize = /\ Cases. /\ Interface. \ d.
 -- precisely the set of constructors we set out with.
 
 dualizeExpr : Pi ((ExprF (Pi ExprInterface)) -> Pi ExprInterface)
-dualizeExpr = dualize [ExprF] [ExprInterface] implementation
+dualizeExpr = dualize @ExprF @ExprInterface implementation
 
 
 

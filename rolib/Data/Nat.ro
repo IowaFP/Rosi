@@ -4,17 +4,17 @@ type NatF : * -> *
 type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}
 
 fmapNatF : Functor NatF
-fmapNatF = fmapS (#'Zero := /\ a b. \ f : a -> b,  u : Unit. u ,
-                  #'Succ := /\ a b. \ f : a -> b. f)
+fmapNatF = fmapS ('Zero := \@a @b (f : a -> b) (u : Unit). u ,
+                  'Succ := \@a @b (f : a -> b). f)
 
 type Nat : *
 type Nat = Mu NatF
 
 zero : Nat
-zero = con #'Zero tt
+zero = 'Zero: tt
 
 succ : Nat -> Nat
-succ = con #'Succ
+succ = 'Succ:
 
 --
 
@@ -23,12 +23,12 @@ decr = case #'Zero (const zero)
      | case #'Succ id
 
 add : Nat -> Nat -> Nat
-add = \m. fix (\add . case #'Zero (\u. m)
-                    | case #'Succ (\nn. succ (add nn)))
+add = \m. fix (\add . 'Zero: u -> m
+                    | 'Succ: nn -> succ (add nn))
 
 mult : Nat -> Nat -> Nat
-mult = \m. fix (\mult . case #'Zero (const zero)
-                      | case #'Succ (\nn. add m (mult nn)))
+mult = \m. fix (\mult . 'Zero: u -> zero
+                      | 'Succ: nn -> add m (mult nn))
 
 monus : Nat -> Nat -> Nat
 monus = fix (\ monus m.
