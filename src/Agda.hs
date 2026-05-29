@@ -1,6 +1,6 @@
 module Agda where
 
-import           Syntax
+import Syntax
 
 render :: Program -> IO String
 render = undefined

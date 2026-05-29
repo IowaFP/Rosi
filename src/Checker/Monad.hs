@@ -16,7 +16,7 @@ import Data.List            (elemIndex, nub)
 import GHC.Stack
 import System.IO.Unsafe     (unsafePerformIO)
 
-import Printer hiding (level)
+import Printer              hiding (level)
 import Syntax
 
 {-# NOINLINE traceKindInference #-}

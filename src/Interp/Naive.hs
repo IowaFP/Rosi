@@ -1,16 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Interp.Naive where
 
-import           Control.Monad.Reader (runReaderT)
-import           Data.IORef
-import qualified Prettyprinter        as P
-import           Printer
-import           Syntax
-import           System.IO.Unsafe     (unsafePerformIO)
+import Control.Monad.Reader (runReaderT)
+import Data.IORef
+import Prettyprinter        qualified as P
+import Printer
+import Syntax
+import System.IO.Unsafe     (unsafePerformIO)
 
-import           GHC.Stack
+import GHC.Stack
 
-import qualified Debug.Trace          as T
+import Debug.Trace          qualified as T
 {-# NOINLINE traceEvaluation #-}
 
 traceEvaluation :: IORef Bool
@@ -46,14 +46,14 @@ instance Show Value where
 -- in       2
 instance Printable Value where
   ppr (VTyLam _ x k m) = with 0 $ ppr (ETyLam x (Just k) m)
-  ppr (VPrLam _ p m) = with 0 $ ppr (EPrLam p m)
-  ppr (VLam _ x t m) = ppr (ELam x (Just t) m)
-  ppr (VIn v) = "in" <+> at 3 (ppr v)
-  ppr (VLabeled s v) = fillSep [ppre s <+> ":=", ppr v]
-  ppr (VRecord ps) = hang 2 $ parens $ fillSep $ punctuate "," [fillSep [ppre s <+> ":=", ppr m] | (s, m) <- ps]
-  ppr (VBranch _ m n) = fillSep [at 2 (ppr m), "|" <+> ppr n]
-  ppr (VAna f m) = "ana" <+> brackets (ppr f) <+> parens (ppr m)
-  ppr (VSyn f m) = "syn" <+> brackets (ppr f) <+> parens (ppr m)
+  ppr (VPrLam _ p m)   = with 0 $ ppr (EPrLam p m)
+  ppr (VLam _ x t m)   = ppr (ELam x (Just t) m)
+  ppr (VIn v)          = "in" <+> at 3 (ppr v)
+  ppr (VLabeled s v)   = fillSep [ppre s <+> ":=", ppr v]
+  ppr (VRecord ps)     = hang 2 $ parens $ fillSep $ punctuate "," [fillSep [ppre s <+> ":=", ppr m] | (s, m) <- ps]
+  ppr (VBranch _ m n)  = fillSep [at 2 (ppr m), "|" <+> ppr n]
+  ppr (VAna f m)       = "ana" <+> brackets (ppr f) <+> parens (ppr m)
+  ppr (VSyn f m)       = "syn" <+> brackets (ppr f) <+> parens (ppr m)
 
 pprBinding :: String -> Value -> RDoc ann
 pprBinding s v = hang 2 (fillSep [ppre s <+> "=", ppr v])
@@ -69,18 +69,18 @@ tyapp :: Env -> Value -> Ty -> Value
 tyapp h (VTyLam (E (ht, he)) x _ f') t = eval (E (substTy h t : shiftE ht, he)) f'
 
 app :: HasCallStack => Env -> Value -> Value -> Value
-app _ (VLam (E (ht, he)) x _ f') v = eval (E (ht, v : he)) f'
+app _ (VLam (E (ht, he)) x _ f') v       = eval (E (ht, v : he)) f'
 app h (VBranch xs f' g') (VLabeled k v') = if k `elem` xs then appV h f' k v' else appV h g' k v'
-app _ (VBranch xs f' g') v = error $ "evaluation failed: (" ++ show (VBranch xs f' g') ++ ") (" ++ show v ++ ")"
-app h (VAna _ m) (VLabeled k v') = app h (app h (tyapp h (tyapp h m (TLab k)) (TPi (TRow []))) (VSing (TLab k))) v'
+app _ (VBranch xs f' g') v               = error $ "evaluation failed: (" ++ show (VBranch xs f' g') ++ ") (" ++ show v ++ ")"
+app h (VAna _ m) (VLabeled k v')         = app h (app h (tyapp h (tyapp h m (TLab k)) (TPi (TRow []))) (VSing (TLab k))) v'
 -- app _ (VTyLam h _ _ f) v = app h (eval h f) v
-app _ (VPrLam h _ f) v = app h (eval h f) v
-app _ f e = error $ "app failed (" ++ show f ++ ") (" ++ show e ++")"
+app _ (VPrLam h _ f) v                   = app h (eval h f) v
+app _ f e                                = error $ "app failed (" ++ show f ++ ") (" ++ show e ++")"
 
 appV :: Env -> Value -> String -> Value -> Value
 appV _ (VLam (E (ht, he)) x _ f) k e' = eval (E (ht, VLabeled k e' : he)) f
-appV h (VBranch xs f' g') k v' = if k `elem` xs then appV h f' k v' else appV h g' k v'
-appV h (VAna _ m) k v' = app h (app h (tyapp h (tyapp h m (TLab k)) (TPi (TRow []))) (VSing (TLab k))) v'
+appV h (VBranch xs f' g') k v'        = if k `elem` xs then appV h f' k v' else appV h g' k v'
+appV h (VAna _ m) k v'                = app h (app h (tyapp h (tyapp h m (TLab k)) (TPi (TRow []))) (VSing (TLab k))) v'
 
 eval :: HasCallStack => Env -> Term -> Value
 eval h@(E (ht, _)) e = trace ("Eval: " ++ show e ++ " in " ++ show ht) $
@@ -182,5 +182,5 @@ substTy' h t = error $ "substTy missing cases: " ++ show t
 dom :: HasCallStack => Term -> Ty -> [String]
 dom e0 (TRow ts) = map labelFrom ts where
   labelFrom (TLabeled (TLab s) _) = s
-  labelFrom t = error $ "no label: " ++ show (TRow ts) ++ " in " ++ show e0
+  labelFrom t                     = error $ "no label: " ++ show (TRow ts) ++ " in " ++ show e0
 dom e0 t = error $ "no domain: " ++ show t ++ " in " ++ show e0

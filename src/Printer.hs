@@ -229,11 +229,11 @@ instance FromPeano Term where
 
 collectBinders :: Term -> RDoc ann
 collectBinders = go "\\" where
-  go s (ELam x Nothing m) = go (s <+> ppre x) m
-  go s (ELam x (Just t) m) = go (s <+> parens (ppre x <:> ppr t)) m
-  go s (ETyLam x Nothing m) = go (s <+> "@" <> ppre x) m
+  go s (ELam x Nothing m)    = go (s <+> ppre x) m
+  go s (ELam x (Just t) m)   = go (s <+> parens (ppre x <:> ppr t)) m
+  go s (ETyLam x Nothing m)  = go (s <+> "@" <> ppre x) m
   go s (ETyLam x (Just k) m) = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
-  go s t = s <+> "." <+> ppr t
+  go s t                     = s <+> "." <+> ppr t
 
 instance Printable Term where
   ppr (EVar _ s) = ppr s
