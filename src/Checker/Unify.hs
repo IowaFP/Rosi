@@ -6,20 +6,20 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Bifunctor (first)
-import Data.List (elemIndex, partition, sortOn)
-import Data.Maybe (fromJust, isNothing)
+import Data.Bifunctor       (first)
+import Data.List            (elemIndex, partition, sortOn)
+import Data.Maybe           (fromJust, isNothing)
 
 import Checker.Monad
 import Checker.Normalize
 import Checker.Promote
-import Checker.Types hiding (trace)
+import Checker.Types        hiding (trace)
 import Checker.Utils
 import Printer
 import Syntax
 
+import Debug.Trace          qualified as T
 import GHC.Stack
-import qualified Debug.Trace as T
 
 {--
 
@@ -173,11 +173,11 @@ unifyInstantiating t u unify =
         match (Known is : is') qs =
           do (ms, qs') <- matchKnown is qs
              (ms ++) <$> match is' qs'
-          where matchKnown [] qs = return ([], qs)
+          where matchKnown [] qs                              = return ([], qs)
                 matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (Left (t, k)) :)) <$> matchKnown is qs
-                matchKnown (PrArg v : is) (QuThen p : qs) = first (Left (Right (v, p)) :) <$> matchKnown is qs
-                matchKnown _ [] = T.trace "3 ruh-roh" Nothing
-                matchKnown is qs = error $ "ruh-roh: " ++ show is ++ ", " ++ show qs
+                matchKnown (PrArg v : is) (QuThen p : qs)     = first (Left (Right (v, p)) :) <$> matchKnown is qs
+                matchKnown _ []                               = T.trace "3 ruh-roh" Nothing
+                matchKnown is qs                              = error $ "ruh-roh: " ++ show is ++ ", " ++ show qs
         match is qs =
           T.trace (unlines ["1 ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs])
           Nothing -- error $ unlines ["ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
@@ -219,7 +219,7 @@ unifyInstantiating t u unify =
 
         reverseIs :: Insts -> Insts
         reverseIs is@(Unknown {}) = is
-        reverseIs (Known is) = Known (reverse is)
+        reverseIs (Known is)      = Known (reverse is)
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify0 (TVar i _) (TVar j _)
@@ -352,9 +352,9 @@ unify0 (TConApp (Mu count) f) (TConApp (Mu count') g) =
   VEqCon (Mu count'') <$> unify' f g where
     count'' = case (count, count') of
                 (Nothing, Nothing) -> Nothing
-                (Nothing, Just n) -> Just n
-                (Just m, Nothing) -> Just m
-                (Just m, Just n) -> Just (min m n)
+                (Nothing, Just n)  -> Just n
+                (Just m, Nothing)  -> Just m
+                (Just m, Just n)   -> Just (min m n)
 unify0 t u
   | (TConApp (Mu count) f, ts) <- spine t, noHeadUnif u, Just count' <- decr count =
     unify' (foldl TApp f (TConApp (Mu count') f : ts)) u
@@ -365,7 +365,7 @@ unify0 t u
           | otherwise = True
         decr (Just 0) = Nothing
         decr (Just n) = Just (Just (n - 1))
-        decr Nothing = Just (Just 20)
+        decr Nothing  = Just (Just 20)
 unify0 t0@(TConApp (TCUnif g) t) u =
   do mk <- readRef (goalRef g)
      case mk of
@@ -425,5 +425,5 @@ unify0 t u
         refinable _          = False
 
 unifyP :: Pred -> Pred -> UnifyM Evid
-unifyP (PLeq y z) (PLeq y' z') = VEqLeq <$> unify' y y' <*> unify' z z'
+unifyP (PLeq y z) (PLeq y' z')        = VEqLeq <$> unify' y y' <*> unify' z z'
 unifyP (PPlus x y z) (PPlus x' y' z') = VEqPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'

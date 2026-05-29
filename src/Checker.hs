@@ -4,7 +4,7 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Bifunctor (second)
+import Data.Bifunctor       (second)
 
 import Checker.Monad
 import Checker.Normalize

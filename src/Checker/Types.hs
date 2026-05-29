@@ -8,7 +8,7 @@ import Control.Monad.Writer
 import Data.IORef
 import Data.List
 
-import Checker.Monad hiding (collect, trace)
+import Checker.Monad              hiding (collect, trace)
 import Checker.Normalize
 import Checker.Utils
 import Printer
@@ -36,7 +36,7 @@ bindRef (Goal (s, r)) (Just k) =
           | otherwise = do k' <- readRef r'
                            case k' of
                              Just k'' -> check k''
-                             Nothing -> return True
+                             Nothing  -> return True
 
   -- Note: just returning a `Ty` here out of convenience; it's always an exactly the input `Ty`.
 expectK :: MonadCheck m => Ty -> Kind -> Kind -> m Ty
@@ -83,7 +83,7 @@ unifyK' (KRow rActual) kExpected = ((1+) <$>) <$> unifyK rActual kExpected
 unifyK' (KFun dActual cActual) (KFun dExpected cExpected) =
   (*&*) <$> unifyK dActual dExpected <*> unifyK cActual cExpected where
   Just 0 *&* Just 0 = Just 0
-  _ *&* _ = Nothing
+  _ *&* _           = Nothing
 unifyK' _ _ =
   return Nothing
 
@@ -222,7 +222,7 @@ checkTy0 (TConApp (Mu count) f) expected = TConApp (Mu count) <$> checkTy f (KFu
 checkTy0 (TConApp (TCUnif g) t) expected =
   do mk <- readRef (goalRef g)
      case mk of
-       Just k -> checkTy0 (TConApp k t) expected
+       Just k  -> checkTy0 (TConApp k t) expected
        Nothing -> fail "don't know how to kind check unknown constructor application"
 checkTy0 (TInst ig t) expected =
   TInst ig <$> checkTy t expected
@@ -261,7 +261,7 @@ checkTy0 t@(TPlus x y) expected =
                tell [(PPlus x' y' z, v)]
                return z
     where splitConcrete (TLabeled (TLab s) x) = Just (TLab s, x)
-          splitConcrete _ = Nothing
+          splitConcrete _                     = Nothing
 checkTy0 t@(TConOrd k rel u) expected =
   do u' <- checkTy u (KRow expected)
      z@(TUnif v) <- typeGoal' "z" (KRow expected)

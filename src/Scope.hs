@@ -81,10 +81,10 @@ bindableTyVars (TPlus t u) = bindableTyVars t >> bindableTyVars u
 bindableTyVars (TConOrd _ _ t) = bindableTyVars t
 bindableTyVars t = error $ "<whoopsie: " ++ show t ++ ">"
 
-bindableTyVarsP (PEq t u) = bindableTyVars t >> bindableTyVars u
-bindableTyVarsP (PLeq y z) = bindableTyVars y >> bindableTyVars z
+bindableTyVarsP (PEq t u)     = bindableTyVars t >> bindableTyVars u
+bindableTyVarsP (PLeq y z)    = bindableTyVars y >> bindableTyVars z
 bindableTyVarsP (PPlus x y z) = mapM_ bindableTyVars [x, y, z]
-bindableTyVarsP (PFold z) = bindableTyVars z
+bindableTyVarsP (PFold z)     = bindableTyVars z
 
 bindable :: [Name] -> Ty -> [Name]
 bindable vs t = take (length ws - length vs) ws
@@ -133,10 +133,10 @@ implicitQuantifiers t =
      return (rebind (bs ++ [(x, Nothing) | x <- xs]) t'')
 
 instance HasVars Pred where
-  scope (PLeq y z) = PLeq <$> scope y <*> scope z
+  scope (PLeq y z)    = PLeq <$> scope y <*> scope z
   scope (PPlus x y z) = PPlus <$> scope x <*> scope y <*> scope z
-  scope (PEq t u) = PEq <$> scope t <*> scope u
-  scope (PFold z) = PFold <$> scope z
+  scope (PEq t u)     = PEq <$> scope t <*> scope u
+  scope (PFold z)     = PFold <$> scope z
 
 -- There's no `instance HasVars Evid` because evidence is all constructed during
 -- type checking, and so starts with de Bruijn indices.
@@ -177,7 +177,7 @@ declName (TmDecl x _ _) = x
 declName (TyDecl x _ _) = x
 
 scopeProg :: [Decl] -> ScopeM [Decl]
-scopeProg [] = return []
+scopeProg []                      = return []
 scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindGVar x (scopeProg ds)
 scopeProg (d@(TyDecl x _ _) : ds) = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)
 

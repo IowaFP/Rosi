@@ -1,20 +1,20 @@
 module Checker.Terms where
 
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.Error.Class
+import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
-import Data.Generics (everywhereM, mkM)
+import Data.Generics              (everywhereM, mkM)
 import Data.IORef
-import Data.List (intercalate)
+import Data.List                  (intercalate)
 
-import Checker.Types hiding (trace, collect)
+import Checker.Monad
+import Checker.Normalize
+import Checker.Preds
+import Checker.Types              hiding (collect, trace)
 import Checker.Unify
 import Checker.Utils
-import Checker.Normalize
-import Checker.Monad
-import Checker.Preds
 import Printer
 import Syntax
 
@@ -25,7 +25,7 @@ expectT m actual expected =
      b <- typeErrorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify [] actual expected
      case b of
        Left (actual', expected') -> typeMismatch m actual expected actual' expected'
-       Right q  -> flattenV q
+       Right q                   -> flattenV q
 
 typeMismatch :: Term -> Ty -> Ty -> Ty -> Ty -> CheckM a
 typeMismatch m actual expected actual' expected' =
@@ -111,7 +111,7 @@ checkTerm0 e0@(EInst e is) expected =
        EInst <$> checkTerm e (TInst is' expected) <*> pure is'
   where checkInsts :: Insts -> CheckM Insts
         checkInsts (Unknown _ _) = error "internal: why am I type checking an unknown instantiation?"
-        checkInsts (Known is) = Known <$> mapM checkInst is
+        checkInsts (Known is)    = Known <$> mapM checkInst is
         checkInst :: Inst -> CheckM Inst
         checkInst (TyArg t) =
           do k <- kindGoal "k"
@@ -302,18 +302,18 @@ generalize e =
         uvars level (TMap t) = uvars level t
         uvars level (TInst is t) = cat <$> isuvars is <*> uvars level t where
           isuvars (Unknown {}) = return []
-          isuvars (Known is) = foldl cat [] <$> mapM iuvars is
-          iuvars (TyArg t) = uvars level t
+          isuvars (Known is)   = foldl cat [] <$> mapM iuvars is
+          iuvars (TyArg t)  = uvars level t
           iuvars (PrArg {}) = return []
         uvars level (TMapApp t) = uvars level t
         uvars _ TString = return []
         uvars level (TCompl t1 t2) = cat <$> uvars level t1 <*> uvars level t2
 
         puvars :: Level -> Pred -> CheckM [UVar]
-        puvars level (PEq t u) = cat <$> uvars level t <*> uvars level u
-        puvars level (PLeq y z) = cat <$> uvars level y <*> uvars level z
+        puvars level (PEq t u)     = cat <$> uvars level t <*> uvars level u
+        puvars level (PLeq y z)    = cat <$> uvars level y <*> uvars level z
         puvars level (PPlus x y z) = cat <$> (cat <$> uvars level x <*> uvars level y) <*> uvars level z
-        puvars level (PFold z) = uvars level z
+        puvars level (PFold z)     = uvars level z
 
         cat :: [UVar] -> [UVar] -> [UVar]
         cat ts us = ts ++ filter (\u -> all (different u) ts) us
@@ -359,7 +359,7 @@ generalize e =
           fixInst t@(TUnif v) =
             do mu <- readRef (ref v)
                case mu of
-                 Just u -> fixInsts u >> return t
+                 Just u  -> fixInsts u >> return t
                  Nothing -> return t
           fixInst t@(TInst (Unknown _ (Goal (_, iref))) _) =
             do mi <- readRef iref
@@ -372,13 +372,13 @@ generalize e =
         buildFinal :: [String] -> [UVar] -> [(Pred, IORef (Maybe Evid))] -> Term -> Ty -> (Term, Ty)
         buildFinal names ts ps e t =
           (tyLams ts names (prLams ps e), quantifiers ts names (qualifiers ps t))
-          where quantifiers [] _ t = t
+          where quantifiers [] _ t              = t
                 quantifiers (u : us) (b : bs) t = TForall b (Just (uvKind u)) (quantifiers us bs t)
-                qualifiers [] t = t
+                qualifiers [] t            = t
                 qualifiers ((p, _) : ps) t = TThen p (qualifiers ps t)
-                tyLams [] _ e = e
+                tyLams [] _ e              = e
                 tyLams (u : us) (b : bs) e = ETyLam b (Just (uvKind u)) (tyLams us bs e)
-                prLams [] e = e
+                prLams [] e            = e
                 prLams ((p, _) : ps) e = EPrLam p (prLams ps e)
 
 checkTop :: Term -> Maybe Ty -> CheckM (Term, Ty)

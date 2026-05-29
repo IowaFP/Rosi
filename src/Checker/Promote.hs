@@ -4,7 +4,7 @@ import Control.Monad
 import Control.Monad.Reader
 
 import Checker.Monad
-import Checker.Types hiding (trace)
+import Checker.Types        hiding (trace)
 import Checker.Utils
 import Printer
 import Syntax
@@ -93,16 +93,16 @@ promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promo
                                    return (Just (newIs 0))
         promoteIs (Known is) = liftM Known . sequence <$> mapM promoteI is
         promoteI :: MonadCheck m => Inst -> m (Maybe Inst)
-        promoteI (TyArg t) = liftM TyArg <$> promoteN v n t
+        promoteI (TyArg t)   = liftM TyArg <$> promoteN v n t
         promoteI i@(PrArg v) = return (Just i)
 promoteN v n (TMapApp f) = liftM TMapApp <$> promoteN v n f
 promoteN v n t = error $ "promote: missing " ++ show t
 
 promoteP :: MonadCheck m => UVar -> Int -> Pred -> m (Maybe Pred)
-promoteP v n (PEq t u) = liftM2 PEq <$> promoteN v n t <*> promoteN v n u
-promoteP v n (PLeq y z) = liftM2 PLeq <$> promoteN v n y <*> promoteN v n z
+promoteP v n (PEq t u)     = liftM2 PEq <$> promoteN v n t <*> promoteN v n u
+promoteP v n (PLeq y z)    = liftM2 PLeq <$> promoteN v n y <*> promoteN v n z
 promoteP v n (PPlus x y z) = liftM3 PPlus <$> promoteN v n x <*> promoteN v n y <*> promoteN v n z
-promoteP v n (PFold z) = liftM PFold <$> promoteN v n z
+promoteP v n (PFold z)     = liftM PFold <$> promoteN v n z
 
 -- TODO: the Evid returned here is always and only VEqRefl... why needed?
 solveUV :: (HasCallStack, MonadCheck m) => UVar -> Ty -> m (Maybe Evid)

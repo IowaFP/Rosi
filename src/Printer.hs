@@ -4,12 +4,12 @@
 module Printer where
 
 import Control.Monad.Reader
-import Data.IORef (readIORef)
-import Data.List (intercalate)
+import Data.IORef                  (readIORef)
+import Data.List                   (intercalate)
 import Data.String
-import qualified Prettyprinter as P
-import qualified Prettyprinter.Render.String as P
-import qualified Prettyprinter.Util as P
+import Prettyprinter               qualified as P
+import Prettyprinter.Render.String qualified as P
+import Prettyprinter.Util          qualified as P
 import System.IO.Unsafe
 
 import Syntax
@@ -76,9 +76,9 @@ brackets = fmap P.brackets
 parens = fmap P.parens
 
 stringFromQName :: QName -> String
-stringFromQName [x] = x
+stringFromQName [x]     = x
 stringFromQName [x, ""] = x
-stringFromQName xs = intercalate "." (reverse xs)
+stringFromQName xs      = intercalate "." (reverse xs)
 
 instance Printable QName where
   ppr = ppre . stringFromQName
@@ -129,7 +129,7 @@ instance Printable TyCon where
   ppr (TCUnif g) =
     do mk <- liftIO (readIORef (goalRef g))
        case mk of
-         Just k -> ppr k
+         Just k  -> ppr k
          Nothing -> ppre (goalName g)
 
 getTupleContents :: [Ty] -> Int -> Maybe [Ty]
@@ -188,7 +188,7 @@ instance Printable Ty where
        then do minst <- liftIO $ readIORef r
                case minst of
                  Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
-                 Just is  -> ppr (TInst is t)
+                 Just is -> ppr (TInst is t)
        else ppr t
   ppr (TInst (Known is) t) =
     do b <- asks printInstantiations
@@ -207,10 +207,10 @@ instance Printable Ty where
 
 instance Printable Pred where
   ppr :: Pred -> RDoc ann
-  ppr (PLeq t u) = fillSep [ppr t <+> "<", ppr u ]
+  ppr (PLeq t u)    = fillSep [ppr t <+> "<", ppr u ]
   ppr (PPlus t u v) = fillSep [ppr t <+> "+", ppr u <+> "~", ppr v]
-  ppr (PEq t u) = fillSep [ppr t <+> "~", ppr u]
-  ppr (PFold z) = fillSep ["Fold", ppr z]
+  ppr (PEq t u)     = fillSep [ppr t <+> "~", ppr u]
+  ppr (PFold z)     = fillSep ["Fold", ppr z]
 
 -- Precedence table:
 --   lambda           0
@@ -223,9 +223,9 @@ class FromPeano a where
 
 instance FromPeano Term where
   fromPeano :: Term -> Maybe Int
-  fromPeano (EVar _ ["zero","Nat","Data"]) = Just 0
+  fromPeano (EVar _ ["zero","Nat","Data"])          = Just 0
   fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
-  fromPeano _ = Nothing
+  fromPeano _                                       = Nothing
 
 instance Printable Term where
   ppr (EVar _ s) = ppr s
@@ -257,16 +257,16 @@ instance Printable Term where
   ppr (EUnlabel Nothing m l) = with 3 (fillSep [ppr m <+> "/", at 3 (ppr l)])
   ppr (EUnlabel (Just k) m l) = with 3 (fillSep [ppr m <+> "/" <> ppr k, at 3 (ppr l)])
   ppr (EConst c) = name c where
-    name CPrj = "prj"
-    name CConcat = "(++)"
-    name CInj = "inj"
-    name CBranch = "(|)"
-    name CFix = "fix"
+    name CPrj       = "prj"
+    name CConcat    = "(++)"
+    name CInj       = "inj"
+    name CBranch    = "(|)"
+    name CFix       = "fix"
     name CStringCat = "(^)"
-    name CStringEq = "(~)"
-    name CSyn = "syn"
-    name CAna = "ana"
-    name CFold = "fold"
+    name CStringEq  = "(~)"
+    name CSyn       = "syn"
+    name CAna       = "ana"
+    name CFold      = "fold"
   ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> "in", ppr n]
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   -- Not printing internals (yet)
@@ -288,13 +288,13 @@ pprTyping (x, ty, e) =
 pprTypeError :: Error -> RDoc ann
 pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
   where d <:> (ds, te) = (d : ds, te)
-        contexts (ErrContextDefn d te) = ("Whilst checking the definition of" <+> ppr d) <:> contexts te
-        contexts (ErrContextType ty te) = ("Whilst checking the type" <+> ppr ty) <:> contexts te
-        contexts (ErrContextPred pr te) = ("Whilst checking the predicate" <+> ppr pr) <:> contexts te
-        contexts (ErrContextTerm t te) = ("While checking the term" <+> ppr t) <:> contexts te
+        contexts (ErrContextDefn d te)   = ("Whilst checking the definition of" <+> ppr d) <:> contexts te
+        contexts (ErrContextType ty te)  = ("Whilst checking the type" <+> ppr ty) <:> contexts te
+        contexts (ErrContextPred pr te)  = ("Whilst checking the predicate" <+> ppr pr) <:> contexts te
+        contexts (ErrContextTerm t te)   = ("While checking the term" <+> ppr t) <:> contexts te
         contexts (ErrContextTyEq t u te) = ("While comparing the types" <+> ppr t <+> "and" <+> ppr u) <:> contexts te
-        contexts (ErrContextOther s te) = ppre s <:> contexts te
-        contexts te = ([], te)
+        contexts (ErrContextOther s te)  = ppre s <:> contexts te
+        contexts te                      = ([], te)
 
         (ctxts, te') = contexts te
 

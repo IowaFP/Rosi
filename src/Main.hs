@@ -1,25 +1,26 @@
-{-# LANGUAGE OverloadedStrings, TupleSections #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module Main where
 
-import Control.Monad ((<=<), void, when)
-import Control.Monad.Reader (runReaderT)
+import Control.Monad         (void, when, (<=<))
+import Control.Monad.Reader  (runReaderT)
 import Control.Monad.State
 import Data.IORef
-import Data.List (findIndex, break)
+import Data.List             (break, findIndex)
 import Data.List.Split
 import Data.String
-import qualified Prettyprinter as P
-import qualified Prettyprinter.Util as P
+import Prettyprinter         qualified as P
+import Prettyprinter.Util    qualified as P
 import System.Console.GetOpt
-import System.Exit (exitFailure)
 import System.Directory
 import System.Environment
+import System.Exit           (exitFailure)
 import System.FilePath
-import System.IO (hPutStrLn, stderr, stdout, hSetBuffering, BufferMode(..))
+import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr, stdout)
 
 import Checker
-import Interp.Erased as E
+import Interp.Erased         as E
 import Parser
 import Printer
 import Scope

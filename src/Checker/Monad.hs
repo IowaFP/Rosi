@@ -4,17 +4,17 @@
 
 module Checker.Monad where
 
-import Control.Monad (foldM, liftM, liftM2, liftM3, mapAndUnzipM, mplus, replicateM, unless, when, zipWithM)
+import Control.Monad        (foldM, liftM, liftM2, liftM3, mapAndUnzipM, mplus, replicateM, unless, when, zipWithM)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Bifunctor (second)
+import Data.Bifunctor       (second)
 import Data.Dynamic
 import Data.IORef
-import Data.List (elemIndex, nub)
+import Data.List            (elemIndex, nub)
 import GHC.Stack
-import System.IO.Unsafe (unsafePerformIO)
+import System.IO.Unsafe     (unsafePerformIO)
 
 import Syntax
 
@@ -55,7 +55,7 @@ type TCtxt = [(QName, Ty)]
 type PCtxt = [Pred]
 
 lookupV :: HasCallStack => Int -> TCtxt -> Ty
-lookupV _ [] = error "lookupV: index out of range"
+lookupV _ []           = error "lookupV: index out of range"
 lookupV 0 ((_, t) : _) = t
 lookupV n (_ : ts)     = lookupV (n - 1) ts
 
@@ -222,7 +222,7 @@ instance MonadCheck UnifyM where
 
 canUpdate :: Typeable a => IORef a -> UnifyM Bool
 canUpdate r = UM (ExceptT $ StateT $ \checking -> WriterT (body checking)) where
-  body Nothing = return ((Right True, Nothing), [])
+  body Nothing   = return ((Right True, Nothing), [])
   body (Just rs) = return ((Right (any ok rs), Just rs), [])
   ok dr = case fromDynamic dr of
             Just r' -> r == r'

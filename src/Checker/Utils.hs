@@ -24,7 +24,7 @@ kindOf t@(TApp f _) =
   do k' <- kindOf f
      case k' of
        KFun _ k -> return k
-       _ -> fail ("kindOf: ill-kinded " ++ show t)
+       _        -> fail ("kindOf: ill-kinded " ++ show t)
 kindOf (TLab _) = return KLabel
 kindOf (TSing _) = return KType
 kindOf (TLabeled _ t) = kindOf t
