@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{- HLINT ignore "Fuse foldr/map" -}
 module Parser where
 
 import Syntax
@@ -9,6 +10,7 @@ import Control.Monad.State
 
 import Data.Char                  (isSpace)
 import Data.Data
+import Data.Functor
 import Data.IORef                 (newIORef)
 import Data.List                  (delete, intercalate, singleton)
 import Data.List.NonEmpty         (fromList)
@@ -165,6 +167,14 @@ kind = chainr1 akind (symbol "->" >> return KFun) where
                   , do symbol "R"
                        KRow <$> brackets kind ]
 
+typeLamBinders :: Parser [(String, Maybe Kind)]
+typeLamBinders =
+  choice
+    [ singleton . (, Nothing) <$> lexeme identifier
+    , parens $ do xs <- some (lexeme identifier)
+                  k <- colon >> kind
+                  return (map (, Just k) xs) ]
+
 ty :: Parser Ty
 ty = do pfs <- many prefix
         ty <- thenTy
@@ -176,19 +186,10 @@ ty = do pfs <- many prefix
        m <- optional $ do colon >> kind
        return (map (, m) xs)
 
-  lamBinders :: Parser [(String, Maybe Kind)]
-  lamBinders =
-    choice
-      [ singleton . (, Nothing) <$> lexeme identifier
-      , parens $ do xs <- some (lexeme identifier)
-                    k <- colon >> kind
-                    return (map (, Just k) xs) ]
-
-
   prefix :: Parser (Ty -> Ty)
   prefix = choice
              [ do symbol "\\"
-                  bs <- some lamBinders
+                  bs <- some typeLamBinders
                   dot
                   return (foldr (\(v, k) f -> TLam v k . f) id (concat bs))
              , do reserved "forall"
@@ -293,32 +294,26 @@ pr = choice [ do reserved "Fold"
 --     ++ ?
 --     := /
 
+termLamBinders :: Parser [Either (String, Maybe Kind) (String, Maybe Ty)]
+termLamBinders =
+  choice
+    [ singleton . Right . (, Nothing) <$> lexeme identifier
+    , singleton . Left  . (, Nothing) <$> lexeme (char '@' >> identifier)
+    , parens $ do xs <- some (lexeme identifier)
+                  t <- colon >> ty
+                  return (map (Right . (, Just t)) xs)
+    , parens $ do xs <- some (char '@' >> lexeme identifier)
+                  t <- colon >> kind
+                  return (map (Left . (, Just t)) xs)
+    ]
+
+
 term :: Parser Term
 term = prefixes typedTerm where
 
-  binders :: Parser [Either (String, Maybe Kind) (String, Maybe Ty)]
-  binders =
-    choice
-      [ singleton . Right . (, Nothing) <$> lexeme identifier
-      , singleton . Left  . (, Nothing) <$> lexeme (char '@' >> identifier)
-      , parens $ do xs <- some (lexeme identifier)
-                    t <- colon >> ty
-                    return (map (Right . (, Just t)) xs)
-      , parens $ do xs <- some (char '@' >> lexeme identifier)
-                    t <- colon >> kind
-                    return (map (Left . (, Just t)) xs)
-      ]
-    -- do xs <- some (lexeme identifier)
-    --    t <- optional $ colon >> ty
-    --    return (map (Right . (, t)) xs)
-    -- <|>
-    -- do xs <- some (lexeme (char '@' >> identifier))
-    --    k <- optional $ colon >> kind
-    --    return (map (Left . (, k)) xs)
-
   prefix :: Parser (Term -> Term)
   prefix = do symbol "\\"
-              bs <- some binders
+              bs <- some termLamBinders
               dot
               return (foldr1 (.) (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs)))
          <|>
@@ -487,9 +482,11 @@ data LHS = TypeLHS String | TermLHS String | ImportLHS
 
 topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
-  lhs = reserved "import" *> return ImportLHS <|>
-        TypeLHS <$> lexeme typeIdentifier <|>
-        TermLHS <$> lexeme identifier
+  lhs = choice
+          [ ImportLHS <$ reserved "import"
+          , TypeLHS <$> lexeme typeIdentifier
+          , TermLHS <$> lexeme identifier
+          ]
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
   -- which will check the indentation level, but we are looking for entries at
@@ -499,17 +496,24 @@ topLevel = item lhs body where
   -- checked the indentation *once*, nested calls should not check it further.
   typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
   body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
-  body (TypeLHS x) = colon *> ((x,) . KindSig <$> kind) <|>
-                     symbol "=" *> ((x,) . TypeDef <$> ty)
-  body (TermLHS x) = colon *> ((x,) . TypeSig <$> ty) <|>
-                     symbol "=" *> ((x,) . TermDef <$> term)
+  body (TypeLHS x) =
+    choice
+      [ colon *> ((x,) . KindSig <$> kind)
+      , do bs <- many typeLamBinders
+           let binders = foldr (.) id (map (uncurry TLam) (concat bs))
+           symbol "=" *> ((x,) . TypeDef . binders <$> ty) ]
+  body (TermLHS x) =
+    choice
+      [ colon *> ((x,) . TypeSig <$> ty)
+      , do bs <- many termLamBinders
+           let binders = foldr (.) id (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs))
+           symbol "=" *> ((x,) . TermDef . binders <$> term) ]
 
 prog :: [String] -> Parser Program
 prog moduleNames = whitespace >> block topLevel >>= defns moduleNames
 
 defns :: MonadFail m => [String] -> [(String, TL)] -> m Program
 defns moduleNames tls
-  -- | not (null unmatchedTermDefs) = fail $ "definitions of " ++ intercalate ", " unmatchedTermDefs ++ " lack type signatures"
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
@@ -552,14 +556,6 @@ defns moduleNames tls
               | not (null tys) -> fail $ "too many definitions for " ++ x
               | otherwise -> fail $ "too many kind signatures for " ++ x
             _ -> fail $ "too much definition of " ++ x
-
-        -- mkDecl x = fromMaybe (error $ "in building declaration of " ++ x) decl where
-        --   decl = do tm <- lookup x termDefs
-        --             return (TmDecl (x : moduleNames) (lookup x typeSigs) tm)
-        --          `mplus`
-        --          do k <- lookup x kindSigs
-        --             ty <- lookup x typeDefs
-        --             return (TyDecl (x : moduleNames) k ty)
 
 parse :: String -> [String] -> String -> IO Program
 parse fileName moduleNames s =

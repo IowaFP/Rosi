@@ -14,17 +14,17 @@
 -- let List   : U → U                             = λ A. (L : U) → L → (A → L → L) → L;
 
 type List : * -> *
-type List = \ A. forall L. L -> (A -> L -> L) -> L
+type List A = forall L. L -> (A -> L -> L) -> L
 
 -- let nil    : {A} → List A                      = λ L n c. n;
 
 nil : forall A. List A
-nil = \ n c. n
+nil n c = n
 
 -- let cons   : {A} → A → List A → List A         = λ a as L n c. c a (as L n c);
 
 cons : forall A. A -> List A -> List A
-cons = \ a as n c. c a (as n c)
+cons a as n c = c a (as n c)
 
 -- let Bool   : U                                 = (B : U) → B → B → B;
 
@@ -34,20 +34,20 @@ type Bool = forall B. B -> B -> B
 -- let true   : Bool                              = λ b t f. t;
 
 true : Bool
-true = \ t f. t
+true t f = t
 
 -- let Pair   : U → U → U                         = λ A B. (P : U) → (A → B → P) → P;
 
 type Pair : * -> * -> *
-type Pair = \ A B. forall P. (A -> B -> P) -> P
+type Pair A B = forall P. (A -> B -> P) -> P
 
 -- let pair   : {A B} → A → B → Pair A B          = λ a b P p. p a b;
 
 pair : forall A B. A -> B -> Pair A B
-pair = \ a b p. p a b
+pair a b p = p a b
 
 fst : forall A B. Pair A B -> A
-fst = \ p. p (\x y. x)
+fst p = p (\x y. x)
 
 -- let Nat    : U                                 = (N : U) → (N → N) → N → N;
 
@@ -57,67 +57,67 @@ type Nat = forall N. (N -> N) -> N -> N
 -- let zero   : Nat                               = λ N s z. z;
 
 zero : Nat
-zero = \ s z. z
+zero s z = z
 
 -- let suc    : Nat → Nat                         = λ n N s z. s (n N s z);
 
 suc : Nat -> Nat
-suc = \ n s z. s (n s z)
+suc n s z = s (n s z)
 
 -- let append : {A} → List A → List A → List A    = λ xs ys L n c. xs L (ys L n c) c;
 
 append : forall A. List A -> List A -> List A
-append = \ xs ys n c. xs (ys n c) c
+append xs ys n c = xs (ys n c) c
 
 -- let length : {A} → List A → Nat                = λ as N s z. as N z (λ x. s);
 
 length : forall A. List A -> Nat
-length = \ as s z. as z (\x. s)
+length as s z = as z (\x. s)
 
 -- let map    : {A B} → (A → B) → List A → List B = λ f as L n c. as L n (λ a. c (f a));
 
 map : forall A B. (A -> B) -> List A -> List B
-map = \ f as n c. as n (\a. c (f a))
+map f as n c = as n (\a. c (f a))
 
 -- let ST     : U → U → U                         = λ S A. S → A;
 
 type ST : * -> * -> *
-type ST = \S A. S -> A
+type ST S A = S -> A
 
 -- let runST  : {A} → ({S} → ST S A) → A          = λ f. f {Bool} true;
 
 runST : forall A. (forall S. ST S A) -> A
-runST = \ f. f true
+runST f = f true
 
 -- let argST  : {S} → ST S Nat                    = λ _. zero;
 
 argST : forall S. ST S Nat
-argST = \ x. zero
+argST x = zero
 
 -- let Id     : U → U                             = λ A. (I : U) → (A → I) → I;
 
 type Id : * -> *
-type Id = \A. forall I. (A -> I) -> I
+type Id A = forall I. (A -> I) -> I
 
 -- let mkId   : {A} → A → Id A                    = λ a I f. f a;
 
 mkId : forall A. A -> Id A
-mkId = \a f. f a
+mkId a f = f a
 
 -- let unId   : {A} → Id A → A                    = λ i. i _ (λ x. x);
 
 unId : forall A. Id A -> A
-unId = \i. i (\x. x)
+unId i = i (\x. x)
 
 -- let the    : (A : U) → A → A                   = λ A a. a;
 
 the : forall A. A -> A
-the = \x. x
+the x = x
 
 -- let const  : {A B} → A → B → A                 = λ x y. x;
 
 const : forall A B. A -> B -> A
-const = \x y. x
+const x y = x
 
 -- let IdTy   : U                                 = {A} → A → A;
 
@@ -127,12 +127,12 @@ type IdTy = forall A. A -> A
 -- let single : {A} → A → List A                  = λ a. cons a nil;
 
 single : forall B. B -> List B
-single = \a. cons a nil
+single a = cons a nil
 
 -- let id     : {A} → A → A                       = λ a. a;
 
 id : IdTy
-id = \x. x
+id x = x
 
 -- let ids    : List IdTy                         = nil;
 
@@ -157,7 +157,7 @@ revapp = \x f. f x
 -- let poly   : IdTy → Pair Nat Bool              = λ f. pair (f zero) (f true);
 
 poly : IdTy -> Pair Nat Bool
-poly = \f. pair (f zero) (f true)
+poly f = pair (f zero) (f true)
 
 -- let choose : {A} → A → A → A                   = const;
 
@@ -172,14 +172,14 @@ auto = id
 -- let auto2  : {B} → IdTy → B → B                = λ _ b. b;
 
 auto2 : forall b. IdTy -> b -> b
-auto2 = \a b. b
+auto2 a b = b
 
 -- -- A: polymorphic instantiation
 -- --------------------------------------------------------------------------------
 --
 -- let A1 = λ x y. y;
 
-a1 = \x y. y
+a1 x y = y
 
 -- let A2 : IdTy → IdTy = choose id;
 
@@ -193,7 +193,7 @@ a3 = choose nil ids
 -- let A4 : IdTy → IdTy = λ (x : IdTy). x x;
 
 a4 : IdTy -> IdTy
-a4 = \x. x x
+a4 x = x x
 
 -- let A5 = id auto;
 --
@@ -220,13 +220,13 @@ a7 = choose id auto
 --     = λ f. f (choose id) ids;
 
 a9 : (forall a. (a -> a) -> List a -> a) -> IdTy
-a9 = \f. f (choose id) ids
+a9 f = f (choose id) ids
 
 idsp : forall a. List (a -> a)
 idsp = single id
 
 a9a : (forall a. (a -> a) -> List a -> a) -> IdTy
-a9a = \f. f (choose id) idsp
+a9a f = f (choose id) idsp
 
 -- let A10 = poly id;
 
@@ -287,12 +287,11 @@ c7 = append (single suc) (single id)
 -- let C8 : _ → IdTy = λ (g : {A} → List A → List A → A). g (single id) ids;
 
 c8 : (forall a. List a -> List a -> a) -> IdTy   -- doesn't work for me without type signature either
-c8 = \ (g : forall a. List a -> List a -> a). g (single id) ids
+c8 (g : forall a. List a -> List a -> a) = g (single id) ids
 
 -- let C9 = map poly (single id);
 
 c9 = map poly (single id)
-
 
 -- let C10 = map unId (single oneId);
 
@@ -339,7 +338,7 @@ d5 = revapp argST runST
 -- let E3 =
 --   λ (r : ({A} → A → {B} → B → B) → Nat). r (λ x y. y);
 
-e3 = \ (r : (forall a. a -> (forall b. b -> b)) -> Nat).
+e3 (r : (forall a. a -> (forall b. b -> b)) -> Nat) =
        r (\x y. y)
 
 -- U
