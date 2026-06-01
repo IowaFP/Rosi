@@ -14,7 +14,7 @@ import System.IO.Unsafe
 
 import Syntax
 
-data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool, printInstantiations :: Bool }
+data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool, printInstantiations :: Bool, printIndices :: Bool }
 type RDoc ann = ReaderT PrinterOptions IO (P.Doc ann)
 
 instance Semigroup (RDoc ann) where
@@ -139,7 +139,10 @@ getTupleContents (TLabeled (TLab l) t:ts) n | show n == l = (t:) <$> getTupleCon
 getTupleContents _ _ = Nothing
 
 instance Printable Ty where
-  ppr (TVar _ x) = ppr x
+  ppr (TVar n x) = do pi <- asks printIndices
+                      if pi
+                        then ppr x <> "@" <> ppre n
+                        else ppr x
   ppr (TUnif v) = ppr v
   ppr TFun = "(->)"
   ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
@@ -319,5 +322,5 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
 renderString :: RDoc ann -> String
 renderString doc =
   unsafePerformIO $
-  do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = False, printInstantiations = True})
+  do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = False, printInstantiations = True, printIndices = True})
      return (P.renderString (P.layoutPretty (P.LayoutOptions P.Unbounded) d))

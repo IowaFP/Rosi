@@ -29,10 +29,10 @@ import Syntax
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doTraceKindInference, doTraceInference
                    , doTraceEvaluation, doPrintTyped, printOkay
-                   , doPrintKinds, doPrintMaps, doPrintInstantiations :: Bool }
+                   , doPrintKinds, doPrintMaps, doPrintInstantiations, doPrintIndices :: Bool }
 
 emptyFlags :: Flags
-emptyFlags = Flags [] [] [] False False False False False False False False
+emptyFlags = Flags [] [] [] False False False False False False False False False
 
 interpretFlags = foldl (flip ($)) emptyFlags
 
@@ -48,6 +48,7 @@ options = [ Option ['e'] ["eval"] (ReqArg (\s f -> f { evals = evals f ++ splitO
           , Option [] ["print-kinds"] (NoArg (\f -> f { doPrintKinds = True })) "print kind information"
           , Option [] ["print-maps"] (NoArg (\f -> f { doPrintMaps = True })) "print maps explicitly"
           , Option [] ["print-instantiations"] (NoArg (\f -> f { doPrintInstantiations = True })) "print instantiations explicitly"
+          , Option [] ["print-indices"] (NoArg (\f -> f { doPrintIndices = True })) "print variables deBruijn indices"
           , Option [] ["reset"] (NoArg (const emptyFlags)) "reset flags" ]
 unprog (Prog ds) = ds
 
@@ -169,5 +170,5 @@ reportErrors flags (Left err) =
 reportErrors _ (Right x) = return x
 
 putDocWLn :: Int -> Flags -> RDoc ann -> IO ()
-putDocWLn n f d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = doPrintKinds f, printMaps = doPrintMaps f, printInstantiations = doPrintInstantiations f})
+putDocWLn n f d = do P.putDocW n =<< runReaderT d (PO {level = 0, printKinds = doPrintKinds f, printMaps = doPrintMaps f, printInstantiations = doPrintInstantiations f, printIndices = doPrintIndices f})
                      putStrLn ""
