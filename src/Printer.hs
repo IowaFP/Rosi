@@ -142,7 +142,7 @@ instance Printable Ty where
   ppr (TVar n x) = do pi <- asks printIndices
                       if pi
                         then ppr x <> "@" <> ppre n
-                        else ppre n
+                        else ppr x
   ppr (TUnif v) = ppr v
   ppr TFun = "(->)"
   ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
