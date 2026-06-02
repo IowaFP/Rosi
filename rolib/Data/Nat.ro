@@ -1,4 +1,4 @@
-import Ro.Base, Ro.Show , Data.Functor
+import Ro.Base, Ro.Show, Data.Functor, Data.Tuple
 
 type NatF : * -> *
 type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}
@@ -66,12 +66,75 @@ lte = fix (\lte m n.
               ( 'Zero: u -> False
               | 'Succ: n' -> lte m' n')))
 
---
+-- 3-way comparison
 
-showNat : Show Nat
-showNat = fix (\showNat.
-    ( case #'Zero (\ u. "Zero")
-    | case #'Succ (\ n. "Succ (" ^ (showNat n) ^ ")" )))
+type Cmp : *
+type Cmp = Sigma {'GT := Unit, 'LT := Unit, 'EQ := Unit}
+
+GT: Cmp
+GT = 'GT: tt
+
+LT: Cmp
+LT = 'LT: tt
+
+EQ: Cmp
+EQ = 'EQ: tt
+
+type Compare : * -> *
+type Compare = \a. (a -> a -> Cmp)
+
+compN : Compare Nat
+compN = fix (\compN. ( 'Zero: u -> ( 'Zero: u -> EQ
+                                   | 'Succ: b' -> LT)
+                     | 'Succ: a' -> ( 'Zero: u -> GT
+                                    | 'Succ: b' -> compN a' b')))
+
+
+-- division
+
+divMod : Nat -> Nat -> Pair Nat Nat
+divMod = fix (\divMod n1 n2. 
+              ((( 'EQ: u -> (pair 1 0)
+               | 'LT: u -> (pair 0 n1)
+               | 'GT: u -> (if (equal (monus n1 n2) 0)
+                                 (pair 0 n1)
+                                 ((\p. pair (add p.'1 1) p.'2) (divMod (monus n1 n2) n2)))))
+              (compN n1 n2)))
+
+div : Nat -> Nat -> Nat
+div = \n1 n2. (divMod n1 n2).'1
+
+mod : Nat -> Nat -> Nat
+mod = \n1 n2. (divMod n1 n2).'2
+
+-- Show instance
+
+-- helper for showNat. Should only be used when 0 <= n < 10
+showNatDigit : Nat -> String
+showNatDigit =
+  ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ (const "[OOPS, digit > 9]")
+                                                                                                                                                 | case 'Zero (const "10"))
+                                                                                                                                    | case 'Zero (const "9"))
+                                                                                                                       | case 'Zero (const "8"))
+                                                                                                          | case 'Zero (const "8"))
+                                                                                             | case 'Zero (const "7"))
+                                                                                | case 'Zero (const "6"))
+                                                                   | case 'Zero (const "5"))
+                                                      | case 'Zero (const "4"))
+                                         | case 'Zero (const "3"))
+                            | case 'Zero (const "2"))
+                | case 'Zero (const "1"))
+  | case 'Zero (const "0"))
+
+-- converts Nat to base 10 string.
+showNat : Nat -> String
+showNat =
+  fix (\showNat n.
+          let divModResult = (divMod n 10) in (if (equal divModResult.'1 0) "" (showNat divModResult.'1)) ^ (showNatDigit divModResult.'2))
+
+
+
+
 --
 
 one : Nat
