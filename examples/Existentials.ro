@@ -3,12 +3,6 @@ import Ro.Base , Data.Nat, Data.Tuple
 --------------------------------------------------------------------------------
 --
 
-type Cmp : *
-type Cmp = Sigma {'LT := Unit, 'EQ := Unit, 'GT := Unit}
-
-type Compare : * -> *
-type Compare = \t. t -> t -> Cmp
-
 type Ordering : R[*] -> *
 type Ordering = \r. forall z. (forall v. (Pi r -> v) -> Compare v -> z) -> z
 
