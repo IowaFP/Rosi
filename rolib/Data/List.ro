@@ -38,11 +38,74 @@ foldr = fix (\foldr f b.
                ( 'Nil: u -> b
                | 'Cons: p -> f p.'1 (foldr f b p.'2)))
 
+length : List a -> Nat
+length = foldr (\e a. succ a) 0
+
 append : List a -> List a -> List a
 append = \ xs ys. foldr cons ys xs
 
 concat : List (List a) -> List a
 concat = foldr append nil
+
+take : List a -> Nat -> List a
+take = fix (\take xs. ( 'Zero: u -> nil
+                       | 'Succ: pr -> ( 'Nil: u -> nil
+                                     | 'Cons: ys -> cons ys.'1 (take ys.'2 pr)) xs))
+
+-- zipping
+
+zip : List a -> List b -> List (Pair a b)
+zip = fix (\zip.
+              ( 'Nil: u -> const nil
+              | 'Cons: xs -> 
+                    (  'Nil: u -> nil
+                    | 'Cons: ys -> cons (pair xs.'1 ys.'1) (zip xs.'2 ys.'2))))
+
+unzip : List (Pair a b) -> Pair (List a) (List b)
+unzip = foldr (\p xs_ys. (pair (cons p.'1 xs_ys.'1) (cons p.'2 xs_ys.'2))) (pair nil nil)
+
+-- equivalent to zip with a stream that repeats the first argument
+zipRepeat : a -> List b -> List (Pair a b)
+zipRepeat = map . pair
+
+enumerate : List a -> List (Pair a Nat)
+enumerate = (fix (\enumerateHelper n. ( 'Nil: u -> nil
+                                      | 'Cons: xs -> cons (pair (xs.'1) n) (enumerateHelper (succ n) xs.'2)))
+            ) 0
+
+-- Searching and filtering
+
+find : (a -> Bool) -> List a -> Maybe a
+find = fix (\find f.
+                    ( 'Nil: u -> Nothing
+                    | 'Cons: xs -> (if (f xs.'1)
+                                      (Just xs.'1)
+                                      (find f xs.'2))))
+
+findAll : (a -> Bool) -> List a -> List a
+findAll = fix (\findAll f.
+                    ( 'Nil: u -> nil
+                    | 'Cons: xs -> (if (f xs.'1)
+                                       (cons xs.'1 (findAll f xs.'2))
+                                       (findAll f xs.'2))))
+
+findIndex : (a -> Bool) -> List a -> Maybe Nat
+findIndex = \f xs. maybe Nothing (\x. Just (x.'2)) (find (\p. f p.'1) (enumerate xs))
+
+filter : (a -> Bool) -> List a -> List a
+filter = \f ls. foldr (\e a. if (f e)
+                                (cons e a)
+                                        a) nil ls
+
+filterMaybe : List (Maybe a) -> List a
+filterMaybe = foldr (\e a. ( 'Just: x -> (cons x a)
+                           | 'Nothing: u -> a) e) nil
+
+all : (a -> Bool) -> List a -> Bool
+all = \f xs. foldr and True (map f xs) 
+
+
+-- Show Instance
 
 showList : Show a -> Show (List a)
 showList = \ show. fix (\showList.
