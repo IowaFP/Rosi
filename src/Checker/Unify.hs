@@ -144,7 +144,6 @@ unifyInstantiating t u unify =
      let(tqs, _) = quants t'
         (uis, u'') = insts u'
         nuqs      = length (fst (quants u''))
-     -- trace $ unwords ["unifyInstantiating:", show t', ",", show u']
      case (t', u') of
        (TInst (Unknown _ g) t'', TInst (Unknown _ g') u'')
          | goalRef g == goalRef g' -> unify t'' u''
@@ -162,10 +161,26 @@ unifyInstantiating t u unify =
         match :: [Insts] -> [Quant] -> Maybe [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])]
         match [] [] = return []
         match [Unknown n g] qs = return [Right (n, g, reverse qs)]
-        match (Unknown n g : is@(Known _ : _)) qs = (Right (n, g, reverse thens) :) <$> match is rest where
-          isThen (QuThen _) = True
-          isThen _          = False
-          (thens, rest) = partition isThen qs -- surely this should be a takeWhile. Also, why is this valid? Do we use it?
+        match is0@(Unknown n g : is@(Known (TyArg _ : _) : _)) qs = (Right (n, g, reverse here) :) <$> match is there where
+          (here, there)     = skip (countTyParams qs - countTyArgs is) qs
+          -- Okay...
+          countTyArgs []                 = 0
+          countTyArgs (Unknown {} : iss) = countTyArgs iss
+          countTyArgs (Known is : iss)   = countIn is + countTyArgs iss where
+            countIn []             = 0
+            countIn (TyArg _ : is) = 1 + countIn is
+            countIn (_ : is)       = countIn is
+          countTyParams []                 = 0
+          countTyParams (QuForall {} : qs) = 1 + countTyParams qs
+          countTyParams (_ : qs)           = countTyParams qs
+          skip _ [] = ([], [])
+          skip n (q@QuThen {} : qs)   = (q : skipped, left) where
+            (skipped, left) = skip n qs
+          skip 0 (q@QuForall {} : qs) = (skipped, q : left) where
+            (skipped, left) = skip n qs
+          skip n (q@QuForall {} : qs) = (q : skipped, left) where
+            (skipped, left) = skip (n - 1) qs
+
         match (Unknown n g : is@(Unknown _ _ : _)) qs
           | QuForall {} : _ <- qs = Nothing
           | otherwise = (Right (n, g, []) :) <$> match is qs
