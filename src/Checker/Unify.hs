@@ -18,7 +18,6 @@ import Checker.Utils
 import Printer
 import Syntax
 
-import Debug.Trace          qualified as T
 import GHC.Stack
 
 {--
@@ -176,10 +175,10 @@ unifyInstantiating t u unify =
           where matchKnown [] qs                              = return ([], qs)
                 matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (Left (t, k)) :)) <$> matchKnown is qs
                 matchKnown (PrArg v : is) (QuThen p : qs)     = first (Left (Right (v, p)) :) <$> matchKnown is qs
-                matchKnown _ []                               = T.trace "3 ruh-roh" Nothing
+                matchKnown _ []                               = Nothing -- ruh-roh!
                 matchKnown is qs                              = error $ "ruh-roh: " ++ show is ++ ", " ++ show qs
         match is qs =
-          T.trace (unlines ["1 ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs])
+          -- T.trace (unlines ["1 ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs])
           Nothing -- error $ unlines ["ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
 
         -- Need to write function to apply list of instantiations derived from

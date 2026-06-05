@@ -158,16 +158,16 @@ instance Printable Ty where
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
   -- Special cases:
   -- Nat = Mu (\n : *. Sigma {'Succ := n, 'Zero := Pi {}})}
-  ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar _ _),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = ppre "Nat"
+  ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar _ _),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = "Nat"
   -- Special case for Maybe type
   -- Maybe a = Sigma { 'Nothing := Unit, 'Just := a }
-  ppr (TConApp Sigma (TRow [TLabeled (TLab "Just") t, TLabeled (TLab "Nothing") (TConApp Pi (TRow []))])) = ppre "Maybe" <+> at 4 (ppr t)
+  ppr (TConApp Sigma (TRow [TLabeled (TLab "Just") t, TLabeled (TLab "Nothing") (TConApp Pi (TRow []))])) = "Maybe" <+> at 4 (ppr t)
   -- Special case for Bool type
   -- Bool = Sigma { 'True := Unit, 'False := Unit }
-  ppr (TConApp Sigma (TRow [TLabeled (TLab "False") (TConApp Pi (TRow [])),TLabeled (TLab "True") (TConApp Pi (TRow []))])) = ppre "Bool"
+  ppr (TConApp Sigma (TRow [TLabeled (TLab "False") (TConApp Pi (TRow [])),TLabeled (TLab "True") (TConApp Pi (TRow []))])) = "Bool"
   -- Special case for Unit type
   -- Unit = Pi {}
-  ppr (TConApp Pi (TRow [])) = ppre "Unit"
+  ppr (TConApp Pi (TRow [])) = "Unit"
   -- Special case for Tuple type
   -- Tuple = \ t ... . Pi {'1 := t , ...}
   ppr (TConApp Pi (TRow entries)) | Just ts <- getTupleContents entries 1 = parens (fillSep (punctuate "," (map ppr ts)))
@@ -176,7 +176,7 @@ instance Printable Ty where
   ppr (TConApp (Mu _) (TConApp Sigma (TRow [
                         TLabeled (TLab "Cons") (TLam _ (Just KType) (TConApp Pi (TRow [TLabeled (TLab "1") t, TLabeled (TLab "2") (TVar 0 _)]))),
                         TLabeled (TLab "Nil") (TLam _ (Just KType) (TConApp Pi (TRow [])))])))
-                        = ppre "List" <+> at 4 (ppr t)
+                        = "List" <+> at 4 (ppr t)
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
   ppr (TMap t) =
     do b <- asks printMaps
