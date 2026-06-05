@@ -26,6 +26,9 @@ nil n c = n
 cons : forall A. A -> List A -> List A
 cons a as n c = c a (as n c)
 
+snoc : forall a. List a -> a -> List a
+snoc as a = cons a as
+
 -- let Bool   : U                                 = (B : U) → B → B → B;
 
 type Bool : *
@@ -196,7 +199,9 @@ a4 : IdTy -> IdTy
 a4 x = x x
 
 -- let A5 = id auto;
---
+
+a5 = id auto
+
 -- let A6 : {B} → IdTy → B → B = id auto2;
 
 a6 : forall b. IdTy -> b -> b
@@ -216,11 +221,13 @@ a7 = choose id auto
 
 -- a8 = choose id auto2
 
+a8 = choose id ((\x. auto2 x) : IdTy -> IdTy )
+
 -- let A9 : ({A} → (A → A) → List A → A) → IdTy
 --     = λ f. f (choose id) ids;
 
-a9 : (forall a. (a -> a) -> List a -> a) -> IdTy
-a9 f = f (choose id) ids
+-- a9 : () -> IdTy
+a9 (f : forall a. (a -> a) -> List a -> a) = f (choose id) ids
 
 idsp : forall a. List (a -> a)
 idsp = single id
@@ -240,14 +247,36 @@ a11 = poly (\x. x)
 
 a12 = id poly (\x. x)
 
+-- a13b (k :: forall a. a -> [a] -> Nat) (xs :: [IdTy -> (Nat, Bool)]) = k (\f -> (f zeroB, f trueB)) xs
+
+-- a13 (k : forall a. a -> List a -> Nat) (xs : List (IdTy -> Pair Nat Bool)) = k (\f. pair (f zero) (f true)) xs
+
+a13 (k : forall a. List a -> a -> Nat) (xs : List (IdTy -> Pair Nat Bool)) = k xs (\f. pair (f zero) (f true))
+
+-- let C3 : IdTy = unId oneId;
+
+a14 : IdTy
+a14 = unId oneId
+
+
 -- -- B: inference of polymorphic arguments
 -- --------------------------------------------------------------------------------
 --
 -- -- FAILS
 -- -- let B1 = λ f. pair (f zero) (f true);
---
+
+-- b1 f = pair (f zero) (f true)
+
 -- -- FAILS
 -- -- let B2 = λ x. poly (unId x);
+
+-- b2 x = poly (unId x)
+
+b3 (f : IdTy) = pair (f zero) (f true)
+
+b4 (g : ((forall a. a -> a) -> Pair Nat Bool) -> Nat) = g (\f. pair (f zero) (f true))
+
+b5 (r : (forall a. a -> (forall b. b -> b)) -> Nat) = r (\x y. y)
 
 -- -- C: functions on polymorphic lists
 -- --------------------------------------------------------------------------------
@@ -260,42 +289,41 @@ c1 = length ids
 
 c2 = id ids
 
--- let C3 : IdTy = unId oneId;
-
-c3 : IdTy
-c3 = unId oneId
-
 -- let C4 : List IdTy = single id;
 
-c4 : List IdTy
-c4 = single id
+c3 : List IdTy
+c3 = single id
 
 -- let C5 = cons id ids;
 
-c5 = cons id ids
+c4 = cons id ids
 
 -- let C6 = cons (λ x. x) ids;
 
-c6 : List IdTy  -- To be fair to me, GHC needs the type signature here as well.
-c6 = cons (\x. x) ids
+-- Fails
+-- c5a = cons (\x. x) ids
 
+c5b : List IdTy
+c5b = cons (\x. x) ids
+
+c5c = snoc ids (\x. x)
 
 -- let C7 = append (single suc) (single id);
 
-c7 = append (single suc) (single id)
+c6 = append (single suc) (single id)
 
 -- let C8 : _ → IdTy = λ (g : {A} → List A → List A → A). g (single id) ids;
 
-c8 : (forall a. List a -> List a -> a) -> IdTy   -- doesn't work for me without type signature either
-c8 (g : forall a. List a -> List a -> a) = g (single id) ids
+c7 : (forall a. List a -> List a -> a) -> IdTy
+c7 g = g (single id) ids
 
 -- let C9 = map poly (single id);
 
-c9 = map poly (single id)
+c8 = map poly (single id)
 
 -- let C10 = map unId (single oneId);
 
-c10 = map unId (single oneId)
+c9 = map unId (single oneId)
 
 -- -- D: application functions
 -- --------------------------------------------------------------------------------
@@ -332,13 +360,24 @@ d5 = revapp argST runST
 --   λ (h : Nat → {A} → A → A)(k : {A} → A → List A → A)(lst : List ({A} → Nat → A → A)).
 --   k (λ x. h x) lst;
 
--- e2 = \ h : Nat -> (forall a. a -> a), k : forall a. a -> List a -> a, lst : List (forall a. Nat -> a -> a).
+-- Fails
+-- e2a = \ h : Nat -> (forall a. a -> a), k : forall a. a -> List a -> a, lst : List (forall a. Nat -> a -> a).
 --        k (\@a, x. h x @a) lst
 
--- let E3 =
---   λ (r : ({A} → A → {B} → B → B) → Nat). r (λ x y. y);
+e2b1 = \ (h : Nat -> (forall a. a -> a)) (k : forall a. a -> List a -> a) (lst : List (forall a. Nat -> a -> a)).
+  k ((\x. h x) : forall a. Nat -> a -> a) lst
 
-e3 (r : (forall a. a -> (forall b. b -> b)) -> Nat) =
-       r (\x y. y)
+e2b2 = \ (h : Nat -> (forall a. a -> a)) (k : forall a. a -> List a -> a) (lst : List (forall a. Nat -> a -> a)).
+  k (\@a (x : Nat). h x @a) lst
 
--- U
+-- While this might seem like a case where `lst` provides enough information to
+-- type the lambda, apparently it is not. :(
+-- e2s = \ (h : Nat -> (forall a. a -> a)) (k : forall a. List a -> a -> a) (lst : List (forall a. Nat -> a -> a)).
+--   k lst (\x. h x)
+
+-- Fails
+-- e3a = \ (k : forall a. a -> List a -> Nat) (xs : List (IdTy -> Pair Nat Bool)).
+--   k (\f. pair (f zero) (f true)) xs
+
+e3b = \ (k : forall a. List a -> a -> Nat) (xs : List (IdTy -> Pair Nat Bool)).
+  k xs (\f. pair (f zero) (f true))
