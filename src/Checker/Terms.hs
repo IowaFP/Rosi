@@ -265,8 +265,9 @@ generalize e =
           level <- theLevel
           (e', ps) <- collect $ checkTerm e t
           (psHere, psThere) <- splitProblems level ps
-          remaining <- solverLoop psHere
-          return (level, t, e', remaining, psThere)
+          -- remaining <- solverLoop psHere
+          -- trace $ "Solver simplified " ++ show [p | (_, p, _) <- psHere] ++ " to " ++ show [p | (_, p, _) <- remaining]
+          return (level, t, e', psHere, psThere)
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
      unless (null ungeneralizable) $ notEntailed ungeneralizable
      tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere) [])
