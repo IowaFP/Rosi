@@ -103,7 +103,7 @@ data UVar = UV { uvShift :: Int, uvLevel :: Level, uvGoal :: Goal Ty, uvKind :: 
   deriving (Data, Show, Typeable)
 
 instance Eq UVar where
-  v == v' = uvShift v == uvShift v' && goalRef (uvGoal v) == goalRef (uvGoal v')
+  v == v' = goalRef (uvGoal v) == goalRef (uvGoal v')
 
 data TyCon = Pi | Sigma | Mu (Maybe Int) | TCUnif (Goal TyCon)
   deriving (Data, Eq, Show, Typeable)
