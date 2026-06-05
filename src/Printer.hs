@@ -115,7 +115,7 @@ instance Printable UVar where
          Just t -> ppr (shiftTN 0 n t)
          Nothing ->
            do pk <- asks printKinds
-              let name = ppre s <> "@" <> ppr l <>
+              let name = "%" <> ppre s <> "@" <> ppr l <>
                          if n > 0 then "^" <> ppre n else mempty
               if pk
               then name <:> (P.align <$> ppr k)
@@ -176,7 +176,7 @@ instance Printable Ty where
   ppr (TConApp (Mu _) (TConApp Sigma (TRow [
                         TLabeled (TLab "Cons") (TLam _ (Just KType) (TConApp Pi (TRow [TLabeled (TLab "1") t, TLabeled (TLab "2") (TVar 0 _)]))),
                         TLabeled (TLab "Nil") (TLam _ (Just KType) (TConApp Pi (TRow [])))])))
-                        = "List" <+> at 4 (ppr t)
+                        = "List" <+> at 4 (ppr (shiftTN 0 (-1) t))
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
   ppr (TMap t) =
     do b <- asks printMaps
