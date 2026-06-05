@@ -268,17 +268,20 @@ generalize e =
           remaining <- solverLoop psHere
           return (level, t, e', remaining, psThere)
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
-     when (not (null ungeneralizable)) $ notEntailed ungeneralizable
+     unless (null ungeneralizable) $ notEntailed ungeneralizable
      tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere) [])
      genVars <- foldl cat [] <$> ((:) <$> uvars level t <*> mapM (puvars level . fst) generalizable)
      fixInsts t
      t' <- shiftTNV genVars 0 (length genVars) <$> flattenT t
      e'' <- shiftENV genVars 0 (length genVars) <$> flattenE e'
+     generalizable' <- forM generalizable $ \(p, evid) ->
+       do p' <- shiftPNV genVars 0 (length genVars) <$> flattenP p
+          return (p', evid)
      trace $ "Generalizing " ++ intercalate ", " (map (renderString . ppr) genVars) ++ " in " ++ renderString (ppr t')
      as <- generalizeVars genVars
-     generalizePreds generalizable
-     let (e''', t'') = buildFinal as genVars generalizable e'' t'
-     trace $ "Generalized: " ++ renderString (ppr t')
+     generalizePreds generalizable'
+     let (e''', t'') = buildFinal as genVars generalizable' e'' t'
+     trace $ "Generalized: " ++ renderString (ppr t'')
      return (e''', t'')
 
   where uvars :: Level -> Ty -> CheckM [UVar]
