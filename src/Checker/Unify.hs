@@ -190,8 +190,11 @@ unifyInstantiating t u unify =
         -- instantiation??
         instantiates :: [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])] -> Ty -> UnifyM Ty
         instantiates [] t = return t
-        instantiates (Left (Left (u, _)) : is) (TForall x k t) =
-            do t' <- subst 0 (shiftTN 0 1 u) t
+        instantiates _ (TForall x Nothing t) =
+          error "Unannotated forall in instantiation!"
+        instantiates (Left (Left (u, _)) : is) (TForall x (Just k) t) =
+            do u' <- liftToUnifyM . toCheckM $ checkTy u k
+               t' <- subst 0 (shiftTN 0 1 u) t
                instantiates is (shiftTN 0 (-1) t')
         instantiates (Left (Right _) : is) (TThen _ t) =
           instantiates is t
