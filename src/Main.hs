@@ -15,7 +15,7 @@ import Prettyprinter.Util    qualified as P
 import System.Console.GetOpt
 import System.Directory
 import System.Environment
-import System.Exit           (exitFailure)
+import System.Exit           (exitFailure, exitSuccess)
 import System.FilePath
 import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr, stdout)
 
@@ -27,21 +27,23 @@ import Scope
 import Syntax
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
+                   , doPrintHelpMessage
                    , doTraceKindInference, doTraceInference
                    , doTraceEvaluation, doPrintTyped, printOkay
                    , doPrintKinds, doPrintMaps, doPrintInstantiations, doPrintIndices :: Bool }
 
 emptyFlags :: Flags
-emptyFlags = Flags [] [] [] False False False False False False False False False
+emptyFlags = Flags [] [] [] False False False False False False False False False False
 
 interpretFlags = foldl (flip ($)) emptyFlags
 
 options :: [OptDescr (Flags -> Flags)]
-options = [ Option ['e'] ["eval"] (ReqArg (\s f -> f { evals = evals f ++ splitOn "," s}) "SYMBOL") "symbol to evaluate"
+options = [ Option [] [] (ReqArg (\s f -> f { inputs = inputs f ++ [s]}) "FILE") "file to process"
+          , Option ['e'] ["eval"] (ReqArg (\s f -> f { evals = evals f ++ splitOn "," s}) "SYMBOL") "symbol to evaluate"
           , Option ['i'] ["import"] (ReqArg (\s f -> f { imports = imports f ++ [s]}) "DIR") "directory to search"
-          , Option [] [] (ReqArg (\s f -> f { inputs = inputs f ++ [s]}) "FILE") "file to process"
           , Option ['t'] [] (NoArg (\f -> f { doPrintTyped = True })) "print typed terms"
           , Option [] ["okay"] (NoArg (\f -> f { printOkay = True })) "print okay after execution"
+          , Option ['?'] ["help"] (NoArg (\f -> f { doPrintHelpMessage = True })) "print usage help and exit"
           , Option ['K'] ["trace-kind-inference"] (NoArg (\f -> f { doTraceKindInference = True })) "generate trace output in kind inference"
           , Option ['T'] ["trace-type-inference"] (NoArg (\f -> f { doTraceInference = True })) "generate trace output in type inference"
           , Option ['E'] ["trace-evaluation"] (NoArg (\f -> f { doTraceEvaluation = True })) "generate trace output from evaluation"
@@ -95,7 +97,9 @@ main = do nowArgs <- getArgs
              case getOpt (ReturnInOrder (\s f -> f { inputs = inputs f ++ [s]})) options (globalArgs ++ localArgs ++ nowArgs) of
                (flags, [], []) -> return (interpretFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
+                                  printUsage
                                   exitFailure
+          when (doPrintHelpMessage flags) $ printUsage >> exitSuccess
           writeIORef traceKindInference (doTraceKindInference flags)
           writeIORef traceTypeInference (doTraceInference flags)
           writeIORef E.traceEvaluation (doTraceEvaluation flags)
@@ -162,6 +166,14 @@ main = do nowArgs <- getArgs
         wordsIfExists fn =
           do exists <- doesFileExist fn
              if exists then words <$> readFile fn else return []
+
+        printUsage =
+          do exeName <- getProgName
+             let exeName' | dropExtension exeName == "cabal" = "cabal run Rosi --"
+                          | otherwise                        = exeName
+             putStrLn (usageInfo ("Usage:\n\n\t" ++ exeName' ++ " FILES OPTIONS\n\n\
+                                  \where FILES are Rose modules, either file names or module names\n\
+                                  \and the available options are:\n") (tail options))
 
 reportErrors :: Flags -> Either Error t -> IO t
 reportErrors flags (Left err) =
