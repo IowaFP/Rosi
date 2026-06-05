@@ -112,7 +112,7 @@ instance Printable UVar where
   ppr (UV n l (Goal (s, rmt)) k) =
     do mt <- liftIO (readIORef rmt)
        case mt of
-         Just t -> ppr t
+         Just t -> ppr (shiftTN 0 n t)
          Nothing ->
            do pk <- asks printKinds
               let name = ppre s <> "@" <> ppr l <>
