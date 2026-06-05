@@ -264,9 +264,6 @@ atype :: Parser Ty
 atype = choice [ TLab <$> lexeme lidentifier
                , TSing <$> (char '#' >> atype)
                , tcon <*> atype
-              --  , TConApp Sigma <$> (symbol "Sigma" >> atype)
-              --  , TConApp Pi <$> (symbol "Pi" >> atype)
-              --  , TConApp (Mu Nothing) <$> (symbol "Mu" >> atype)
                , TRow <$> braces (commaSep labeledTy)
                , const TString <$> reserved "String"
                , TVar (-1) <$> (lexeme qidentifier)
@@ -284,10 +281,6 @@ pr = choice [ do reserved "Fold"
                        return $ case t of
                          TPlus x y -> PPlus x y u
                          _         -> PEq t u ] ]
-                  --  , do symbol "+"
-                  --       u <- arrTy
-                  --       symbol "~"
-                  --       PPlus t u <$> arrTy ] ]
 
 -- We need a random precedence table here.  Let's try:
 --
@@ -388,8 +381,6 @@ term = prefixes typedTerm where
               EUnlabel Nothing t <$> stringEqTerm
          , return t ]
 
-    -- chainl1 catTerm $ choice [op ":=" (return ELabel), op "/" (return EUnlabel)]
-
   stringEqTerm = chainl1 catTerm $ op "~" (ebinary CStringEq)
 
   catTerm = chainl1 appTerm $ op "^" (ebinary CStringCat)
@@ -411,6 +402,7 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
   ctor = do x <- choice [ ESing . TLab <$> lidentifier
                         , EVar (-1) <$> qidentifier ]
             char ':'
+            notFollowedBy (char '=')
             return (EApp (EVar (-1) (reverse ["Ro", "Base", "con"])) x)
 
   sing x = [x]
