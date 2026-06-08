@@ -368,9 +368,6 @@ solve (cin, p, r) =
        name <- fresh "g"
        return (Just (VGoal (Goal (name, r))))
 
-  mapFunApp as p@(PLeq (TApp (TMap f) y) (TApp (TMap f') z)) =
-    suppose (typesEqual f f') $
-      fmap (VLeqLiftL f) <$> defer (PLeq y z)
   mapFunApp as p@(PLeq (TRow []) (TApp (TMap f) z)) =
     fmap (VLeqLiftL f) <$> defer (PLeq (TRow []) z)
   mapFunApp as p@(PLeq (TApp (TMap f) y) (TRow [])) =
@@ -411,13 +408,13 @@ guesses prs =
 
   guessAt :: Int -> CheckM [Guess]
   guessAt i =
-    do p' <- local (const tcin) (normalizeP [] p)
+    do p' <- local (const tcin) (flattenP =<< normalizeP [] p)
        let tries = catMaybes $ map ($ (tcin, p', v)) guessers
        return (map (wrapGuess (dropAt i prs) . local (const tcin)) tries)
     where (tcin, p, v) = prs !! i
 
   guessers :: [Guesser]
-  guessers = [{- guessInstInst, -} guessInst, guessAppApp, guessApp]
+  guessers = [{- guessInstInst, -} guessInst, guessAppApp, guessApp, guessMapLeq]
 
   guessInstInst, guessInst, guessAppApp, guessApp :: Guesser
 
@@ -462,6 +459,16 @@ guesses prs =
                     do t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
                        instantiate t' us
   guessInst _ = Nothing
+
+  guessMapLeq pr@(tcin, PLeq (TApp (TMap f) y) (TApp (TMap f') z), v)
+    | f == f' = Just $
+      do r1 <- newRef Nothing
+         v1 <- fresh "v"
+         writeRef v (Just (VLeqLiftL f (VGoal (Goal (v1, r1)))))
+         trace $ unlines [ "guessing " ++ show (PLeq (TApp (TMap f) y) (TApp (TMap f') z))
+                         , "by reducing to " ++ show (PLeq y z) ]
+         return [(tcin, PLeq y z, r1)]
+  guessMapLeq (_, p, _) = T.trace ("guessMapLeq was not applicable to " ++ show p) Nothing
 
   guessingRefinement tf ta uf ua =
     unlines
@@ -715,14 +722,16 @@ guess (pr@(tcin, PEq t u, v) : prs) =
 guess (pr : prs) = fmap (pr :) <$> guess prs
 guess [] = return Nothing
 
-solverLoop :: [Problem] -> CheckM [Problem]
-solverLoop [] = return []
-solverLoop ps =
+solverLoop :: Bool -> [Problem] -> CheckM [Problem]
+solverLoop makeGuesses [] = return []
+solverLoop makeGuesses ps =
   do trace $ unlines $ "Solver loop:" : ["    " ++ renderString (ppr p) | (_, p, _) <- ps]
-     (b, ps') <- once False [] ps
-     if b
-     then solverLoop ps'
-     else guessLoop =<< guesses ps'
+     (progressed, ps') <- once False [] ps
+     if progressed
+     then solverLoop makeGuesses ps'
+     else if makeGuesses
+     then guessLoop =<< guesses ps'
+     else return ps'
           -- do mps <- guess ps'
           --    case mps of
           --      Just ps'' -> solverLoop ps''
@@ -734,16 +743,16 @@ solverLoop ps =
                   (if b' then qs else p : qs)
                   (ps ++ ps')
         guessLoop []       = return ps
-        guessLoop (g : gs) = solverLoop =<< g
+        guessLoop (g : gs) = solverLoop makeGuesses =<< g
 
 
-andSolve :: CheckM a -> CheckM a
-andSolve m =
+andSolve :: Bool -> CheckM a -> CheckM a
+andSolve makeGuesses m =
   -- censor (const (TCOut [])) $
       -- Not sure why this should be here; the `collect` below should do the
       -- same, and `solverLoop` shouldn't leave any problems in the output
   do (x, goals) <- collect m
-     remaining <- solverLoop goals
+     remaining <- solverLoop makeGuesses goals
      if null remaining
      then return x
      else notEntailed remaining
