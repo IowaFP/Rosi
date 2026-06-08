@@ -421,7 +421,11 @@ shiftEN = shiftENV []
 flattenE :: MonadIO m => Term -> m Term
 flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< everywhereM (mkM flattenP) <=< everywhereM (mkM flattenK) <=< everywhereM (mkM flattenV) <=< everywhereM (mkM flattenTC) where
   (f <=< g) x = g x >>= f
-  flattenInsts (EInst m is) = EInst m <$> flattenIs is
+  flattenInsts (EInst m is) =
+    do is' <- flattenIs is
+       case is' of
+         Known [] -> return m
+         _        -> return (EInst m is')
   flattenInsts m            = return m
 
 hasHoles :: Term -> Bool
