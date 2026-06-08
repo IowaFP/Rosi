@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+ {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Eta reduce" #-}
 module Printer where
@@ -124,8 +124,8 @@ instance Printable UVar where
 instance Printable TyCon where
   ppr Pi = "Pi"
   ppr Sigma = "Sigma"
-  ppr (Mu Nothing) = "Mu"
-  ppr (Mu (Just n)) = "Mu [" <> ppre n <> "]"
+  ppr (Mu Unexpanded) = "Mu"
+  ppr (Mu (Expanded n)) = "Mu [" <> ppre n <> "]"
   ppr (TCUnif g) =
     do mk <- liftIO (readIORef (goalRef g))
        case mk of
@@ -158,7 +158,7 @@ instance Printable Ty where
   ppr (TRow ts) = braces (fillSep (punctuate "," (map ppr ts)))
   -- Special cases:
   -- Nat = Mu (\n : *. Sigma {'Succ := n, 'Zero := Pi {}})}
-  ppr (TConApp (Mu Nothing) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar _ _),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = "Nat"
+  ppr (TConApp (Mu Unexpanded) (TLam _ (Just KType) (TConApp Sigma (TRow [TLabeled (TLab "Succ") (TVar _ _),TLabeled (TLab "Zero") (TConApp Pi (TRow []))])))) = "Nat"
   -- Special case for Maybe type
   -- Maybe a = Sigma { 'Nothing := Unit, 'Just := a }
   ppr (TConApp Sigma (TRow [TLabeled (TLab "Just") t, TLabeled (TLab "Nothing") (TConApp Pi (TRow []))])) = "Maybe" <+> at 4 (ppr t)

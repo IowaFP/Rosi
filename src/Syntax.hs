@@ -105,7 +105,13 @@ data UVar = UV { uvShift :: Int, uvLevel :: Level, uvGoal :: Goal Ty, uvKind :: 
 instance Eq UVar where
   v == v' = goalRef (uvGoal v) == goalRef (uvGoal v')
 
-data TyCon = Pi | Sigma | Mu (Maybe Int) | TCUnif (Goal TyCon)
+data Expansions = Expanded Int | Unexpanded
+  deriving (Data, Show)
+
+instance Eq Expansions where
+  _ == _ = True
+
+data TyCon = Pi | Sigma | Mu Expansions | TCUnif (Goal TyCon)
   deriving (Data, Eq, Show, Typeable)
 
 data TyOrdering = Leq | Geq

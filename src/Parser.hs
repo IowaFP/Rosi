@@ -251,7 +251,7 @@ labeledTy =
 
 tcon = choice [ ordered (string "Pi") Pi
               , ordered (string "Sigma") Sigma
-              , symbol "Mu" >> return (TConApp (Mu Nothing)) ] where
+              , symbol "Mu" >> return (TConApp (Mu Unexpanded)) ] where
   ordered p k =
     lexeme $
     do p

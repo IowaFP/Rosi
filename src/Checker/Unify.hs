@@ -368,10 +368,10 @@ unify0 (TConApp Sigma ra) (TConApp Sigma rx) =
 unify0 (TConApp (Mu count) f) (TConApp (Mu count') g) =
   VEqCon (Mu count'') <$> unify' f g where
     count'' = case (count, count') of
-                (Nothing, Nothing) -> Nothing
-                (Nothing, Just n)  -> Just n
-                (Just m, Nothing)  -> Just m
-                (Just m, Just n)   -> Just (min m n)
+                (Unexpanded, Unexpanded) -> Unexpanded
+                (Unexpanded, Expanded n) -> Expanded n
+                (Expanded m, Unexpanded) -> Expanded m
+                (Expanded m, Expanded n) -> Expanded (min m n)
 unify0 t u
   | (TConApp (Mu count) f, ts) <- spine t, noHeadUnif u, Just count' <- decr count =
     unify' (foldl TApp f (TConApp (Mu count') f : ts)) u
@@ -380,9 +380,9 @@ unify0 t u
   where noHeadUnif t
           | (TUnif _, _) <- spine t = False
           | otherwise = True
-        decr (Just 0) = Nothing
-        decr (Just n) = Just (Just (n - 1))
-        decr Nothing  = Just (Just 20)
+        decr (Expanded 0) = Nothing
+        decr (Expanded n) = Just (Expanded (n - 1))
+        decr Unexpanded   = Just (Expanded 20)
 unify0 t0@(TConApp (TCUnif g) t) u =
   do mk <- readRef (goalRef g)
      case mk of
