@@ -134,14 +134,9 @@ variantFrom :: (HasCallStack) => Value -> (Int, Value, Maybe String)
 variantFrom (VVariant k v s) = (k, v, s)
 variantFrom v                = (0, v, Just "Test")
 
-labelFromTerm :: Env -> Term -> Maybe String
-labelFromTerm h (ESing t) = labelFromTy t
-labelFromTerm h (EInst t (Known is)) = Just (show (inst (eval h t) is))
-  where
-    inst v []             = v
-    inst v (TyArg _ : is) = inst v is
-    inst v (PrArg q : is) = inst (prapp v (evalV h q)) is
-labelFromTerm _ _ = Nothing
+labelFromValue :: Value -> Maybe String
+labelFromValue (VSing t) = t
+labelFromValue _         = Nothing
 
 labelFromTy :: Ty -> Maybe String
 labelFromTy (TLab s) = Just s
@@ -167,10 +162,9 @@ eval' h (EInst t (Known is)) = inst (eval h t) is
 eval' h (ESing t) = VSing (labelFromTy t)
 eval' h (ELabel (Just k) l e) =
   case k of
-
-    Pi       -> VRecord [v] [labelFromTerm h l]
-    Sigma    -> VVariant 0 v (labelFromTerm h l)
-    TCUnif _ -> VRecord [v] [labelFromTerm h l]
+    Pi       -> VRecord [v]  [labelFromValue (eval h l)]
+    Sigma    -> VVariant 0 v (labelFromValue (eval h l))
+    TCUnif _ -> VRecord [v]  [labelFromValue (eval h l)]
   where
     v = eval h e
 eval' h e0@(EUnlabel (Just k) e l) =
