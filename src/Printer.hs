@@ -239,6 +239,8 @@ collectBinders = go "\\" where
   go s t                     = s <+> "." <+> ppr t
 
 instance Printable Term where
+  -- Special case for Nat
+  ppr t | Just n <- fromPeano t =  ppre (show n)
   ppr (EVar _ s) = ppr s
   ppr m@(ELam {}) = with 0 $ collectBinders m
   ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
@@ -249,7 +251,6 @@ instance Printable Term where
     with 1 $ fillSep [at 2 (ppr e1), "^", ppr e2]
   ppr (EApp (EApp (EConst CStringEq) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "~", ppr e2]
-  ppr t | Just n <- fromPeano t =  ppre (show n)
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr m@(ETyLam {}) = with 0 $ collectBinders m
   ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
