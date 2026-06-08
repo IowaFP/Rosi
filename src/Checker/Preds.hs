@@ -262,9 +262,12 @@ solve (cin, p, r) =
   isComplement _           = False
 
   expand2 :: (Pred, Evid) -> (Pred, Evid) -> [(Pred, Evid)]
-  expand2 (PLeq x y, v1) (PLeq z w, v2)
-    | y == z = [(PLeq x w, VLeqTrans v1 v2)]
-    | x == w = [(PLeq z y, VLeqTrans v2 v1)]
+  expand2 p@(PLeq {}, _) q@(PLeq {}, _) = oneWay p q ++ oneWay q p where
+    oneWay (PLeq x y, v1) (PLeq z w, v2)
+      | y == z                         = [(PLeq x w, VLeqTrans v1 v2)]
+      | TMap f `TApp` z' <- z, y == z' = [(PLeq (TMap f `TApp` x) w, VLeqTrans (VLeqLiftL f v1) v2)]
+      | TMap f `TApp` y' <- y, y' == z = [(PLeq x (TMap f `TApp` w), VLeqTrans v1 (VLeqLiftL f v2))]
+    oneWay _ _ = []
   expand2 _ _ = []
 
   expandAll :: [(Pred, Evid)] -> [(Pred, Evid)]
