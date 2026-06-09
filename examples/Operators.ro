@@ -1,0 +1,12 @@
+import Ro.Base, Data.List
+
+-- infix 1 ::
+
+(<>) : a -> List a -> List a
+(<>) = cons
+
+shf = ($)
+
+
+
+hello_world = (<>) "hello" "world"
