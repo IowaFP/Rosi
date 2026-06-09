@@ -140,6 +140,20 @@ qidentifier  =
      xs <- many (try (string "." >> identifier))
      return (reverse (x : xs))
 
+
+-- TODO(mctano) centralize source of truth for reserved keywords and operators
+customOperator :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
+customOperator =
+  do
+    s <- (:) <$> symbolChar <*> many symbolChar
+    if s `elem` builtins
+      then unexpected $ Label (fromList "reserved operator")
+      else return s
+  where
+    builtins = [":", "++", "|", "^", "~"]
+
+
+immediateParens = between (char '(') (char ')')
 parens      = between (symbol "(") (symbol ")")
 angles      = between (symbol "<") (symbol ">")
 brackets    = between (symbol "[") (symbol "]")
@@ -155,6 +169,8 @@ commaSep1   = flip sepBy1 comma
 
 number      = lexeme P.decimal
 stringLit   = lexeme (char '"' >> manyTill P.charLiteral (char '"'))
+
+surroundedOp = lexeme (immediateParens customOperator)
 
 ---------------------------------------------------------------------------------
 -- Parser
@@ -423,6 +439,7 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
 
   aterm :: Parser Term
   aterm = choice [ EConst <$> const
+                 , try (ECustomOp <$> surroundedOp)
                  , try (lexeme ctor)
                  , try (lexeme selection)
                  , try (lexeme stor)
@@ -478,6 +495,7 @@ topLevel = item lhs body where
           [ ImportLHS <$ reserved "import"
           , TypeLHS <$> lexeme typeIdentifier
           , TermLHS <$> lexeme identifier
+          , TermLHS <$> surroundedOp
           ]
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
