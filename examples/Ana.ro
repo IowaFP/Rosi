@@ -7,10 +7,10 @@ reflect = \ d w. ana #(\X.X) (\ l u. sel d l u) w
 type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
 type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
 
-mapS : forall z : R[* -> *], f g : (* -> *) -> *.
+mapS : forall f g : (* -> *) -> *, z : R[* -> *].
        Iter f g z ->
        Sigma (f z) -> Sigma (g z)
-mapS = \ @z @f @g, i v. ana #f (\ l x. con l (i l x)) v
+mapS = \ @f @g @z i v. ana #f (\ l x. con l (i l x)) v
 
 type Functor : (* -> *) -> *
 type Functor = \f. forall a b. (a -> b) -> f a -> f b
@@ -18,32 +18,32 @@ type Functor = \f. forall a b. (a -> b) -> f a -> f b
 fmapS : forall z : R[* -> *] .
         Pi (Functor z) ->
         Functor (Sigma z)
-fmapS = \ @z : R[* -> *],
-          d : Pi (Functor z),
-          @a @b : *,
-          f : a -> b, w : Sigma z a.
-          mapS @z @(\ X : * -> *. X a) @(\ X : * -> *. X b) (\ @l : L, @u : * -> *, ll : #l, x : u a. sel d ll f x) w
+fmapS = \ (@z : R[* -> *])
+          (d : Pi (Functor z))
+          (@a @b : *)
+          (f : a -> b) (w : Sigma z a).
+          mapS @(\ (X : * -> *). X a) @(\ (X : * -> *). X b) @z (\ (@l : L) (@u : * -> *) (ll : #l) (x : u a). sel d ll f x) w
 
 -- Can go directly via `ana` as well.
 fmapS1 : forall z : R[* -> *] . Pi (Functor z) -> Functor (Sigma z)
-fmapS1 = \ d, @a, f w.
+fmapS1 = \ d @a f w.
          ana #(\x. x a) (\ l x. con l (sel d l f x)) w
 
 fmapS20 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
-fmapS20 = \ @z, d, @a @b, f w.
-            mapS @z @(\ X. X a) @(\ X. X b)
+fmapS20 = \ @z d @a @b f w.
+            mapS @(\ X. X a) @(\ X. X b) @z
               (\ l x. sel d l @a @b f x)
               w
 
 fmapS21 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
-fmapS21 = \ @z, d, @a @b, f.
-            mapS @z @(\ X. X a) @(\ X. X b) (\ @l @u, ll. (sel d ll : Functor u) f)
+fmapS21 = \ @z d @a @b f.
+            mapS @(\ X. X a) @(\ X. X b) @z (\ @l @u ll. (sel d ll : Functor u) f)
 
 -- How many annotations can I leave out?
 -- bug here: why do we need to bring `z` into scope? Without doing so, we fail to solve predicates...
 
 fmapS2 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
-fmapS2 = \ d, @a @b, f.
+fmapS2 = \ d @a @b f.
           mapS @(\ X. X a) @(\ X. X b) (\l. sel d l f)
 
 mapS0 : forall z : R[* -> *], f g : (* -> *) -> *. #f -> #g -> Iter f g z -> Sigma (f z) -> Sigma (g z)
@@ -51,7 +51,7 @@ mapS0 = \ fs gs i v. mapS i v
 
 -- I think once the `z` problem is solved above, this version should work as well.
 fmapS3 : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z) -- Why do I need the kind annotation on z??
-fmapS3 = \d, @a @b, f. mapS0 #(\X. X a) #(\X. X b) (\l. sel d l f)
+fmapS3 = \d @a @b f. mapS0 #(\X. X a) #(\X. X b) (\l. sel d l f)
 
 type Eq : * -> *
 type Eq = \t. t -> t -> Bool
