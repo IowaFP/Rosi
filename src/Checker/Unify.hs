@@ -132,93 +132,84 @@ unify' actual expected =
 -- This function handles unification cases `t ~ u` where `u` starts with some
 -- instantiation variables. If `t` start with instantiation variables instead,
 -- pass it as `u` but pass `flip unify` as the third argument.
---
--- TODO: somewhere should check that provided instantiations have the expected
--- kinds
 unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM Evid) -> UnifyM Evid
 unifyInstantiating t u unify =
   do t' <- flattenT t
      u' <- flattenT u
-     let(tqs, _) = quants t'
-        (uis, u'') = insts u'
-        nuqs      = length (fst (quants u''))
+     let (tqs, _)   = quants t'
+         (uis, u'') = insts u'
+         nuqs       = length (fst (quants u''))
      case (t', u') of
        (TInst (Unknown _ g) t'', TInst (Unknown _ g') u'')
          | goalRef g == goalRef g' -> unify t'' u''
        (TForall {}, TInst (Unknown {}) (TUnif {})) ->
          unificationFails t u
+       (TExists {}, TInst (Unknown {}) (TUnif {})) ->
+         unificationFails t u
        _
-         | Just matches <- match (reverse (map reverseIs uis)) (reverse (take (length tqs - nuqs) tqs)) ->
+         | Just matches <- match uis (take (length tqs - nuqs) tqs) ->
              do trace $ unlines ["unifyInstantiating:", "    " ++ show (quants t'), "    " ++ show (insts u'), "    " ++ show matches]
-                t'' <- instantiates (reverse matches) t'
+                t'' <- instantiates matches t'
                 unify t'' u''
          | otherwise ->
              do trace $ "7 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
                 unificationFails t u
-  where -- match needs its arguments **reversed** from their appearance in the type
-        match :: [Insts] -> [Quant] -> Maybe [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])]
-        match [] [] = return []
-        match [Unknown n g] qs = return [Right (n, g, reverse qs)]
-        match is0@(Unknown n g : is@(Known (TyArg _ : _) : _)) qs = (Right (n, g, reverse here) :) <$> match is there where
-          (here, there)     = skip (countTyParams qs - countTyArgs is) qs
-          -- Okay...
-          countTyArgs []                 = 0
-          countTyArgs (Unknown {} : iss) = countTyArgs iss
-          countTyArgs (Known is : iss)   = countIn is + countTyArgs iss where
-            countIn []             = 0
-            countIn (TyArg _ : is) = 1 + countIn is
-            countIn (_ : is)       = countIn is
-          countTyParams []                 = 0
-          countTyParams (QuForall {} : qs) = 1 + countTyParams qs
-          countTyParams (_ : qs)           = countTyParams qs
-          skip _ [] = ([], [])
-          skip n (q@QuThen {} : qs)   = (q : skipped, left) where
-            (skipped, left) = skip n qs
-          skip 0 (q@QuForall {} : qs) = (skipped, q : left) where
-            (skipped, left) = skip n qs
-          skip n (q@QuForall {} : qs) = (q : skipped, left) where
-            (skipped, left) = skip (n - 1) qs
+  where
+    match :: [Insts] -> [Quant] -> Maybe [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])]
 
-        match (Unknown n g : is@(Unknown _ _ : _)) qs
-          | QuForall {} : _ <- qs = Nothing
-          | otherwise = (Right (n, g, []) :) <$> match is qs
-        match (Known is : is') qs =
-          do (ms, qs') <- matchKnown is qs
-             (ms ++) <$> match is' qs'
-          where matchKnown [] qs                              = return ([], qs)
-                matchKnown (TyArg t : is) (QuForall _ k : qs) = (first (Left (Left (t, k)) :)) <$> matchKnown is qs
-                matchKnown (PrArg v : is) (QuThen p : qs)     = first (Left (Right (v, p)) :) <$> matchKnown is qs
-                matchKnown _ []                               = Nothing -- ruh-roh!
-                matchKnown is qs                              = error $ "ruh-roh: " ++ show is ++ ", " ++ show qs
-        match is qs =
-          -- T.trace (unlines ["1 ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs])
-          Nothing -- error $ unlines ["ruh-roh: in ", renderString (ppr t), " ~ ", renderString (ppr u), "misaligned " ++ show is ++ " and " ++ show qs]
+    match [] [] =
+      return []
 
-        -- Need to write function to apply list of instantiations derived from
-        -- `match` above. Problem is (a) need to work outside in, but (b)
-        -- instantiation (as demonstrated below) needs to operate on the
-        -- remainder of the type, which has been somewhat disassembled
-        --
-        -- Approach: go back to original type, using list of insts to guide
-        -- instantiation??
-        instantiates :: [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])] -> Ty -> UnifyM Ty
-        instantiates [] t = return t
-        instantiates _ (TForall x Nothing t) =
-          error "Unannotated forall in instantiation!"
-        instantiates (Left (Left (u, _)) : is) (TForall x (Just k) t) =
-            do u' <- liftToUnifyM . toCheckM $ checkTy u k
-               t' <- subst 0 (shiftTN 0 1 u) t
-               instantiates is (shiftTN 0 (-1) t')
-        instantiates (Left (Right _) : is) (TThen _ t) =
-          instantiates is t
-        instantiates (Right (n, Goal (ivar, r), qs) : is) t =
-          do (is', t') <- instantiate (length qs) n t
-             trace $ "instantiating " ++ ivar ++ " to " ++ show is'
-             writeRef r (Just (Known is'))
-             instantiates is t'
-        instantiates is t =
-          error $ "4 ruh-roh: (" ++ show is ++ ") (" ++ show t ++ ")"
+    match [Unknown n g] qs =
+      return [Right (n, g, qs)]
 
+    match (Unknown n g : is@(Known (TyArg _ : _) : _)) qs =
+      (Right (n, g, here) :) <$> match is there
+      where
+        untilForall qs@(QuForall {} : _) = ([], qs)
+        untilForall (q : qs)             = first (q :) (untilForall qs)
+        untilForall []                   = ([], [])
+
+        (here, there) = untilForall qs
+
+    match (Unknown n g : is@(Unknown {} : _)) qs
+      | QuForall {} : _ <- qs = Nothing
+      | otherwise             = (Right (n, g, []) :) <$> match is qs
+
+    match (Known ks : is) qs =
+      do (ms, qs') <- matchKnown ks qs
+         (ms ++) <$> match is qs'
+      where
+        matchKnown [] qs                              = Just ([], qs)
+        matchKnown (TyArg t : is) (QuForall _ k : qs) = first (Left (Left (t, k)) :) <$> matchKnown is qs
+        matchKnown (PrArg v : is) (QuThen p : qs)     = first (Left (Right (v, p)) :) <$> matchKnown is qs
+        matchKnown _ _                                = Nothing
+
+    match _ _ = Nothing
+
+    -- Need to write function to apply list of instantiations derived from
+    -- `match` above. Problem is (a) need to work outside in, but (b)
+    -- instantiation (as demonstrated below) needs to operate on the
+    -- remainder of the type, which has been somewhat disassembled
+    --
+    -- Approach: go back to original type, using list of insts to guide
+    -- instantiation??
+    instantiates :: [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])] -> Ty -> UnifyM Ty
+    instantiates [] t = return t
+    instantiates _ (TForall x Nothing t) =
+      error "Unannotated forall in instantiation!"
+    instantiates (Left (Left (u, _)) : is) (TForall x (Just k) t) =
+        do u' <- liftToUnifyM . toCheckM $ checkTy u k
+           t' <- subst 0 (shiftTN 0 1 u) t
+           instantiates is (shiftTN 0 (-1) t')
+    instantiates (Left (Right _) : is) (TThen _ t) =
+      instantiates is t
+    instantiates (Right (n, Goal (ivar, r), qs) : is) t =
+      do (is', t') <- instantiate (length qs) n t
+         trace $ "instantiating " ++ ivar ++ " to " ++ show is'
+         writeRef r (Just (Known is'))
+         instantiates is t'
+      where
         instantiate :: Int -> Int -> Ty -> UnifyM ([Inst], Ty)
         instantiate 0 _ t = return ([], t)
         instantiate n m (TForall x (Just k) t) =
@@ -231,10 +222,10 @@ unifyInstantiating t u unify =
              require p vr
              (is, t') <- instantiate (n - 1) m t
              return (PrArg (VGoal (Goal ("v", vr))) : is, t')
-
-        reverseIs :: Insts -> Insts
-        reverseIs is@(Unknown {}) = is
-        reverseIs (Known is)      = Known (reverse is)
+        instantiate n m t =
+          error $ "instantiate " ++ show n ++ " " ++ show m ++ " (" ++ show t ++ ")"
+    instantiates is t =
+      error $ "4 ruh-roh: (" ++ show is ++ ") (" ++ show t ++ ")"
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify0 (TVar i _) (TVar j _)
@@ -333,12 +324,17 @@ unify0 (TRow xs@(tx:_)) (TApp (TMap fa) ra) =
      q <- unify' ra (TRow (zipWith TLabeled ls gs))
      qs <- sequence [unify' (TLabeled tl (TApp fa ta)) tx | (tl, ta, tx) <- zip3 ls gs xs]
      return VEqMap  -- wrong
-
 unify0 a@(TForall xa (Just ka) ta) x@(TForall xx (Just kx) tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
      then VEqForall <$> bindTy ka (unify' ta tx)
      else do trace $ "1 incoming unification failure: " ++ show a ++ " ~/~ " ++ show x
+             unificationFails a x
+unify0 a@(TExists xa (Just ka) ta) x@(TExists xx (Just kx) tx) =
+  do ksUnify <- unifyK ka kx
+     if ksUnify == Just 0
+     then VEqExists <$> bindTy ka (unify' ta tx)
+     else do trace $ "1a incoming unification failure: " ++ show a ++ " ~/~ " ++ show x
              unificationFails a x
 unify0 a@(TLam xa (Just ka) ta) x@(TLam xx (Just kx) tx) =  -- Note: this case is missing from higher.pdf, also doubtful
   do ksUnify <- unifyK ka kx
