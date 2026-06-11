@@ -3,6 +3,7 @@ module Checker.Preds where
 
 import Control.Monad
 import Control.Monad.Error.Class
+import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
 import Data.Bifunctor
@@ -10,10 +11,7 @@ import Data.Either                (isLeft, isRight)
 import Data.IORef
 import Data.List
 import Data.Maybe                 (catMaybes)
-
-import Control.Monad.IO.Class
 import System.IO
-
 
 import Checker.Monad
 import Checker.Normalize
@@ -25,8 +23,6 @@ import Printer
 import Syntax
 
 import GHC.Stack
-
-import Debug.Trace                qualified as T
 
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
@@ -468,7 +464,7 @@ guesses prs =
          trace $ unlines [ "guessing " ++ show (PLeq (TApp (TMap f) y) (TApp (TMap f') z))
                          , "by reducing to " ++ show (PLeq y z) ]
          return [(tcin, PLeq y z, r1)]
-  guessMapLeq (_, p, _) = T.trace ("guessMapLeq was not applicable to " ++ show p) Nothing
+  guessMapLeq _ = Nothing
 
   guessingRefinement tf ta uf ua =
     unlines
