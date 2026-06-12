@@ -439,7 +439,6 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
 
   aterm :: Parser Term
   aterm = choice [ EConst <$> const
-                 , try (ECustomOp <$> surroundedOp)
                  , try (lexeme ctor)
                  , try (lexeme selection)
                  , try (lexeme stor)
