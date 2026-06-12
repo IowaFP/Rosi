@@ -254,7 +254,8 @@ checkTerm0 e0@(EHole s) expected =
   do tcin <- ask
      tell (TCOut [] [(s, expected, tcin)])
      return e0
-checkTerm0 e0@((ECustomOp s)) expected = error $ "internal: custom op `" <> s <> "` should have been been desugared already."
+checkTerm0 e0@((EOp s)) expected = error $ "internal: custom op `" <> s <> "` should have been been desugared already."
+
 
 generalize :: Term -> CheckM (Term, Ty)
 generalize e =

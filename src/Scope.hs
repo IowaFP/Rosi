@@ -144,7 +144,8 @@ instance HasVars Pred where
 instance HasVars Term where
   scope (EVar _ x) = var x
   scope (EConst c) = return (EConst c)
-  scope (ECustomOp s) = return (ECustomOp s)
+  scope (EOp s) = return (EOp s)
+
   scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
