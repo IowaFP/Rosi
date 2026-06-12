@@ -16,8 +16,8 @@ orderRecords : Ordering r -> Compare (Pi r)
 orderRecords = \o x y. o (\p c. c (p x) (p y))
 
 hier' : Ordering r -> Ordering r -> Ordering r
-hier' = \o1 o2, @z, f.
-         o1 (\@z1, p1 c1. o2 (\@z2, p2 c2.
+hier' = \o1 o2 @z f.
+         o1 (\@z1 p1 c1. o2 (\@z2 p2 c2.
          f @(Pair z1 z2)
            (\x. ('1 := p1 x, '2 := p2 x))
            (\x y.
