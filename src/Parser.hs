@@ -146,11 +146,11 @@ customOperator :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 customOperator =
   do
     s <- some symbolChar
-    if s `elem` builtins
+    if s `elem` reserved
       then unexpected $ Label (fromList "reserved operator")
       else return s
   where
-    builtins = [":", "++", "|", "^", "~"]
+    reserved = [":", "++", "|", "^", "~", "@", "/", ":=", "=", "->"]
 
 
 immediateParens = between (char '(') (char ')')
