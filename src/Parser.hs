@@ -292,10 +292,10 @@ termLamBinders =
   choice
     [ singleton . Right . (, Nothing) <$> lexeme identifier
     , singleton . Left  . (, Nothing) <$> lexeme (char '@' >> identifier)
-    , parens $ do xs <- some (lexeme identifier)
-                  t <- colon >> ty
-                  return (map (Right . (, Just t)) xs)
-    , parens $ do xs <- some (char '@' >> lexeme identifier)
+    , try $ parens $ do xs <- some (lexeme identifier)
+                        t <- colon >> ty
+                        return (map (Right . (, Just t)) xs)
+    , parens $ do xs <- some (lexeme (char '@' >> identifier))
                   t <- colon >> kind
                   return (map (Left . (, Just t)) xs)
     ]
