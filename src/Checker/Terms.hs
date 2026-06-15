@@ -6,6 +6,7 @@ import Control.Monad.Error.Class
 import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
+import Data.Bifunctor
 import Data.Generics              (everywhereM, mkM)
 import Data.IORef
 import Data.List                  (intercalate)
@@ -76,6 +77,16 @@ checkTerm0 e (TForall v (Just k) t) =
     (upLevel $
      bindTy k $
        checkTerm (shiftEN 0 1 e) t)
+checkTerm0 _ (TExists _ Nothing _) =
+  error "checkTerm: exists without kind"
+checkTerm0 e (TExists v (Just k) t) =
+  do x <- typeGoalWithLevel' "x" k Top
+     t' <- subst 0 x t
+     flip EInst (Known [TyPack x]) <$> checkTerm e (shiftTN 0 (-1) t')
+checkTerm0 e (TExistsP p t) =
+  do v <- newRef Nothing
+     require p v
+     flip EInst (Known [PrPack (VGoal (Goal ("v", v)))]) <$> checkTerm e t
 checkTerm0 e0@(EPrLam p e) expected =
   do tcod <- expectedGoal "cod"
      q <- expectT e0 (TThen p tcod) expected
@@ -97,14 +108,59 @@ checkTerm0 e0@(ELam v (Just t) e) expected =
      t' <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
      q <- expectT e0 (funTy t' tcod) expected
      wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
+checkTerm0 e0@(EExLam xs y mt m) expected
+  | Nothing <- mt =
+    do tdom <- expectedGoal "dom"
+       tcod <- expectedGoal "cod"
+       xs' <- mapM addKinds xs
+       q <- expectT e0 (foldr (uncurry TExists) tdom xs' `funTy` tcod) expected
+       (assumed, tdom') <- splitPreds <$> flattenT tdom
+       wrap q . EExLam xs' y Nothing <$>
+         (upLevel $
+          bindTys xs' $
+          assumes assumed $
+          bind y tdom' $
+          checkTerm m (shiftTN 0 (length xs') tcod))
+  | Just t < mt =
+    do tdom <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
+       tcod <- expectedGoal "cod"
+       xs' <- mapM addKinds xs
+       q <- expectT e0 (foldr (uncurry TExists) tdom xs' `funTy` tcod) expected
+       (assumed, tdom') <- splitPreds <$> flattenT tdom
+       wrap q . EExLam xs' y Nothing <$>
+         (upLevel $
+          bindTys xs' $
+          assumes assumed $
+          bind y tdom' $
+          checkTerm m (shiftTN 0 (length xs') tcod))
+  where
+    addKinds (x, Just k) = return (x, Just k)
+    addKinds (x, Nothing) =
+      do k <- kindGoal "k"
+         return (x, Just k)
+
+    existentials (TExists x (Just k) t) = (x, k) : existentials t
+    existentials (TExists _ Nothing _) = error "existentials: Nothing"
+    existentials t = t
+
+    splitPreds (TExistsP p t) = first (p :) (splitPreds t)
+    splitPreds t              = ([], t)
+
+    bindTys [] m                 = m
+    bindTys ((_, Just k) : xs) m = bindTy k (bindTys xs m)
+
+    assumes [] m       = m
+    assumes (p : ps) m = assume p (assumes ps m)
+
 checkTerm0 e0@(EApp f e) expected =
   do tdom <- expectedGoal "dom"
      elimForm expected $ \expected ->
        EApp <$>
          checkTerm f (funTy tdom expected) <*>
          checkTerm' e tdom
--- Unknown instantiations should be *introduced* during type checking, so how are we trying to type check one...?
 checkTerm0 e0@(EInst e (Unknown _ ig)) expected =
+  -- Unknown instantiations should be *introduced* during type checking, so how
+  -- are we trying to type check one...?
   fail $ "in " ++ show e0 ++ ": unexpected instantiation hole in type checking"
 checkTerm0 e0@(EInst e is) expected =
   do is' <- checkInsts is

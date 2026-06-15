@@ -1,3 +1,4 @@
+{- HLINT ignore "Move brackets to avoid $" -}
 module Checker.Types where
 
 import Control.Monad
@@ -147,7 +148,10 @@ implicitConstraints topLevel t expected =
      tell there
      mapM_ (uncurry writeRef) insts
      return t4
-  where (bs, t') = tybinders t
+  where (binders, rebind)
+          | TExists {} <- t = (existsBinders, rebindExists)
+          | otherwise       = (forallBinders, rebindForall)
+        (bs, t') = binders t
         (xs, ks) = unzip bs
 
 --
@@ -165,6 +169,8 @@ checkTy0 (TThen pi t) expected =
     checkPred pi <*>
     (assume pi $ checkTy t expected)
 checkTy0 t@(TForall {}) expected =
+  implicitConstraints False t expected
+checkTy0 t@(TExists {}) expected =
   implicitConstraints False t expected
 checkTy0 t@(TLam x Nothing u) expected =
   do k <- kindGoal "d"
