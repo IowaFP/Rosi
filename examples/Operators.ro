@@ -5,8 +5,12 @@ import Ro.Base, Data.List
 (<>) : a -> List a -> List a
 (<>) = cons
 
-shf = ($)
+($) a b = a ++ b
+
+res = ('hello := "hello") $ ('world := "world")
 
 
+hello_world = (<>) "hello" ("world"<>nil)
 
-hello_world = (<>) "hello" "world"
+choose : a -> a -> a
+choose = const
