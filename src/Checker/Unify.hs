@@ -155,7 +155,7 @@ unifyInstantiating t u unify =
              do trace $ "7 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
                 unificationFails t u
   where
-    match :: [Insts] -> [Quant] -> Maybe [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])]
+    match :: [Insts] -> [Quant] -> Maybe [Either Inst (Int, Goal Insts, [Quant])]
 
     match [] [] =
       return []
@@ -181,8 +181,8 @@ unifyInstantiating t u unify =
          (ms ++) <$> match is qs'
       where
         matchKnown [] qs                              = Just ([], qs)
-        matchKnown (TyArg t : is) (QuForall _ k : qs) = first (Left (Left (t, k)) :) <$> matchKnown is qs
-        matchKnown (PrArg v : is) (QuThen p : qs)     = first (Left (Right (v, p)) :) <$> matchKnown is qs
+        matchKnown (TyArg t : is) (QuForall _ k : qs) = first (Left (TyArg t) :) <$> matchKnown is qs
+        matchKnown (PrArg v : is) (QuThen _ : qs)     = first (Left (PrArg v) :) <$> matchKnown is qs
         matchKnown _ _                                = Nothing
 
     match _ _ = Nothing
@@ -194,15 +194,15 @@ unifyInstantiating t u unify =
     --
     -- Approach: go back to original type, using list of insts to guide
     -- instantiation??
-    instantiates :: [Either (Either (Ty, Kind) (Evid, Pred)) (Int, Goal Insts, [Quant])] -> Ty -> UnifyM Ty
+    instantiates :: [Either Inst (Int, Goal Insts, [Quant])] -> Ty -> UnifyM Ty
     instantiates [] t = return t
     instantiates _ (TForall x Nothing t) =
       error "Unannotated forall in instantiation!"
-    instantiates (Left (Left (u, _)) : is) (TForall x (Just k) t) =
+    instantiates (Left (TyArg u) : is) (TForall x (Just k) t) =
         do u' <- liftToUnifyM . toCheckM $ checkTy u k
            t' <- subst 0 (shiftTN 0 1 u) t
            instantiates is (shiftTN 0 (-1) t')
-    instantiates (Left (Right _) : is) (TThen _ t) =
+    instantiates (Left (PrArg _) : is) (TThen _ t) =
       instantiates is t
     instantiates (Right (n, Goal (ivar, r), qs) : is) t =
       do (is', t') <- instantiate (length qs) n t

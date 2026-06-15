@@ -146,9 +146,12 @@ instance Printable Ty where
                         else ppr x
   ppr (TUnif v) = ppr v
   ppr TFun = "(->)"
-  ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
   ppr (TForall x (Just k) t) = with 0 $ nest 2 $ fillSep ["forall" <+> ppre x <:> ppr k <> ".", ppr t]
   ppr (TForall x Nothing t) = with 0 $ nest 2 $ fillSep ["forall" <+> ppre x <> ".", ppr t]
+  ppr (TThen p t) = fillSep [ppr p <+> "=>", ppr t]
+  ppr (TExists x (Just k) t) = with 0 $ nest 2 $ fillSep ["exists" <+> ppre x <:> ppr k <> ".", ppr t]
+  ppr (TExists x Nothing t) = with 0 $ nest 2 $ fillSep ["exists" <+> ppre x <> ".", ppr t]
+  ppr (TExistsP p t) = with 0 $ nest 2 $ fillSep ["exists" <+> ppr p <+> "=>", ppr t]
   ppr (TLam x (Just k) t) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <:> ppr k <> ".", ppr t]
   ppr (TLam x Nothing t) = with 0 $ nest 2 $ fillSep ["\\" <> ppre x <> ".", ppr t]
   ppr (TApp (TApp TFun t) u) = with 2 $ fillSep [at 3 (ppr t) <+> "->", ppr u]
@@ -199,8 +202,10 @@ instance Printable Ty where
        if b
        then do with 3 $ fillSep (map pprI is ++ [ppr t])
        else ppr t
-    where pprI (TyArg t) = brackets (ppr t)
-          pprI (PrArg v) = brackets (ppre (show v)) -- dunno what to put here, honestly...
+    where pprI (TyArg t)  = "@" <> parens (ppr t)
+          pprI (PrArg _)  = mempty
+          pprI (TyPack t) = "@!" <> parens (ppr t)
+          pprI (PrPack _) = mempty
 
   ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr (TPlus y z) = fillSep [parens (ppr y) <+> "+", parens (ppr z)] -- oops, need a precedence table...
@@ -237,6 +242,14 @@ collectBinders = go "\\" where
   go s (ELam x (Just t) m)   = go (s <+> parens (ppre x <:> ppr t)) m
   go s (ETyLam x Nothing m)  = go (s <+> "@" <> ppre x) m
   go s (ETyLam x (Just k) m) = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
+  go s (EExLam xs y mt m)
+    | Nothing <- mt          = go (s <+> parens (tyvars <> ppre y)) m
+    | Just t <- mt           = go (s <+> parens (tyvars <> ppre y <:> ppr t)) m
+    where
+      tyvar (x, Just k)  = parens ("@!" <> ppre x <:> ppr k)
+      tyvar (x, Nothing) = "@!" <> ppre x
+      tyvars | null xs   = mempty
+             | otherwise = sep (map tyvar xs) <> " "
   go s t                     = s <+> "." <+> ppr t
 
 instance Printable EInfixToken where
@@ -259,6 +272,7 @@ instance Printable Term where
   ppr t | Just n <- fromPeano t =  ppre (show n)
   ppr (EVar _ s) = ppr s
   ppr m@(ELam {}) = with 0 $ collectBinders m
+  ppr m@(EExLam {}) = with 0 $ collectBinders m
   ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "++", ppr e2]
   ppr (EApp (EApp (EInst (EConst CBranch) _) e1) e2) =
@@ -270,8 +284,10 @@ instance Printable Term where
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr m@(ETyLam {}) = with 0 $ collectBinders m
   ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
-    pprI (TyArg t) = "@" <> parens (ppr t)
-    pprI (PrArg _) = mempty
+    pprI (TyArg t)  = "@" <> parens (ppr t)
+    pprI (PrArg _)  = mempty
+    pprI (TyPack t) = "@!" <> parens (ppr t)
+    pprI (PrPack _) = mempty
   ppr (EInst m (Unknown n (Goal (s, r)))) =
     do minst <- liftIO $ readIORef r
        case minst of

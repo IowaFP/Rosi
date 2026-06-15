@@ -60,31 +60,33 @@ var x = do names <- asks snd
 bindableTyVars :: Ty -> State [Name] ()
 bindableTyVarsP :: Pred -> State [Name] ()
 
-bindableTyVars (TVar _ [v]) =
+bindableTyVars (TVar _ [v])    =
   do vs <- get
      if v `elem` vs
      then return ()
      else put (v : vs)
-bindableTyVars (TVar _ qn) = return ()
-bindableTyVars (TUnif {}) = return ()
-bindableTyVars TFun = return ()
-bindableTyVars (TThen p t) = bindableTyVarsP p >> bindableTyVars t
-bindableTyVars (TForall {}) = return ()
-bindableTyVars (TLam {}) = return ()
-bindableTyVars (TApp t u) = bindableTyVars t >> bindableTyVars u
-bindableTyVars (TLab {}) = return ()
-bindableTyVars (TSing t) = bindableTyVars t
-bindableTyVars (TLabeled l t) = bindableTyVars l >> bindableTyVars t
-bindableTyVars (TRow ts) = mapM_ bindableTyVars ts
-bindableTyVars (TConApp _ t) = bindableTyVars t
-bindableTyVars (TMap t) = bindableTyVars t
-bindableTyVars (TCompl z y) = bindableTyVars z >> bindableTyVars y
-bindableTyVars TString = return ()
-bindableTyVars (TInst is t) = error "internal type constructor in scoping"
-bindableTyVars (TMapApp t) = bindableTyVars t
-bindableTyVars (TPlus t u) = bindableTyVars t >> bindableTyVars u
+bindableTyVars (TVar _ qn)     = return ()
+bindableTyVars (TUnif {})      = return ()
+bindableTyVars TFun            = return ()
+bindableTyVars (TForall {})    = return ()
+bindableTyVars (TThen p t)     = bindableTyVarsP p >> bindableTyVars t
+bindableTyVars (TExists {})    = return ()
+bindableTyVars (TExistsP p t)  = bindableTyVarsP p >> bindableTyVars t
+bindableTyVars (TLam {})       = return ()
+bindableTyVars (TApp t u)      = bindableTyVars t >> bindableTyVars u
+bindableTyVars (TLab {})       = return ()
+bindableTyVars (TSing t)       = bindableTyVars t
+bindableTyVars (TLabeled l t)  = bindableTyVars l >> bindableTyVars t
+bindableTyVars (TRow ts)       = mapM_ bindableTyVars ts
+bindableTyVars (TConApp _ t)   = bindableTyVars t
+bindableTyVars (TMap t)        = bindableTyVars t
+bindableTyVars (TCompl z y)    = bindableTyVars z >> bindableTyVars y
+bindableTyVars TString         = return ()
+bindableTyVars (TInst is t)    = error "internal type constructor in scoping"
+bindableTyVars (TMapApp t)     = bindableTyVars t
+bindableTyVars (TPlus t u)     = bindableTyVars t >> bindableTyVars u
 bindableTyVars (TConOrd _ _ t) = bindableTyVars t
-bindableTyVars t = error $ "<whoopsie: " ++ show t ++ ">"
+bindableTyVars t               = error $ "<whoopsie: " ++ show t ++ ">"
 
 bindableTyVarsP (PEq t u)     = bindableTyVars t >> bindableTyVars u
 bindableTyVarsP (PLeq y z)    = bindableTyVars y >> bindableTyVars z
@@ -105,37 +107,36 @@ instance HasVars t => HasVars (Maybe t) where
   scope = mapM scope
 
 instance HasVars Ty where
-  scope (TVar _ x) =
-    uncurry TVar <$> tyvar x
-  -- Wild assumption: scoping happens before any goals have been resolved, so
-  -- I'm not going to track down the contents of the goal
-  scope t@TUnif{} = return t
-  scope t@TFun = return t
-  scope (TThen p t) = TThen <$> scope p <*> scope t
-  scope t@(TForall {}) =
-    implicitQuantifiers t
-    -- TForall x k <$> bindTyVar x (scope t)
-  scope (TLam x k t) = TLam x k <$> bindTyVar x (scope t)
-  scope (TApp t u) = TApp <$> scope t <*> scope u
-  scope t@TLab{} = return t
-  scope (TSing t) = TSing <$> scope t
-  scope (TLabeled l t) = TLabeled <$> scope l <*> scope t
-  scope (TRow ts) = TRow <$> scope ts
-  scope (TConApp k t) = TConApp k <$> scope t
-  scope (TMap t) = TMap <$> scope t
-  scope (TMapApp t) = TMapApp <$> scope t
-  scope (TCompl r0 r1) = TCompl <$> scope r0 <*> scope r1
-  scope TString = return TString
-  scope (TPlus t u) = TPlus <$> scope t <*> scope u
+  scope (TVar _ x)        = uncurry TVar <$> tyvar x
+  scope t@TUnif{}         = return t
+    -- Scoping happens before any goals have been resolved, so I'm not going to
+    -- track down the contents of the goal
+  scope t@TFun            = return t
+  scope t@(TForall {})    = implicitQuantifiers t
+  scope (TThen p t)       = TThen <$> scope p <*> scope t
+  scope (TExists x k t)   = TExists x k <$> bindTyVar x (scope t)
+  scope (TExistsP p t)    = TExistsP <$> scope p <*> scope t
+  scope (TLam x k t)      = TLam x k <$> bindTyVar x (scope t)
+  scope (TApp t u)        = TApp <$> scope t <*> scope u
+  scope t@TLab{}          = return t
+  scope (TSing t)         = TSing <$> scope t
+  scope (TLabeled l t)    = TLabeled <$> scope l <*> scope t
+  scope (TRow ts)         = TRow <$> scope ts
+  scope (TConApp k t)     = TConApp k <$> scope t
+  scope (TMap t)          = TMap <$> scope t
+  scope (TMapApp t)       = TMapApp <$> scope t
+  scope (TCompl r0 r1)    = TCompl <$> scope r0 <*> scope r1
+  scope TString           = return TString
+  scope (TPlus t u)       = TPlus <$> scope t <*> scope u
   scope (TConOrd k rel t) = TConOrd k rel <$> scope t
 
 implicitQuantifiers :: Ty -> ScopeM Ty
 implicitQuantifiers t =
   do ws <- asks (map head . fst)
-     let (bs, t') = tybinders t
+     let (bs, t') = forallBinders t
          xs = sort $ bindable (map fst bs ++ ws) t'
      t'' <- foldr bindTyVar (scope t') (map fst bs ++ xs)
-     return (rebind (bs ++ [(x, Nothing) | x <- xs]) t'')
+     return (rebindForall (bs ++ [(x, Nothing) | x <- xs]) t'')
 
 instance HasVars Pred where
   scope (PLeq y z)    = PLeq <$> scope y <*> scope z
@@ -153,14 +154,17 @@ instance HasVars Term where
   scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x Nothing (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
+  scope (EExLam xs y mt m) = EExLam xs y <$> scope mt <*> foldr (bindTyVar . fst) (bindVar y (scope m)) xs
   scope (ESing t) = ESing <$> scope t
   scope (ELabel k l m) = ELabel k <$> scope l <*> scope m
   scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l
   scope (ELet x m n) = ELet x <$> scope m <*> bindVar x Nothing (scope n)
   scope (ETyped m t) = ETyped <$> scope m <*> scope t
   scope (EInst m (Known is)) = EInst <$> scope m <*> (Known <$> mapM scopeI is) where
-    scopeI (TyArg t) = TyArg <$> scope t
-    scopeI (PrArg v) = return (PrArg v)
+    scopeI (TyArg t)  = TyArg <$> scope t
+    scopeI (PrArg v)  = return (PrArg v)
+    scopeI (TyPack t) = TyPack <$> scope t
+    scopeI (PrPack v) = return (PrPack v)
   scope (EInst m (Unknown n g)) = EInst <$> scope m <*> return (Unknown n g) -- how is this case actually possible?
   scope e@(EStringLit {}) = return e
   scope e@(EHole {}) = return e

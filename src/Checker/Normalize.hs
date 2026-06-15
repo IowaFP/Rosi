@@ -30,6 +30,7 @@ instance HasTyVars Ty where
   subst v t TFun = return TFun
   subst v t (TThen p u) = TThen <$> subst v t p <*> subst v t u
   subst v t (TForall w k u) = TForall w k <$> subst (v + 1) (shiftT 0 t) u
+  subst v t (TExists w k u) = TExists w k <$> subst (v + 1) (shiftT 0 t) u
   subst v t (TLam w k u) = TLam w k <$> subst (v + 1) (shiftT 0 t) u
   subst v t (TApp u0 u1) =
     TApp <$> subst v t u0 <*> subst v t u1
@@ -168,7 +169,10 @@ normalize eqns (TConApp (Mu count) z) =
      return (TConApp (Mu count) z', VEqCon (Mu count) q)
 normalize eqns (TForall x (Just k) t) =
   do (t', q) <- bindTy k (normalize eqns t)
-     return (TForall x (Just k) t', VEqForall q) -- probably should be a congruence rule mentioned around here.... :)
+     return (TForall x (Just k) t', VEqForall q)
+normalize eqns (TExists x (Just k) t) =
+  do (t', q) <- bindTy k (normalize eqns t)
+     return (TExists x (Just k) t', VEqExists q)
 normalize eqns ty@(TLam x (Just k) t) =
   do (t',  q1) <- bindTy k (normalize eqns t)
      let (t'', q2) = etaContract (TLam x (Just k) t')

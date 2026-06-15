@@ -166,6 +166,7 @@ identifier  =
      if s `elem` reservedWords
      then unexpected $ Label (fromList "reserved word")
      else return s
+  where keywords = ["let", "in", "forall", "exists"]
 
 lidentifier :: Parser String
 lidentifier =
@@ -264,7 +265,13 @@ ty = do pfs <- many prefix
              , do reserved "forall"
                   bs <- commaSep1 quantBinders
                   dot
-                  return (foldr (\(v, k) f -> TForall v k . f) id (concat bs)) ]
+                  return (foldr (\(v, k) f -> TForall v k . f) id (concat bs))
+             , do reserved "exists"
+                  bs <- commaSep quantBinders
+                  dot
+                  return (foldr (\(v, k) f -> TExists v k . f) flipThens (concat bs)) ]
+    where flipThens (TThen p t) = TExistsP p (flipThens t)
+          flipThens t           = t
 
   thenTy :: Parser Ty
   thenTy = scan where
@@ -356,18 +363,38 @@ pr = choice [ do reserved "Fold"
 --     ++ ?
 --     := /
 
-termLamBinders :: Parser [Either (String, Maybe Kind) (String, Maybe Ty)]
+-- data TermBinder =
+--     BForall String (Maybe Kind)
+--   | BExists [(String, Maybe Kind)] String (Maybe Ty)
+--   | BArrow String (Maybe Ty)
+
+
+termLamBinders :: Parser [Term -> Term]
 termLamBinders =
   choice
-    [ singleton . Right . (, Nothing) <$> try (lexeme termIdentifier)
-    , singleton . Left  . (, Nothing) <$> lexeme (char '@' >> identifier)
-    , try $ parens $ do xs <- some (try (lexeme termIdentifier))
-                        t <- colon >> ty
-                        return (map (Right . (, Just t)) xs)
-    , parens $ do xs <- some (lexeme (char '@' >> identifier))
+    [ singleton . flip ELam Nothing <$> try (lexeme termIdentifier)
+    , singleton . flip ETyLam Nothing <$> lexeme (char '@' >> identifier)
+    , try $
+      parens $ do xs <- some (try (lexeme termIdentifier))
+                  t <- colon >> ty
+                  return (map (flip ELam (Just t)) xs)
+    , try $
+      parens $ do xs <- some (lexeme (char '@' >> identifier))
                   t <- colon >> kind
-                  return (map (Left . (, Just t)) xs)
+                  return (map (flip ETyLam (Just t)) xs)
+    , parens $ do xs <- concat <$> many existentialTyVars
+                  y  <- lexeme identifier
+                  t  <- optional (colon >> ty)
+                  return [EExLam xs y t]
     ]
+  where
+    existentialTyVars =
+      choice
+        [ singleton . (, Nothing) <$> lexeme (string "@!" >> identifier)
+        , parens $ do xs <- some (lexeme (string "@!" >> identifier))
+                      k  <- colon >> kind
+                      return (map (, Just k) xs)
+        ]
 
 
 term :: Parser Term
@@ -377,7 +404,7 @@ term = prefixes typedTerm where
   prefix = do symbol "\\"
               bs <- some termLamBinders
               dot
-              return (foldr1 (.) (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs)))
+              return (foldr1 (.) (concat bs))
          <|>
            do symbol "let"
               x <- lexeme termIdentifier
@@ -558,7 +585,7 @@ topLevel = item lhs body where
     choice
       [ colon *> ((x,) . TypeSig <$> ty)
       , do bs <- many termLamBinders
-           let binders = foldr (.) id (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs))
+           let binders = foldr (.) id (concat bs)
            symbol "=" *> ((x,) . TermDef . binders <$> term) ]
   body (FixityLHS fx) = do lvl <- lexeme number
                            name <- lexeme (try customOperator <|> surroundedIdentifier)
