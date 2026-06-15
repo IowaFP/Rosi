@@ -7,6 +7,7 @@ import Data.Bifunctor
 import Data.List
 import Data.Maybe
 import Syntax
+import qualified Debug.Trace as T
 
 newtype ScopeM a = ScopeM { runScope :: ReaderT ([QName], [QName]) (Except Error) a }
   deriving (Functor, Applicative, Monad, MonadReader ([QName], [QName]), MonadError Error)
@@ -144,7 +145,6 @@ instance HasVars Pred where
 instance HasVars Term where
   scope (EVar _ x) = var x
   scope (EConst c) = return (EConst c)
-  scope (EOp s) = return (EOp s)
 
   scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
@@ -163,7 +163,8 @@ instance HasVars Term where
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
   scope ECast{} = error "scope: ETyEqu"
-
+  scope (EOp _) = error "EOp should have been desugared before scoping."
+  scope (EInfix s) = T.trace (show s) $ error "EInfix should have been desugared before scoping."
 instance HasVars Decl where
   scope (TmDecl x Nothing m) =
     TmDecl x <$> pure Nothing <*> withError (ErrContextTerm m) (scope m)

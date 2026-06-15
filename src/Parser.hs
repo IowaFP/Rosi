@@ -399,14 +399,18 @@ term = prefixes typedTerm where
 
   stringEqTerm = chainl1 catTerm $ op "~" (ebinary CStringEq)
 
-  catTerm = chainl1 appTerm $ op "^" (ebinary CStringCat)
+  catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
-data AppTerm = Type Ty | Term Term
+
+  infixExpr = EInfix <$> some (try appTerm <|> try (EOp <$> lexeme customOperator))
+
+data AppTerm = Type Ty | Term Term | Op String
 
 appTerm :: Parser Term
 appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
              app t ts where
 
+  -- TODO(mctano) resolve operators
   app :: AppTerm -> [AppTerm] -> Parser Term
   app (Term t) []            = return t
   app (Type _) _             = unexpected (Label $ fromList "type argument")
