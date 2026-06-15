@@ -244,7 +244,7 @@ checkTerm0 e0@(ETyped e t) expected =
        do q <- expectT e0 t' expected
           return (ECast e' q)
 checkTerm0 e0@(ELet x e f) expected =
-  do (e', t) <- generalize e
+  do (e', t) <- generalize False e
      f' <- bind x t (elimForm expected (checkTerm f))
      return (ELet x e' f')
 checkTerm0 e0@(EStringLit _) expected =
@@ -255,8 +255,8 @@ checkTerm0 e0@(EHole s) expected =
      tell (TCOut [] [(s, expected, tcin)])
      return e0
 
-generalize :: Term -> CheckM (Term, Ty)
-generalize e =
+generalize :: Bool -> Term -> CheckM (Term, Ty)
+generalize topLevel e =
   do tcin <- ask
      (level, t, e', remaining, psThere) <-
        upLevel $
@@ -265,7 +265,7 @@ generalize e =
           level <- theLevel
           (e', ps) <- collect $ checkTerm e t
           (psHere, psThere) <- splitProblems level ps
-          remaining <- solverLoop False psHere
+          remaining <- solverLoop topLevel psHere
           trace $ "Solver simplified " ++ show [p | (_, p, _) <- psHere] ++ " to " ++ show [p | (_, p, _) <- remaining]
           return (level, t, e', remaining, psThere)
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
@@ -393,4 +393,4 @@ checkTop m (Just t) =
      return (m', t)
 checkTop m Nothing =
   do trace $ "Begin type checking: " ++ renderString (ppr m)
-     generalize m
+     generalize True m
