@@ -254,7 +254,8 @@ checkTerm0 e0@(EHole s) expected =
   do tcin <- ask
      tell (TCOut [] [(s, expected, tcin)])
      return e0
-checkTerm0 e0@((EOp s)) expected = error $ "internal: custom op `" <> s <> "` should have been been desugared already."
+checkTerm0 e0@((EOp s)) expected = error $ "internal: custom op `" <> s <> "` should have been been desugared before type-checking."
+checkTerm0 e0@((EInfix ss)) expected = error $ "internal: infix expression `" <> concatMap show ss <> "` should have been been desugared before type-checking."
 
 
 generalize :: Bool -> Term -> CheckM (Term, Ty)
