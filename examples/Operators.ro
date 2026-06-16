@@ -10,4 +10,4 @@ import Ro.Base, Data.List
 res = ('hello := "hello") $ ('world := "world")
 
 
-hello_world = "hello" `cons` ("world" <> nil)
+hello_world = "hello" `Data.List.cons` ("world" <> nil)

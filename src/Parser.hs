@@ -173,7 +173,7 @@ number      = lexeme P.decimal
 stringLit   = lexeme (char '"' >> manyTill P.charLiteral (char '"'))
 
 surroundedOp = immediateParens customOperator
-surroundedIdentifier = immediateBackticks identifier
+surroundedIdentifier = immediateBackticks qidentifier
 
 ---------------------------------------------------------------------------------
 -- Parser
@@ -405,7 +405,7 @@ term = prefixes typedTerm where
   catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
 
-  infixExpr = EInfix <$> some (try appTerm <|> try (EOp <$> lexeme (try customOperator <|> surroundedIdentifier)))
+  infixExpr = EInfix <$> some (try appTerm <|> try (EOp <$> lexeme (try (singleton <$> customOperator) <|> surroundedIdentifier)))
 
 data AppTerm = Type Ty | Term Term | Op String
 
@@ -617,7 +617,7 @@ instance DesugarInfix Term where
 resolveFixities :: [Term] -> [Term] -> IO Term
 resolveFixities [] [tm] = desugarInfix tm
 resolveFixities [] (lhs:(EOp qn):rhs) = do lhs' <- desugarInfix lhs
-                                           EApp (EApp (EVar (-1) [qn]) lhs') <$> resolveFixities [] rhs
+                                           EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities [] rhs
 resolveFixities [] tms = return $ Debug.Trace.traceShow tms (EInfix tms)
 
 instance DesugarInfix Decl where

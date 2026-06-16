@@ -393,7 +393,7 @@ data Term =
     EVar Int QName | ELam String (Maybe Ty) Term | EApp Term Term
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
-  | EConst Const | EOp String | EInfix [Term]
+  | EConst Const | EOp [String] | EInfix [Term]
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
   | EStringLit String | EHole String
   deriving (Data, Eq, Show, Typeable)
