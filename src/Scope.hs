@@ -164,7 +164,7 @@ instance HasVars Term where
   scope EPrLam{} = error "scope: EPrLam"
   scope ECast{} = error "scope: ETyEqu"
   scope (EOp _) = error "EOp should have been desugared before scoping."
-  scope (EInfix s) = T.trace (show s) $ error "EInfix should have been desugared before scoping."
+  scope (EInfix s) = error $ "EInfix expression `" <> show (EInfix s) <> "` should have been desugared before scoping."
 instance HasVars Decl where
   scope (TmDecl x Nothing m) =
     TmDecl x <$> pure Nothing <*> withError (ErrContextTerm m) (scope m)

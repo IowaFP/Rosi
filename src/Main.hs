@@ -106,7 +106,8 @@ main = do nowArgs <- getArgs
           when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
-          scoped <- reportErrors flags $ runScopeM $ scopeProg decls
+          deOpped <- desugarInfix decls
+          scoped <- reportErrors flags $ runScopeM $ scopeProg deOpped
           checked <- goCheck flags [] [] scoped
           when (doPrintTyped flags) $
             mapM_ (putDocWLn 120 flags . pprTyping) checked
