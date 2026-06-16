@@ -73,10 +73,12 @@ checkTerm0 e0@(ETyLam v (Just k) e) expected =
 checkTerm0 _ (TForall v Nothing t) =
   error "checkTerm: forall without kind"
 checkTerm0 e (TForall v (Just k) t) =
-  ETyLam v (Just k) <$>
-    (upLevel $
-     bindTy k $
-       checkTerm (shiftEN 0 1 e) t)
+  do v' <- fresh v
+     t' <- subst 0 (TVar 0 [v', ""]) t
+     ETyLam v' (Just k) <$>
+       (upLevel $
+        bindTy k $
+          checkTerm (shiftEN 0 1 e) t')
 checkTerm0 _ (TExists _ Nothing _) =
   error "checkTerm: exists without kind"
 checkTerm0 e (TExists v (Just k) t) =
