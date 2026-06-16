@@ -11,6 +11,3 @@ res = ('hello := "hello") $ ('world := "world")
 
 
 hello_world = "hello" `cons` ("world" <> nil)
-
-choose : a -> a -> a
-choose = const
