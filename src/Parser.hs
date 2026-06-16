@@ -315,7 +315,7 @@ termLamBinders =
     , parens $ do xs <- concat <$> many existentialTyVars
                   y  <- lexeme identifier
                   t  <- optional (colon >> ty)
-                  return [EExLam xs y t]
+                  return [EExLam xs [] y t]
     ]
   where
     existentialTyVars =

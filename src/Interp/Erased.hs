@@ -35,6 +35,7 @@ data Value
   | VRecord [Value] [Maybe String]
   | VSyn (Int -> Value)
   | VString String
+  | VPack EValue Value
 
 -- Alias for Unit (as implemented in Base)
 vUnit :: Value
@@ -150,15 +151,25 @@ eval' (_, he) (EVar i _)
   | i < length he = he !! i
   | otherwise = error $ "environment too small for variable " ++ show i ++ ": " ++ show he
 eval' h (ELam _ _ e) = VLam h (Term e)
+eval' h (EExLam _ ps _ _ e) =
+  VLam h $
+  Prim $ \case
+    (qs, v : vs) -> peel (qs, vs) ps v
+    _            -> error "bad environment for EExLam"
+  where
+    peel (qs, vs) [] v                 = eval (qs, v : vs) e
+    peel (qs, vs) (_ : ps) (VPack q v) = peel (q : qs, vs) ps v
 eval' h (EApp f e) = app (eval h f) (eval h e)
 eval' h (ELet x e f) = eval h (EApp (ELam x Nothing f) e)
 eval' h (ETyLam _ _ e) = eval h e
 eval' h (EPrLam _ e) = VPrLam h (Term e)
 eval' h (EInst t (Known is)) = inst (eval h t) is
   where
-    inst v []             = v
-    inst v (TyArg _ : is) = inst v is
-    inst v (PrArg q : is) = inst (prapp v (evalV h q)) is
+    inst v []              = v
+    inst v (TyArg _ : is)  = inst v is
+    inst v (PrArg q : is)  = inst (prapp v (evalV h q)) is
+    inst v (TyPack _ : is) = inst v is
+    inst v (PrPack q : is) = inst (VPack (evalV h q) v) is
 eval' h (ESing t) = VSing (labelFromTy t)
 eval' h (ELabel (Just k) l e) =
   case k of

@@ -245,7 +245,6 @@ forallBinders t               = ([], t)
 existsBinders (TExists x k t) = first ((x, k) :) (existsBinders t)
 existsBinders t               = ([], t)
 
-
 rebindForall, rebindExists :: [(Name, Maybe Kind)] -> Ty -> Ty
 rebindForall = flip (foldr (uncurry TForall))
 rebindExists = flip (foldr (uncurry TExists))
@@ -257,9 +256,9 @@ quants :: Ty -> ([Quant], Ty)
 quants (TForall x (Just k) t) = first (QuForall x k :) (quants t)
 quants (TForall x Nothing t)  = error "quants: forall without kind"
 quants (TThen p t)            = first (QuThen p :) (quants t)
-quants (TExists x (Just k) t) = first (QuExists x k :) (quants t)
-quants (TExists x Nothing t)  = error "quants: exists without kind"
-quants (TExistsP p t)         = first (QuExistsP p :) (quants t)
+-- quants (TExists x (Just k) t) = first (QuExists x k :) (quants t)
+-- quants (TExists x Nothing t)  = error "quants: exists without kind"
+-- quants (TExistsP p t)         = first (QuExistsP p :) (quants t)
 quants t                      = ([], t)
 
 quantify :: [Quant] -> Ty -> Ty
@@ -420,7 +419,7 @@ data Const =
 data Term =
     EVar Int QName | ELam String (Maybe Ty) Term | EApp Term Term
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term
-  | EExLam [(String, Maybe Kind)] String (Maybe Ty) Term
+  | EExLam [(String, Maybe Kind)] [Pred] String (Maybe Ty) Term
   | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const
@@ -429,22 +428,22 @@ data Term =
   deriving (Data, Eq, Show, Typeable)
 
 shiftENV :: [UVar] -> Int -> Int -> Term -> Term
-shiftENV _ _ _ e@(EVar {})         = e
-shiftENV vs j n (ELam x mt e)      = ELam x (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
-shiftENV vs j n (EApp f e)         = EApp (shiftENV vs j n f) (shiftENV vs j n e)
-shiftENV vs j n (ETyLam x mk e)    = ETyLam x mk (shiftENV vs (j + 1) n e)
-shiftENV vs j n (EPrLam p e)       = EPrLam (shiftPNV vs j n p) e
-shiftENV vs j n (EExLam xs y mt e) = EExLam xs y (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
-shiftENV vs j n (EInst e is)       = EInst (shiftENV vs j n e) (shiftIsV [] j n is)
-shiftENV vs j n (ESing t)          = ESing (shiftTNV vs j n t)
-shiftENV vs j n (ELabel k l e)     = ELabel k (shiftENV vs j n l) (shiftENV vs j n e)
-shiftENV vs j n (EUnlabel k e l)   = EUnlabel k (shiftENV vs j n e) (shiftENV vs j n l)
-shiftENV _ _ _ e@(EConst {})       = e
-shiftENV vs j n (ELet x e f)       = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
-shiftENV vs j n (ECast e q)        = ECast (shiftENV vs j n e) q
-shiftENV vs j n (ETyped e t)       = ETyped e (shiftTNV vs j n t)
-shiftENV _ _ _ e@(EStringLit {})   = e
-shiftENV _ _ _ e@(EHole {})        = e
+shiftENV _ _ _ e@(EVar {})            = e
+shiftENV vs j n (ELam x mt e)         = ELam x (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
+shiftENV vs j n (EApp f e)            = EApp (shiftENV vs j n f) (shiftENV vs j n e)
+shiftENV vs j n (ETyLam x mk e)       = ETyLam x mk (shiftENV vs (j + 1) n e)
+shiftENV vs j n (EPrLam p e)          = EPrLam (shiftPNV vs j n p) e
+shiftENV vs j n (EExLam xs ps y mt e) = EExLam xs (map (shiftPNV vs j n) ps) y (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
+shiftENV vs j n (EInst e is)          = EInst (shiftENV vs j n e) (shiftIsV [] j n is)
+shiftENV vs j n (ESing t)             = ESing (shiftTNV vs j n t)
+shiftENV vs j n (ELabel k l e)        = ELabel k (shiftENV vs j n l) (shiftENV vs j n e)
+shiftENV vs j n (EUnlabel k e l)      = EUnlabel k (shiftENV vs j n e) (shiftENV vs j n l)
+shiftENV _ _ _ e@(EConst {})          = e
+shiftENV vs j n (ELet x e f)          = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
+shiftENV vs j n (ECast e q)           = ECast (shiftENV vs j n e) q
+shiftENV vs j n (ETyped e t)          = ETyped e (shiftTNV vs j n t)
+shiftENV _ _ _ e@(EStringLit {})      = e
+shiftENV _ _ _ e@(EHole {})           = e
 
 shiftEN :: Int -> Int -> Term -> Term
 shiftEN = shiftENV []
@@ -460,19 +459,19 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
   flattenInsts m            = return m
 
 hasHoles :: Term -> Bool
-hasHoles (EHole {})       = True
-hasHoles (ELam _ _ e)     = hasHoles e
-hasHoles (EApp f e)       = hasHoles f || hasHoles e
-hasHoles (ETyLam _ _ e)   = hasHoles e
-hasHoles (EPrLam _ e)     = hasHoles e
-hasHoles (EExLam _ _ _ e) = hasHoles e
-hasHoles (EInst e _)      = hasHoles e
-hasHoles (ELabel _ l e)   = hasHoles l || hasHoles e
-hasHoles (EUnlabel _ e l) = hasHoles e || hasHoles l
-hasHoles (ELet _ e f)     = hasHoles e || hasHoles f
-hasHoles (ECast e _)      = hasHoles e
-hasHoles (ETyped e _)     = hasHoles e
-hasHoles _                = False -- covers: EVar, ESing, EConst
+hasHoles (EHole {})         = True
+hasHoles (ELam _ _ e)       = hasHoles e
+hasHoles (EApp f e)         = hasHoles f || hasHoles e
+hasHoles (ETyLam _ _ e)     = hasHoles e
+hasHoles (EPrLam _ e)       = hasHoles e
+hasHoles (EExLam _ _ _ _ e) = hasHoles e
+hasHoles (EInst e _)        = hasHoles e
+hasHoles (ELabel _ l e)     = hasHoles l || hasHoles e
+hasHoles (EUnlabel _ e l)   = hasHoles e || hasHoles l
+hasHoles (ELet _ e f)       = hasHoles e || hasHoles f
+hasHoles (ECast e _)        = hasHoles e
+hasHoles (ETyped e _)       = hasHoles e
+hasHoles _                  = False -- covers: EVar, ESing, EConst
 
 --------------------------------------------------------------------------------
 -- Evidence

@@ -148,7 +148,7 @@ instance HasVars Term where
   scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
-  scope (EExLam xs y mt m) = EExLam xs y <$> scope mt <*> foldr (bindTyVar . fst) (bindVar y (scope m)) xs
+  scope (EExLam xs ps y mt m) = EExLam xs <$> scope ps <*> pure y <*> scope mt <*> foldr (bindTyVar . fst) (bindVar y (scope m)) xs
   scope (ESing t) = ESing <$> scope t
   scope (ELabel k l m) = ELabel k <$> scope l <*> scope m
   scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l

@@ -241,7 +241,7 @@ collectBinders = go "\\" where
   go s (ELam x (Just t) m)   = go (s <+> parens (ppre x <:> ppr t)) m
   go s (ETyLam x Nothing m)  = go (s <+> "@" <> ppre x) m
   go s (ETyLam x (Just k) m) = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
-  go s (EExLam xs y mt m)
+  go s (EExLam xs _ps y mt m)
     | Nothing <- mt          = go (s <+> parens (tyvars <> ppre y)) m
     | Just t <- mt           = go (s <+> parens (tyvars <> ppre y <:> ppr t)) m
     where
