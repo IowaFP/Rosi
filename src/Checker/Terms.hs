@@ -72,12 +72,10 @@ checkTerm0 e0@(ETyLam v (Just k) e) expected =
 checkTerm0 _ (TForall v Nothing t) =
   error "checkTerm: forall without kind"
 checkTerm0 e (TForall v (Just k) t) =
-  do v' <- fresh v
-     t' <- subst 0 (TVar 0 [v', ""]) t
-     ETyLam v' (Just k) <$>
-       (upLevel $
-        bindTy k $
-          checkTerm (shiftEN 0 1 e) t')
+  ETyLam v (Just k) <$>
+    (upLevel $
+     bindTy k $
+       checkTerm (shiftEN 0 1 e) t)
 checkTerm0 _ (TExists _ Nothing _) =
   error "checkTerm: exists without kind"
 checkTerm0 e (TExists v (Just k) t) =
@@ -108,41 +106,42 @@ checkTerm0 e0@(ELam v (Just t) e) expected =
   do tcod <- expectedGoal "cod"
      t' <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
      q <- expectT e0 (funTy t' tcod) expected
-     wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
-checkTerm0 e0@(EExLam xs y mt m) expected
+     tdom <- flattenT t'
+     case tdom of
+       TExists {} -> checkTerm (EExLam [] [] v (Just tdom) e) expected
+       _          -> do
+                        wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
+checkTerm0 e0@(EExLam xs _ y mt m) expected
   | Nothing <- mt =
     do tdom <- expectedGoal "dom"
        tcod <- expectedGoal "cod"
        xs' <- mapM addKinds xs
        q <- expectT e0 (foldr (uncurry TExists) tdom xs' `funTy` tcod) expected
-       (assumed, tdom') <- splitPreds <$> flattenT tdom
-       wrap q . EExLam xs' y Nothing <$>
+       (existentials, (assumed, tdom')) <- second splitPreds . existsBinders <$> flattenT tdom
+       wrap q . EExLam (xs' ++ existentials) assumed y Nothing <$>
          (upLevel $
-          bindTys xs' $
+          bindTys (xs' ++ existentials) $
           assumes assumed $
           bind y tdom' $
-          checkTerm m (shiftTN 0 (length xs') tcod))
-  | Just t < mt =
+          checkTerm m (shiftTN 0 (length xs' + length existentials) tcod))
+  | Just t <- mt =
     do tdom <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
        tcod <- expectedGoal "cod"
        xs' <- mapM addKinds xs
-       q <- expectT e0 (foldr (uncurry TExists) tdom xs' `funTy` tcod) expected
-       (assumed, tdom') <- splitPreds <$> flattenT tdom
-       wrap q . EExLam xs' y Nothing <$>
+       q <- expectT e0 (tdom `funTy` tcod) expected
+       (ys, (assumed, tdom')) <- second (splitPreds) . existsBinders <$> flattenT tdom
+       trace $ "! existentials: split " ++ renderString (ppr tdom) ++ " into " ++ show (ys, assumed, tdom')
+       wrap q . EExLam (xs' ++ drop (length xs') ys) assumed y Nothing <$>
          (upLevel $
-          bindTys xs' $
+          bindTys (xs' ++ drop (length xs') ys) $
           assumes assumed $
           bind y tdom' $
-          checkTerm m (shiftTN 0 (length xs') tcod))
+          checkTerm m (shiftTN 0 (length ys) tcod))
   where
     addKinds (x, Just k) = return (x, Just k)
     addKinds (x, Nothing) =
       do k <- kindGoal "k"
          return (x, Just k)
-
-    existentials (TExists x (Just k) t) = (x, k) : existentials t
-    existentials (TExists _ Nothing _) = error "existentials: Nothing"
-    existentials t = t
 
     splitPreds (TExistsP p t) = first (p :) (splitPreds t)
     splitPreds t              = ([], t)
@@ -356,6 +355,7 @@ generalize topLevel e =
         uvars _ TFun = return []
         uvars level (TThen p t) = cat <$> puvars level p <*> uvars level t
         uvars level (TForall _ _ t) = uvars level t
+        uvars level (TExists _ _ t) = uvars level t
         uvars level (TLam _ _ t) = uvars level t
         uvars level (TApp t u) = cat <$> uvars level t <*> uvars level u
         uvars _ (TLab {}) = return []
