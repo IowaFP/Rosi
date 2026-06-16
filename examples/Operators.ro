@@ -10,7 +10,7 @@ import Ro.Base, Data.List
 res = ('hello := "hello") $ ('world := "world")
 
 
-hello_world = (<>) "hello" ("world"<>nil)
+hello_world = "hello" `cons` ("world" <> nil)
 
 choose : a -> a -> a
 choose = const
