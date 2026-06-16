@@ -146,12 +146,17 @@ qidentifier  =
 customOperator :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 customOperator =
   do
-    s <- some (satisfy (\c -> isSymbol c && c /= '`'))
+    s <- takeWhile1P (Just "operator symbol")
+                     -- we support all operator symbols supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" ) except for '.', '#', and '@'
+                     -- See (https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#data-types)
+                     (`elem` ":+-*\\/=?|&><!$%^~")
+                     -- alternate symbol set based on the `isSymbol` class. May be more trouble than it's worth.
+                     --  (\c -> (isSymbol c || c `elem` "-*\\/?&!%") && c /= '`')
     if s `elem` reserved
       then unexpected $ Label (fromList "reserved operator")
       else return s
   where
-    reserved = [":", "++", "|", "^", "~", "@", "/", ":=", "=", "->"]
+    reserved = [":", "++", "|", "^", "~", "@", "/", ":=", "=", "->", "#"]
 
 
 immediateParens = between (char '(') (char ')')
