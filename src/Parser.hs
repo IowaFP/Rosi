@@ -26,6 +26,7 @@ import Text.Megaparsec.Char.Lexer qualified as P
 import Text.Megaparsec.Error
 
 import Debug.Trace
+import GHC.Unicode (isSymbol)
 
 --------------------------------------------------------------------------------
 -- Combinators I miss from Parsec
@@ -145,7 +146,7 @@ qidentifier  =
 customOperator :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 customOperator =
   do
-    s <- some symbolChar
+    s <- some (satisfy (\c -> isSymbol c && c /= '`'))
     if s `elem` reserved
       then unexpected $ Label (fromList "reserved operator")
       else return s
@@ -154,6 +155,7 @@ customOperator =
 
 
 immediateParens = between (char '(') (char ')')
+immediateBackticks = between (char '`') (char '`')
 parens      = between (symbol "(") (symbol ")")
 angles      = between (symbol "<") (symbol ">")
 brackets    = between (symbol "[") (symbol "]")
@@ -171,6 +173,7 @@ number      = lexeme P.decimal
 stringLit   = lexeme (char '"' >> manyTill P.charLiteral (char '"'))
 
 surroundedOp = immediateParens customOperator
+surroundedIdentifier = immediateBackticks identifier
 
 ---------------------------------------------------------------------------------
 -- Parser
@@ -402,7 +405,7 @@ term = prefixes typedTerm where
   catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
 
-  infixExpr = EInfix <$> some (try appTerm <|> try (EOp <$> lexeme customOperator))
+  infixExpr = EInfix <$> some (try appTerm <|> try (EOp <$> lexeme (try customOperator <|> surroundedIdentifier)))
 
 data AppTerm = Type Ty | Term Term | Op String
 
