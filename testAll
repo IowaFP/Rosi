@@ -1,4 +1,5 @@
-cabal run Rosi -- -i rolib examples/Operators.ro -e hello_world,value,res
+cabal run Rosi -- -i rolib examples/Operators.ro -e hello_world,res,ex_1,ex_2,ex_3,ex_4,ex_5,ex_6,ex_7,ex_8,ex_9,ex_10,ex_11,ex_12,ex_13,ex_14,ex_15
+
 
 cabal run Rosi -- -i rolib -i examples examples/EE.ro
 cabal run Rosi -- -i rolib examples/Ana.ro
