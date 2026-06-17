@@ -9,10 +9,10 @@ import Control.Monad.Reader
 import Control.Monad.State
 
 import Data.Char                  (isSpace)
-import Data.Data
+import Data.Data                  hiding (Fixity, Infix, Prefix)
 import Data.Functor
 import Data.IORef                 (newIORef)
-import Data.List                  (delete, intercalate, singleton)
+import Data.List                  (delete, intercalate, singleton, unsnoc)
 import Data.List.NonEmpty         (fromList)
 import Data.List.Split            (splitOn)
 import Data.Maybe                 (fromMaybe, isNothing)
@@ -26,6 +26,8 @@ import Text.Megaparsec.Char.Lexer qualified as P
 import Text.Megaparsec.Error
 
 import Debug.Trace
+import Debug.Trace                qualified as T
+import Text.Megaparsec.Debug      (dbg)
 
 --------------------------------------------------------------------------------
 -- Combinators I miss from Parsec
@@ -129,7 +131,7 @@ identifier  =
      if s `elem` keywords
      then unexpected $ Label (fromList "reserved word")
      else return s
-  where keywords = ["let", "in", "forall"]
+  where keywords = ["let", "in", "forall", "infixl", "infixr", "infix", "prefix", "postfix"]
 
 lidentifier :: Parser String
 lidentifier =
@@ -173,11 +175,13 @@ semiSep1    = flip sepBy1 semi
 commaSep    = flip sepBy comma
 commaSep1   = flip sepBy1 comma
 
-number      = lexeme P.decimal
+number      = P.decimal
 stringLit   = lexeme (char '"' >> manyTill P.charLiteral (char '"'))
 
 surroundedOp = immediateParens customOperator
-surroundedIdentifier = immediateBackticks qidentifier
+surroundedQIdentifier = immediateBackticks qidentifier
+surroundedIdentifier = immediateBackticks identifier
+
 
 ---------------------------------------------------------------------------------
 -- Parser
@@ -406,10 +410,10 @@ term = prefixes typedTerm where
 
   stringEqTerm = chainl1 catTerm $ op "~" (ebinary CStringEq)
 
-  catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
+  catTerm = chainl1 d $ op "^" (ebinary CStringCat)
 
 
-  infixExpr = EInfix <$> some (try (Operand <$> appTerm) <|> try (Operator <$> lexeme (try (singleton <$> customOperator) <|> surroundedIdentifier)))
+  d = EInfix <$> some (try (Operand <$> appTerm) <|> try (Operator <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
 
 data AppTerm = Type Ty | Term Term | Op String
 
@@ -459,7 +463,7 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
                  , ESing . TLab <$> lexeme lidentifier
                  , EVar (-1) <$> try (lexeme qidentifier)
                  , ESing <$> (char '#' >> atype)
-                 , buildNumber <$> number
+                 , buildNumber <$> lexeme number
                  , EStringLit <$> stringLit
                  , do symbol "("
                       t <- do ts <- commaSep1 term
@@ -494,18 +498,20 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
   buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
   buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
 
-data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String]
+data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixStyleTL FixityKeyword Int
   deriving (Data, Eq, Show, Typeable)
 
-data LHS = TypeLHS String | TermLHS String | ImportLHS
+data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKeyword Int String
+  deriving (Show)
 
 topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
   lhs = choice
-          [ ImportLHS <$ reserved "import"
-          , TypeLHS <$> lexeme typeIdentifier
-          , TermLHS <$> lexeme identifier
-          , TermLHS <$> lexeme surroundedOp
+          [ try $ ImportLHS <$ reserved "import"
+          , try $ TypeLHS <$> lexeme typeIdentifier
+          , try $ TermLHS <$> lexeme (try identifier <|> surroundedOp)
+          -- TODO(mctano) This is somewhat fragile. Consult with Garrett on how to properly handle "one line" declaration here.
+          , try $ FixityLHS <$> lexeme fixityKeyword  <* whitespace <*> number <* whitespace <*> customOperator <* space1
           ]
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
@@ -514,6 +520,16 @@ topLevel = item lhs body where
   --
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
+
+  fixityKeyword :: Parser FixityKeyword
+  fixityKeyword = choice
+    [ try $ InfixL <$ string "infixl"
+    , try $ InfixR <$ string "infixr"
+    , try $ Infix  <$ string "infix"
+    , try $ Prefix <$ string "prefix"
+    ,      Postfix <$ string "postfix"
+    ]
+
   typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
   body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
   body (TypeLHS x) =
@@ -528,6 +544,7 @@ topLevel = item lhs body where
       , do bs <- many termLamBinders
            let binders = foldr (.) id (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs))
            symbol "=" *> ((x,) . TermDef . binders <$> term) ]
+  body (FixityLHS fx lvl name) = pure (name, FixStyleTL fx lvl)
 
 prog :: [String] -> Parser Program
 prog moduleNames = whitespace >> block topLevel >>= defns moduleNames
@@ -545,7 +562,10 @@ defns moduleNames tls
         typeSigs = [(x, t) | (x, TypeSig t) <- tls]
         typeDefs = [(x, t) | (x, TypeDef t) <- tls]
         kindSigs = [(x, t) | (x, KindSig t) <- tls]
+        -- hey, why not five times?
+        fixDecls = [(x, FixStyleTL fx lvl) | (x, FixStyleTL fx lvl ) <- tls]
         imports  = [names | (_, ImportTL names) <- tls]
+
 
         names = go [] tls where
           go seen [] = []
@@ -561,14 +581,13 @@ defns moduleNames tls
         unmatchedKindSigs = filter (`notElem` map fst typeDefs) (map fst kindSigs)
 
         lookups x = map snd . filter ((x ==) . fst)
-        -- TODO(mctano) parse operator fixity declarations
         mkDecl x =
           case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs) of
             (tm : tms, [], [], [])
-              | null tms -> return (TmDecl (x : moduleNames) Nothing tm)
+              | null tms -> return (TmDecl (x : moduleNames) Nothing tm (handleFixDs x))
               | otherwise -> fail $ "too many definitions for " ++ x
             (tm : tms, ty : tys, [], [])
-              | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm)
+              | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm (handleFixDs x))
               | not (null tms) -> fail $ "too many definitions for " ++ x
               | otherwise -> fail $ "too many type signatures for " ++ x
             ([], [], ty : tys, k : ks)
@@ -576,6 +595,10 @@ defns moduleNames tls
               | not (null tys) -> fail $ "too many definitions for " ++ x
               | otherwise -> fail $ "too many kind signatures for " ++ x
             _ -> fail $ "too much definition of " ++ x
+
+        handleFixDs x = case unsnoc (lookups x fixDecls) of
+                                 Nothing                               -> Nothing
+                                 Just (_, FixStyleTL fixKW precedence) -> Just (Fixity fixKW precedence)
 
 parse :: String -> [String] -> String -> IO Program
 parse fileName moduleNames s =
@@ -620,12 +643,12 @@ instance DesugarInfix Term where
 resolveFixities :: [EInfixToken] -> [EInfixToken] -> IO Term
 resolveFixities [] [Operand tm] = desugarInfix tm
 resolveFixities [] ((Operand lhs):(Operator qn):rhs) = do lhs' <- desugarInfix lhs
-                                           EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities [] rhs
+                                                          EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities [] rhs
 resolveFixities [] tms = return $ Debug.Trace.traceShow tms (EInfix tms)
 
 instance DesugarInfix Decl where
-  desugarInfix (TmDecl qn ty tm) = TmDecl qn ty <$> desugarInfix tm
-  desugarInfix x                 = return x
+  desugarInfix (TmDecl qn ty tm fx) = TmDecl qn ty <$> desugarInfix tm <*> pure fx
+  desugarInfix x                    = return x
 
 instance DesugarInfix [Decl] where
   desugarInfix = mapM desugarInfix

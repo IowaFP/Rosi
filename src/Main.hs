@@ -120,14 +120,14 @@ main = do nowArgs <- getArgs
           do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
                -- Shouldn't be any holes in types...
              goCheck flags (KBDefn k t' : d) g ds
-        goCheck flags d g (TmDecl v (Just ty) te : ds) =
+        goCheck flags d g (TmDecl v (Just ty) te _ : ds) =
           do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints True ty KType)))
              (te', holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              te'' <- flattenE te'
              reportHoles flags holes
              ds' <- goCheck flags d ((v, ty') : g) ds
              return ((v, ty', te'') : ds')
-        goCheck flags d g (TmDecl v Nothing te : ds) =
+        goCheck flags d g (TmDecl v Nothing te _ : ds) =
           do ((te', ty), holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
              ty' <- flattenT ty
              te'' <- flattenE te'

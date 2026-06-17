@@ -3,7 +3,7 @@ module Syntax (module Syntax) where
 
 import Control.Monad.IO.Class
 import Data.Bifunctor         (first)
-import Data.Generics          hiding (GT, TyCon (..))
+import Data.Generics          hiding (Fixity (..), GT, TyCon)
 import Data.IORef
 import GHC.Stack
 
@@ -16,10 +16,16 @@ import GHC.Stack
 type Name = String
 type QName = [Name]
 
+data FixityKeyword = InfixL | InfixR | Infix | Prefix | Postfix
+  deriving (Data, Eq, Show)
+
+data Fixity = Fixity FixityKeyword Int
+  deriving (Eq, Show)
+
 data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
 
-data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term
+data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term (Maybe Fixity)
   deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
