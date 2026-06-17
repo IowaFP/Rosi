@@ -503,7 +503,7 @@ data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [Stri
 
   deriving (Data, Eq, Show, Typeable)
 
-data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKeyword Int String
+data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKeyword
   deriving (Show)
 
 topLevel :: Parser ([Char], TL)
@@ -513,7 +513,7 @@ topLevel = item lhs body where
           , try $ TypeLHS <$> lexeme typeIdentifier
           , try $ TermLHS <$> try (lexeme (try identifier <|> surroundedOp))
           -- TODO(mctano) This is somewhat fragile. Consult with Garrett on how to properly handle "one line" declaration here.
-          , try $ FixityLHS <$> lexeme fixityKeyword  <* whitespace <*> number <* whitespace <*> (try customOperator <|> surroundedIdentifier) <* space1
+          , try $ FixityLHS <$> lexeme fixityKeyword
           ]
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
@@ -546,7 +546,9 @@ topLevel = item lhs body where
       , do bs <- many termLamBinders
            let binders = foldr (.) id (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs))
            symbol "=" *> ((x,) . TermDef . binders <$> term) ]
-  body (FixityLHS fx lvl name) = pure (name, FixityDecl (Fixity fx lvl))
+  body (FixityLHS fx) = do lvl <- lexeme number
+                           name <- lexeme (try customOperator <|> surroundedIdentifier)
+                           return (name, FixityDecl (Fixity fx lvl))
 
 
 prog :: [String] -> Parser Program
