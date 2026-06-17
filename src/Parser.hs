@@ -25,9 +25,10 @@ import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
 import Text.Megaparsec.Error
 
-import Debug.Trace
 import Debug.Trace                qualified as T
 import Text.Megaparsec.Debug      (dbg)
+import Data.Map (fromAscList)
+
 
 --------------------------------------------------------------------------------
 -- Combinators I miss from Parsec
@@ -498,7 +499,8 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
   buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
   buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
 
-data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixStyleTL FixityKeyword Int
+data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixityDecl Fixity
+
   deriving (Data, Eq, Show, Typeable)
 
 data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKeyword Int String
@@ -509,9 +511,9 @@ topLevel = item lhs body where
   lhs = choice
           [ try $ ImportLHS <$ reserved "import"
           , try $ TypeLHS <$> lexeme typeIdentifier
-          , try $ TermLHS <$> lexeme (try identifier <|> surroundedOp)
+          , try $ TermLHS <$> try (lexeme (try identifier <|> surroundedOp))
           -- TODO(mctano) This is somewhat fragile. Consult with Garrett on how to properly handle "one line" declaration here.
-          , try $ FixityLHS <$> lexeme fixityKeyword  <* whitespace <*> number <* whitespace <*> customOperator <* space1
+          , try $ FixityLHS <$> lexeme fixityKeyword  <* whitespace <*> number <* whitespace <*> (try customOperator <|> surroundedIdentifier) <* space1
           ]
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
@@ -544,7 +546,8 @@ topLevel = item lhs body where
       , do bs <- many termLamBinders
            let binders = foldr (.) id (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs))
            symbol "=" *> ((x,) . TermDef . binders <$> term) ]
-  body (FixityLHS fx lvl name) = pure (name, FixStyleTL fx lvl)
+  body (FixityLHS fx lvl name) = pure (name, FixityDecl (Fixity fx lvl))
+
 
 prog :: [String] -> Parser Program
 prog moduleNames = whitespace >> block topLevel >>= defns moduleNames
@@ -556,14 +559,22 @@ defns moduleNames tls
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
   | otherwise =
     do ds <- mapM mkDecl names
-       return (Prog (concat imports, ds))
+       let
+       return (Prog (concat imports, ds, fixityMap))
   where -- TODO: Why would not we *not* traverse this list four times?
         termDefs = [(x, t) | (x, TermDef t) <- tls]
         typeSigs = [(x, t) | (x, TypeSig t) <- tls]
         typeDefs = [(x, t) | (x, TypeDef t) <- tls]
         kindSigs = [(x, t) | (x, KindSig t) <- tls]
+
         -- hey, why not five times?
-        fixDecls = [(x, FixStyleTL fx lvl) | (x, FixStyleTL fx lvl ) <- tls]
+        fixDecls = [(x, fixity) | (x, FixityDecl fixity) <- tls]
+        fixityMap = fromAscList (map mapToFixity names)
+        -- Get the last fixity declaration for each name.
+        -- TODO(mctano) ensure this gets the precedence right.
+        mapToFixity x = case unsnoc (lookups x fixDecls) of
+                            Nothing          -> (x : moduleNames, defaultFixity)
+                            Just (_, fixity) -> (x : moduleNames, fixity)
         imports  = [names | (_, ImportTL names) <- tls]
 
 
@@ -584,21 +595,21 @@ defns moduleNames tls
         mkDecl x =
           case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs) of
             (tm : tms, [], [], [])
-              | null tms -> return (TmDecl (x : moduleNames) Nothing tm (handleFixDs x))
+              | null tms -> return (TmDecl (x : moduleNames) Nothing tm)
               | otherwise -> fail $ "too many definitions for " ++ x
             (tm : tms, ty : tys, [], [])
-              | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm (handleFixDs x))
+              | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm)
               | not (null tms) -> fail $ "too many definitions for " ++ x
               | otherwise -> fail $ "too many type signatures for " ++ x
             ([], [], ty : tys, k : ks)
               | null tys, null ks -> return (TyDecl (x : moduleNames) k ty)
               | not (null tys) -> fail $ "too many definitions for " ++ x
               | otherwise -> fail $ "too many kind signatures for " ++ x
-            _ -> fail $ "too much definition of " ++ x
+            ([], [], [], []) -> fail $ "no definition for " ++ x
+            r -> fail $ "too much definition of " ++ x
 
-        handleFixDs x = case unsnoc (lookups x fixDecls) of
-                                 Nothing                               -> Nothing
-                                 Just (_, FixStyleTL fixKW precedence) -> Just (Fixity fixKW precedence)
+
+
 
 parse :: String -> [String] -> String -> IO Program
 parse fileName moduleNames s =
@@ -609,46 +620,48 @@ parse fileName moduleNames s =
        Right tls -> return tls
 
 class DesugarInfix a where
-  desugarInfix :: a -> IO a
+  desugarInfix :: FixityMap -> a -> IO a
+
 
 instance DesugarInfix Term where
 
-  desugarInfix ((EVar n qname))    = return (EVar n qname)
-  desugarInfix (ELam x ty tm)      = ELam x ty <$> desugarInfix tm
-  desugarInfix (EApp ft xt)        = EApp <$> desugarInfix ft <*> desugarInfix xt
+  desugarInfix fixMap ((EVar n qname))    = return (EVar n qname)
+  desugarInfix fixMap (ELam x ty tm)      = ELam x ty <$> desugarInfix fixMap tm
+  desugarInfix fixMap (EApp ft xt)        = EApp <$> desugarInfix fixMap ft <*> desugarInfix fixMap xt
 
-  desugarInfix (ETyLam s k tm )    = ETyLam s k <$> desugarInfix tm
-  desugarInfix (EPrLam p tm)       = EPrLam p <$> desugarInfix tm
-  desugarInfix (EInst tm insts)    = EInst <$> desugarInfix tm <*> pure insts
+  desugarInfix fixMap (ETyLam s k tm )    = ETyLam s k <$> desugarInfix fixMap tm
+  desugarInfix fixMap (EPrLam p tm)       = EPrLam p <$> desugarInfix fixMap tm
+  desugarInfix fixMap (EInst tm insts)    = EInst <$> desugarInfix fixMap tm <*> pure insts
 
-  desugarInfix (ESing ty)          = return $ ESing ty
-  desugarInfix (ELabel tc lt xt)   = ELabel tc <$> desugarInfix lt <*> desugarInfix xt
-  desugarInfix (EUnlabel tc xt lt) = EUnlabel tc <$> desugarInfix xt <*> desugarInfix lt
+  desugarInfix fixMap (ESing ty)          = return $ ESing ty
+  desugarInfix fixMap (ELabel tc lt xt)   = ELabel tc <$> desugarInfix fixMap lt <*> desugarInfix fixMap xt
+  desugarInfix fixMap (EUnlabel tc xt lt) = EUnlabel tc <$> desugarInfix fixMap xt <*> desugarInfix fixMap lt
 
-  desugarInfix (EConst c)          = return $ EConst c
+  desugarInfix fixMap (EConst c)          = return $ EConst c
 
-  desugarInfix (ELet x vt et)      = ELet x <$> (desugarInfix vt) <*> (desugarInfix et)
-  desugarInfix (ECast tm evid)     = ECast <$> desugarInfix tm <*> pure evid
-  desugarInfix (ETyped tm ty)      = ETyped <$> desugarInfix tm <*> pure ty
+  desugarInfix fixMap (ELet x vt et)      = ELet x <$> desugarInfix fixMap vt <*> desugarInfix fixMap et
+  desugarInfix fixMap (ECast tm evid)     = ECast <$> desugarInfix fixMap tm <*> pure evid
+  desugarInfix fixMap (ETyped tm ty)      = ETyped <$> desugarInfix fixMap tm <*> pure ty
 
-  desugarInfix (EStringLit s)      = return $ EStringLit s
-  desugarInfix (EHole s)           = return $ EHole s
+  desugarInfix fixMap (EStringLit s)      = return $ EStringLit s
+  desugarInfix fixMap (EHole s)           = return $ EHole s
 
-  desugarInfix (EInfix tms)        = resolveFixities [] tms
+  desugarInfix fixMap (EInfix tms)        = resolveFixities fixMap [] tms
 
 
 -- TODO(mctano) handle
   -- fixities
   -- precedence level
-resolveFixities :: [EInfixToken] -> [EInfixToken] -> IO Term
-resolveFixities [] [Operand tm] = desugarInfix tm
-resolveFixities [] ((Operand lhs):(Operator qn):rhs) = do lhs' <- desugarInfix lhs
-                                                          EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities [] rhs
-resolveFixities [] tms = return $ Debug.Trace.traceShow tms (EInfix tms)
+resolveFixities :: FixityMap -> [EInfixToken] -> [EInfixToken] -> IO Term
+
+resolveFixities fixMap [] [Operand tm] = desugarInfix fixMap tm
+resolveFixities fixMap [] ((Operand lhs):(Operator qn):rhs) = do lhs' <- desugarInfix fixMap lhs
+                                                                 EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities fixMap [] rhs
+resolveFixities fixMap [] tms = return (EInfix tms)
 
 instance DesugarInfix Decl where
-  desugarInfix (TmDecl qn ty tm fx) = TmDecl qn ty <$> desugarInfix tm <*> pure fx
-  desugarInfix x                    = return x
+  desugarInfix fixMap (TmDecl qn ty tm) = TmDecl qn ty <$> desugarInfix fixMap  tm
+  desugarInfix fixMap x                    = return x
 
 instance DesugarInfix [Decl] where
-  desugarInfix = mapM desugarInfix
+  desugarInfix fixMap = mapM (desugarInfix fixMap)

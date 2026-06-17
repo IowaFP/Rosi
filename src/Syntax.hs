@@ -6,6 +6,7 @@ import Data.Bifunctor         (first)
 import Data.Generics          hiding (Fixity (..), GT, TyCon)
 import Data.IORef
 import GHC.Stack
+import Data.Map (Map)
 
 --------------------------------------------------------------------------------
 -- Top-level entities
@@ -20,12 +21,16 @@ data FixityKeyword = InfixL | InfixR | Infix | Prefix | Postfix
   deriving (Data, Eq, Show)
 
 data Fixity = Fixity FixityKeyword Int
+  deriving (Data, Eq, Show)
+
+defaultFixity = Fixity InfixL 9
+
+type FixityMap = Map QName Fixity
+
+data Program = Prog ([String], [Decl], FixityMap)
   deriving (Eq, Show)
 
-data Program = Prog ([String], [Decl])
-  deriving (Eq, Show)
-
-data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term (Maybe Fixity)
+data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term
   deriving (Eq, Show)
 
 --------------------------------------------------------------------------------

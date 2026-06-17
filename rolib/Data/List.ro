@@ -12,6 +12,14 @@ nil = 'Nil: tt
 cons : a -> List a -> List a
 cons = \hd tl. 'Cons: (pair hd tl)
 
+
+infixr 9 <>
+
+(<>) : a -> List a -> List a
+(<>) = cons
+
+infixr 9 `cons`
+
 sing : a -> List a
 sing = \ a. cons a nil
 
