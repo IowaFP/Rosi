@@ -409,7 +409,7 @@ term = prefixes typedTerm where
   catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
 
-  infixExpr = EInfix <$> some (try appTerm <|> try (EOp <$> lexeme (try (singleton <$> customOperator) <|> surroundedIdentifier)))
+  infixExpr = EInfix <$> some (try (Operand <$> appTerm) <|> try (Operator <$> lexeme (try (singleton <$> customOperator) <|> surroundedIdentifier)))
 
 data AppTerm = Type Ty | Term Term | Op String
 
@@ -591,36 +591,35 @@ class DesugarInfix a where
 instance DesugarInfix Term where
 
   desugarInfix ((EVar n qname))    = return (EVar n qname)
-  desugarInfix (ELam x ty tm)       = ELam x ty <$> desugarInfix tm
+  desugarInfix (ELam x ty tm)      = ELam x ty <$> desugarInfix tm
   desugarInfix (EApp ft xt)        = EApp <$> desugarInfix ft <*> desugarInfix xt
 
   desugarInfix (ETyLam s k tm )    = ETyLam s k <$> desugarInfix tm
   desugarInfix (EPrLam p tm)       = EPrLam p <$> desugarInfix tm
   desugarInfix (EInst tm insts)    = EInst <$> desugarInfix tm <*> pure insts
 
-  desugarInfix (ESing ty)           = return $ ESing ty
+  desugarInfix (ESing ty)          = return $ ESing ty
   desugarInfix (ELabel tc lt xt)   = ELabel tc <$> desugarInfix lt <*> desugarInfix xt
   desugarInfix (EUnlabel tc xt lt) = EUnlabel tc <$> desugarInfix xt <*> desugarInfix lt
 
   desugarInfix (EConst c)          = return $ EConst c
 
-  desugarInfix (ELet x vt et)       = ELet x <$> (desugarInfix vt) <*> (desugarInfix et)
-  desugarInfix (ECast tm evid)       = ECast <$> desugarInfix tm <*> pure evid
-  desugarInfix (ETyped tm ty)       = ETyped <$> desugarInfix tm <*> pure ty
+  desugarInfix (ELet x vt et)      = ELet x <$> (desugarInfix vt) <*> (desugarInfix et)
+  desugarInfix (ECast tm evid)     = ECast <$> desugarInfix tm <*> pure evid
+  desugarInfix (ETyped tm ty)      = ETyped <$> desugarInfix tm <*> pure ty
 
   desugarInfix (EStringLit s)      = return $ EStringLit s
   desugarInfix (EHole s)           = return $ EHole s
 
-  desugarInfix (EInfix tms)       = resolveFixities [] tms
-  desugarInfix (EOp s)             = error "internal: desugarInfix reached EOp without desugaring it higher in the call tree"
+  desugarInfix (EInfix tms)        = resolveFixities [] tms
 
 
 -- TODO(mctano) handle
   -- fixities
   -- precedence level
-resolveFixities :: [Term] -> [Term] -> IO Term
-resolveFixities [] [tm] = desugarInfix tm
-resolveFixities [] (lhs:(EOp qn):rhs) = do lhs' <- desugarInfix lhs
+resolveFixities :: [EInfixToken] -> [EInfixToken] -> IO Term
+resolveFixities [] [Operand tm] = desugarInfix tm
+resolveFixities [] ((Operand lhs):(Operator qn):rhs) = do lhs' <- desugarInfix lhs
                                            EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities [] rhs
 resolveFixities [] tms = return $ Debug.Trace.traceShow tms (EInfix tms)
 
