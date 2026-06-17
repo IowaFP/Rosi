@@ -1,12 +1,9 @@
-cabal run Rosi -- -i rolib examples/Operators.ro -e hello_world,res,ex_1,ex_2,ex_3,ex_4,ex_5,ex_6,ex_7,ex_8,ex_9,ex_10,ex_11,ex_12,ex_13,ex_14,ex_15
-
-
-cabal run Rosi -- -i rolib -i examples examples/EE.ro
 cabal run Rosi -- -i rolib examples/Ana.ro
 cabal run Rosi -- -i rolib examples/Syn.ro
 cabal run Rosi -- -i rolib examples/Existentials.ro
 cabal run Rosi -- -i rolib examples/Poly.ro
 cabal run Rosi -- -i rolib examples/Wand.ro
 cabal run Rosi -- -i rolib examples/TypeDefs.ro
+cabal run Rosi -- -i rolib -i examples examples/EE.ro -e szId,szConst,szNot,szId0,szConst0,szNot0,evThree,evThreee,evThreeee,evTrue,evIdd,evBoom,desNott,astep,asteps,esteps
 
-
+cabal run Rosi -- -i rolib examples/Operators.ro -e hello_world,res,ex_1,ex_2,ex_3,ex_4,ex_5,ex_6,ex_7,ex_8,ex_9,ex_10,ex_11,ex_12,ex_13,ex_14,ex_15
