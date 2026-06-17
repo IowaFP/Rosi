@@ -525,11 +525,11 @@ topLevel = item lhs body where
 
   fixityKeyword :: Parser FixityKeyword
   fixityKeyword = choice
-    [ try $ InfixL <$ string "infixl"
-    , try $ InfixR <$ string "infixr"
-    , try $ Infix  <$ string "infix"
-    , try $ Prefix <$ string "prefix"
-    ,      Postfix <$ string "postfix"
+    [ try $ InfixL <$ reserved "infixl"
+    , try $ InfixR <$ reserved "infixr"
+    , try $ Infix  <$ reserved "infix"
+    , try $ Prefix <$ reserved "prefix"
+    ,      Postfix <$ reserved "postfix"
     ]
 
   typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
