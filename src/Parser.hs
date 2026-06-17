@@ -26,7 +26,6 @@ import Text.Megaparsec.Char.Lexer qualified as P
 import Text.Megaparsec.Error
 
 import Debug.Trace
-import GHC.Unicode (isSymbol)
 
 --------------------------------------------------------------------------------
 -- Combinators I miss from Parsec
