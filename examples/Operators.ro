@@ -15,6 +15,7 @@ f = id
 -- Test that we support the Idris 2 operator set except for '.', '#', and '@'
 (+-*\/=?|&><!$%^~) = id
 
+-- we can declare fixity for operators defined in the same file
 infixr 8 +
 
 res = f ('hello := f "hello") $ f (f 'world := "world")

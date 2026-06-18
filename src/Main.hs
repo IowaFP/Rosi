@@ -3,14 +3,12 @@
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module Main where
 
-import Control.Monad         (void, when, (<=<))
+import Control.Monad         (when)
 import Control.Monad.Reader  (runReaderT)
 import Control.Monad.State
 import Data.IORef
-import Data.List             (break, findIndex)
 import Data.List.Split
 import Data.String
-import Prettyprinter         qualified as P
 import Prettyprinter.Util    qualified as P
 import System.Console.GetOpt
 import System.Directory
@@ -25,7 +23,7 @@ import Parser
 import Printer
 import Scope
 import Syntax
-import qualified Data.Map as Map
+import FixityResolution (desugarInfix)
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doPrintHelpMessage
