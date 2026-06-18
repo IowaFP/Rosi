@@ -1,11 +1,11 @@
 {-# OPTIONS_GHC -Wunused-imports #-}
 module FixityResolution where
 
-import Syntax
 import Data.Foldable (find)
+import Syntax
 
 class DesugarInfix a where
-  desugarInfix :: FixityMap -> a -> IO a
+  desugarInfix :: FixityMap -> a -> Either Error a
 
 
 instance DesugarInfix Term where
@@ -16,7 +16,7 @@ instance DesugarInfix Term where
 
   desugarInfix fixMap (ETyLam s k tm )    = ETyLam s k <$> desugarInfix fixMap tm
   desugarInfix fixMap (EPrLam p tm)       = EPrLam p <$> desugarInfix fixMap tm
-  desugarInfix fixMap (EInst tm insts)    = EInst <$> desugarInfix fixMap tm <*> pure insts
+  desugarInfix fixMap (EInst tm insts)    = (EInst <$> desugarInfix fixMap tm) <*> pure insts
 
   desugarInfix fixMap (ESing ty)          = return $ ESing ty
   desugarInfix fixMap (ELabel tc lt xt)   = ELabel tc <$> desugarInfix fixMap lt <*> desugarInfix fixMap xt
@@ -43,36 +43,34 @@ instance DesugarInfix Term where
       -- TODO(mctano) handle
         -- fixities
         -- precedence level
-      resolveFixities :: [EInfixToken] -> [EInfixToken] -> IO Term
+      resolveFixities :: [EInfixToken] -> [EInfixToken] -> Either Error Term
 
       resolveFixities [] [] = error "resolveFixities called with empty tail"
       resolveFixities [] [Operand tm] = pure tm
       resolveFixities [Operator qn (Just fxty), Operand lhs] [Operand rhs] = pure (EApp (EApp (EVar (-1) qn) lhs) rhs)
       resolveFixities [] ((Operand tm):(Operator qn (Just fxty)):rhs) =
         case fxty of
-          Fixity InfixL _ -> EApp (EApp (EVar (-1) qn) tm) <$> resolveFixities [] rhs
-          Fixity InfixR _ -> undefined
-          Fixity Infix _  -> undefined
-          Fixity Prefix _ -> undefined
+          Fixity InfixL _  -> EApp (EApp (EVar (-1) qn) tm) <$> resolveFixities [] rhs
+          Fixity InfixR _  -> undefined
+          Fixity Infix _   -> undefined
+          Fixity Prefix _  -> undefined
           Fixity Postfix _ -> undefined
       resolveFixities [] ((Operator qn (Just fxty)):(Operand tm):rhs) =
         case fxty of
-          Fixity InfixL _ -> undefined
-          Fixity InfixR _ -> undefined
-          Fixity Infix _  -> undefined
-          Fixity Prefix _ -> undefined
+          Fixity InfixL _  -> undefined
+          Fixity InfixR _  -> undefined
+          Fixity Infix _   -> undefined
+          Fixity Prefix _  -> undefined
           Fixity Postfix _ -> undefined
       resolveFixities [] [Operator qn (Just fxty)] = error $ "resolveFixities called with just an operator: " ++ show qn
       resolveFixities ((Operator qn (Just fxty)):(Operand tm):lhs) rhs =
         case fxty of
-          Fixity InfixL _ -> undefined
-          Fixity InfixR _ -> undefined
-          Fixity Infix _  -> undefined
-          Fixity Prefix _ -> undefined
+          Fixity InfixL _  -> undefined
+          Fixity InfixR _  -> undefined
+          Fixity Infix _   -> undefined
+          Fixity Prefix _  -> undefined
           Fixity Postfix _ -> undefined
       resolveFixities lhs rhs = error $ "unexpected input to resolveFixities: " ++ show (lhs, rhs)
-
-
 
 lookFor :: QName -> QName -> Bool
 lookFor [x] (y : ys) = x == y
@@ -82,7 +80,7 @@ lookFor xs ys        = xs == ys
 -- this must be called before passing the list of tokens to resolveFixities
 -- to desugar infix operators at the current level
 instance DesugarInfix [EInfixToken] where
-  desugarInfix :: FixityMap -> [EInfixToken] -> IO [EInfixToken]
+  desugarInfix :: FixityMap -> [EInfixToken] -> Either Error [EInfixToken]
   desugarInfix fixMap = traverse (desugarInfix fixMap)
 
 
@@ -93,7 +91,7 @@ instance DesugarInfix EInfixToken where
 
 instance DesugarInfix Decl where
   desugarInfix fixMap (TmDecl qn ty tm) = TmDecl qn ty <$> desugarInfix fixMap  tm
-  desugarInfix fixMap x                    = return x
+  desugarInfix fixMap x                 = return x
 
 instance DesugarInfix [Decl] where
   desugarInfix fixMap = mapM (desugarInfix fixMap)
