@@ -12,7 +12,7 @@ import Data.Char                  (isSpace)
 import Data.Data                  hiding (Fixity, Infix, Prefix)
 import Data.Functor
 import Data.IORef                 (newIORef)
-import Data.List                  (delete, intercalate, singleton, unsnoc)
+import Data.List                  (delete, intercalate, singleton, find)
 import Data.List.NonEmpty         (fromList)
 import Data.List.Split            (splitOn)
 import Data.Maybe                 (fromMaybe, isNothing)
@@ -559,6 +559,7 @@ defns moduleNames tls
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
+  | not (null unmatchedFixDecls) = fail $ intercalate "." (reverse moduleNames) ++ " contains fixity declaration(s) for [ " ++ intercalate ", " unmatchedFixDecls ++ " ] without definition(s) in the same module."
   | otherwise =
     do ds <- mapM mkDecl names
        let
@@ -570,13 +571,11 @@ defns moduleNames tls
         kindSigs = [(x, t) | (x, KindSig t) <- tls]
 
         -- hey, why not five times?
-        fixDecls = [(x, fixity) | (x, FixityDecl fixity) <- tls]
-        fixityMap = fromAscList (map mapToFixity names)
         -- Get the last fixity declaration for each name.
         -- TODO(mctano) ensure this gets the precedence right.
-        mapToFixity x = case unsnoc (lookups x fixDecls) of
-                            Nothing          -> (x : moduleNames, defaultFixity)
-                            Just (_, fixity) -> (x : moduleNames, fixity)
+        fixDecls = [(x, fixity) | (x, FixityDecl fixity) <- tls]
+        fixityMap = map (\(x, fx) -> (x : moduleNames, fx)) fixDecls
+
         imports  = [names | (_, ImportTL names) <- tls]
 
 
@@ -592,6 +591,7 @@ defns moduleNames tls
         unmatchedTypeSigs = filter (`notElem` map fst termDefs) (map fst typeSigs)
         unmatchedTypeDefs = filter (`notElem` map fst kindSigs) (map fst typeDefs)
         unmatchedKindSigs = filter (`notElem` map fst typeDefs) (map fst kindSigs)
+        unmatchedFixDecls = filter (`notElem` map fst termDefs) (map fst fixDecls)
 
         lookups x = map snd . filter ((x ==) . fst)
         mkDecl x =
@@ -660,6 +660,13 @@ resolveFixities fixMap [] [Operand tm] = desugarInfix fixMap tm
 resolveFixities fixMap [] ((Operand lhs):(Operator qn):rhs) = do lhs' <- desugarInfix fixMap lhs
                                                                  EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities fixMap [] rhs
 resolveFixities fixMap [] tms = return (EInfix tms)
+
+fixity :: [(QName, Fixity)] -> QName -> Fixity
+fixity fixMap qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
+
+lookFor :: QName -> QName -> Bool
+lookFor [x] (y : ys) = x == y
+lookFor xs ys        = xs == ys
 
 instance DesugarInfix Decl where
   desugarInfix fixMap (TmDecl qn ty tm) = TmDecl qn ty <$> desugarInfix fixMap  tm

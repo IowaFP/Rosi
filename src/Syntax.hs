@@ -25,7 +25,7 @@ data Fixity = Fixity FixityKeyword Int
 
 defaultFixity = Fixity InfixL 9
 
-type FixityMap = Map QName Fixity
+type FixityMap = [(QName, Fixity)]
 
 data Program = Prog ([String], [Decl], FixityMap)
   deriving (Eq, Show)

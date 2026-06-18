@@ -61,7 +61,7 @@ parseChasing additionalImportDirs fs =
      evalStateT (chase fs') [] where
 
   chase :: [([String], FilePath)] -> StateT [FilePath] IO ([Decl], FixityMap)
-  chase [] = return ([], Map.empty)
+  chase [] = return ([], [])
   chase ((moduleName, fn) : fns) =
     do already <- get
        if fn `elem` already
