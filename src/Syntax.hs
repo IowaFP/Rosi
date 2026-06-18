@@ -400,7 +400,7 @@ data Const =
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?
 
-data EInfixToken = Operator [String] | Operand Term
+data EInfixToken = Operator [String] (Maybe Fixity) | Operand Term
   deriving (Data, Eq, Show, Typeable)
 
 data Term =

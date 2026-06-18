@@ -28,6 +28,7 @@ import Text.Megaparsec.Error
 import Debug.Trace                qualified as T
 import Text.Megaparsec.Debug      (dbg)
 import Data.Map (fromAscList)
+import Checker.Monad (bind)
 
 
 --------------------------------------------------------------------------------
@@ -411,10 +412,14 @@ term = prefixes typedTerm where
 
   stringEqTerm = chainl1 catTerm $ op "~" (ebinary CStringEq)
 
-  catTerm = chainl1 d $ op "^" (ebinary CStringCat)
+  catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
+  infixExpr =  eliminateTrivial . EInfix <$> some (try (Operand <$> appTerm) <|> try ((`Operator` Nothing) <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
+    where
+          -- Not everything needs to be an EInfix.
+          eliminateTrivial (EInfix [Operand tm]) = tm
+          eliminateTrivial                     e = e
 
-  d = EInfix <$> some (try (Operand <$> appTerm) <|> try (Operator <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
 
 data AppTerm = Type Ty | Term Term | Op String
 
@@ -648,25 +653,60 @@ instance DesugarInfix Term where
   desugarInfix fixMap (EStringLit s)      = return $ EStringLit s
   desugarInfix fixMap (EHole s)           = return $ EHole s
 
-  desugarInfix fixMap (EInfix tms)        = resolveFixities fixMap [] tms
+  desugarInfix fixMap (EInfix ops)        = resolveFixities [] . collectFixities =<< desugarInfix fixMap ops
+    where
+      collectFixities :: [EInfixToken] -> [EInfixToken]
+      collectFixities (Operand tm : ops) = Operand tm:collectFixities ops
+      collectFixities (Operator qn _ : ops) = Operator qn (Just (fixityOf qn)) :collectFixities ops
+      collectFixities ops = ops
 
 
--- TODO(mctano) handle
-  -- fixities
-  -- precedence level
-resolveFixities :: FixityMap -> [EInfixToken] -> [EInfixToken] -> IO Term
+      -- TODO(mctano) handle
+        -- fixities
+        -- precedence level
+      resolveFixities :: [EInfixToken] -> [EInfixToken] -> IO Term
 
-resolveFixities fixMap [] [Operand tm] = desugarInfix fixMap tm
-resolveFixities fixMap [] ((Operand lhs):(Operator qn):rhs) = do lhs' <- desugarInfix fixMap lhs
-                                                                 EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities fixMap [] rhs
-resolveFixities fixMap [] tms = return (EInfix tms)
+      resolveFixities [] [] = error "resolveFixities called with empty tail"
+      resolveFixities [] [Operand tm] = pure tm
+      resolveFixities [Operator qn (Just fxty), Operand lhs] [Operand rhs] = pure (EApp (EApp (EVar (-1) qn) lhs) rhs)
+      resolveFixities [] ((Operand tm):(Operator qn (Just fxty)):rhs) =
+        case fxty of
+          Fixity InfixL _ -> EApp (EApp (EVar (-1) qn) tm) <$> resolveFixities [] rhs
+          Fixity InfixR _ -> undefined
+          Fixity Infix _  -> undefined
+          Fixity Prefix _ -> undefined
+          Fixity Postfix _ -> undefined
+      resolveFixities [] ((Operator qn (Just fxty)):(Operand tm):rhs) =
+        case fxty of
+          Fixity InfixL _ -> undefined
+          Fixity InfixR _ -> undefined
+          Fixity Infix _  -> undefined
+          Fixity Prefix _ -> undefined
+          Fixity Postfix _ -> undefined
+      resolveFixities [] [Operator qn (Just fxty)] = error $ "resolveFixities called with just an operator: " ++ show qn
+      resolveFixities ((Operator qn (Just fxty)):(Operand tm):lhs) rhs =
+        case fxty of
+          Fixity InfixL _ -> undefined
+          Fixity InfixR _ -> undefined
+          Fixity Infix _  -> undefined
+          Fixity Prefix _ -> undefined
+          Fixity Postfix _ -> undefined
+      resolveFixities lhs rhs = error $ "unexpected input to resolveFixities: " ++ show (lhs, rhs)
 
-fixity :: [(QName, Fixity)] -> QName -> Fixity
-fixity fixMap qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
+      fixityOf :: QName -> Fixity
+      fixityOf qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
 
 lookFor :: QName -> QName -> Bool
 lookFor [x] (y : ys) = x == y
 lookFor xs ys        = xs == ys
+
+instance DesugarInfix [EInfixToken] where
+  desugarInfix :: FixityMap -> [EInfixToken] -> IO [EInfixToken]
+  desugarInfix fixMap []                 = pure []
+  desugarInfix fixMap ((Operand tm):ops) = do tm' <- desugarInfix fixMap tm
+                                              (Operand tm' :) <$> desugarInfix fixMap ops
+  desugarInfix fixMap (op:ops)           =             (op :) <$> desugarInfix fixMap ops
+
 
 instance DesugarInfix Decl where
   desugarInfix fixMap (TmDecl qn ty tm) = TmDecl qn ty <$> desugarInfix fixMap  tm
