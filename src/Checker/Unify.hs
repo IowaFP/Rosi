@@ -138,9 +138,9 @@ unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM Evid) -> UnifyM Evid
 unifyInstantiating t u unify =
   do t' <- flattenT t
      u' <- flattenT u
-     let (tqs, _)   = quants t'
+     let (tqs, _)   = forallQuants t'
          (uis, u'') = insts u'
-         nuqs       = length (fst (quants u''))
+         nuqs       = length (fst (forallQuants u''))
      case (t', u') of
        (TInst (Unknown _ g) t'', TInst (Unknown _ g') u'')
          | goalRef g == goalRef g' -> unify t'' u''
@@ -150,7 +150,7 @@ unifyInstantiating t u unify =
          unificationFails t u
        _
          | Just matches <- match uis (take (length tqs - nuqs) tqs) ->
-             do trace $ unlines ["unifyInstantiating:", "    " ++ show (quants t'), "    " ++ show (insts u'), "    " ++ show matches]
+             do trace $ unlines ["unifyInstantiating:", "    " ++ show (forallQuants t'), "    " ++ show (insts u'), "    " ++ show matches]
                 t'' <- instantiates matches t'
                 unify t'' u''
          | otherwise ->

@@ -252,14 +252,17 @@ rebindExists = flip (foldr (uncurry TExists))
 data Quant = QuForall String Kind | QuThen Pred | QuExists String Kind | QuExistsP Pred
   deriving (Data, Eq, Show, Typeable)
 
-quants :: Ty -> ([Quant], Ty)
-quants (TForall x (Just k) t) = first (QuForall x k :) (quants t)
-quants (TForall x Nothing t)  = error "quants: forall without kind"
-quants (TThen p t)            = first (QuThen p :) (quants t)
--- quants (TExists x (Just k) t) = first (QuExists x k :) (quants t)
--- quants (TExists x Nothing t)  = error "quants: exists without kind"
--- quants (TExistsP p t)         = first (QuExistsP p :) (quants t)
-quants t                      = ([], t)
+forallQuants :: Ty -> ([Quant], Ty)
+forallQuants (TForall x (Just k) t) = first (QuForall x k :) (forallQuants t)
+forallQuants (TForall x Nothing t)  = error "quants: forall without kind"
+forallQuants (TThen p t)            = first (QuThen p :) (forallQuants t)
+forallQuants t                      = ([], t)
+
+existsQuants :: Ty -> ([Quant], Ty)
+existsQuants (TExists x (Just k) t) = first (QuExists x k :) (existsQuants t)
+existsQuants (TExists x Nothing t)  = error "quants: exists without kind"
+existsQuants (TExistsP p t)         = first (QuExistsP p :) (existsQuants t)
+existsQuants t                      = ([], t)
 
 quantify :: [Quant] -> Ty -> Ty
 quantify [] t                   = t

@@ -442,7 +442,7 @@ guesses prs =
                                , unwords ["refined goal to", show (PEq t''' u)] ]
                return [(tcin, PEq t''' u, v)]  -- TODO: is `v` here actually a solution to the original problem?
 
-            where (qus, t') = quants t
+            where (qus, t') = forallQuants t
                   foralls = takeWhile isForall qus
                   (xs, ks) = unzip [(x, k) | QuForall x k <- foralls]
                   t'' = quantify (drop (length foralls) qus) t'
@@ -636,7 +636,7 @@ guess (pr@(tcin, PEq t u, v) : prs) =
                              , unwords ["refined goal to", show (PEq t''' u)] ]
              return (Just ((tcin, PEq t''' u, v) : prs))
 
-          where (qus, t') = quants t
+          where (qus, t') = forallQuants t
                 foralls = takeWhile isForall qus
                 (xs, ks) = unzip [(x, k) | QuForall x k <- foralls]
                 t'' = quantify (drop (length foralls) qus) t'
