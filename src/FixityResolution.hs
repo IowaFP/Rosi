@@ -34,10 +34,11 @@ instance DesugarInfix Term where
   desugarInfix fixMap (EInfix ops)        = resolveFixities [] . collectFixities =<< desugarInfix fixMap ops
     where
       collectFixities :: [EInfixToken] -> [EInfixToken]
-      collectFixities (Operand tm : ops) = Operand tm:collectFixities ops
-      collectFixities (Operator qn _ : ops) = Operator qn (Just (fixityOf qn)) :collectFixities ops
-      collectFixities ops = ops
+      collectFixities = map (\ case (Operand tm) -> Operand tm
+                                    (Operator qn _) -> Operator qn (Just (fixityOf qn)))
 
+      fixityOf :: QName -> Fixity
+      fixityOf qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
 
       -- TODO(mctano) handle
         -- fixities
@@ -71,19 +72,23 @@ instance DesugarInfix Term where
           Fixity Postfix _ -> undefined
       resolveFixities lhs rhs = error $ "unexpected input to resolveFixities: " ++ show (lhs, rhs)
 
-      fixityOf :: QName -> Fixity
-      fixityOf qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
+
 
 lookFor :: QName -> QName -> Bool
 lookFor [x] (y : ys) = x == y
 lookFor xs ys        = xs == ys
 
+-- desugar all subterms in the list of operators and operands
+-- this must be called before passing the list of tokens to resolveFixities
+-- to desugar infix operators at the current level
 instance DesugarInfix [EInfixToken] where
   desugarInfix :: FixityMap -> [EInfixToken] -> IO [EInfixToken]
-  desugarInfix fixMap []                 = pure []
-  desugarInfix fixMap ((Operand tm):ops) = do tm' <- desugarInfix fixMap tm
-                                              (Operand tm' :) <$> desugarInfix fixMap ops
-  desugarInfix fixMap (op:ops)           =             (op :) <$> desugarInfix fixMap ops
+  desugarInfix fixMap = traverse (desugarInfix fixMap)
+
+
+instance DesugarInfix EInfixToken where
+  desugarInfix fixMap (Operand tm) = Operand <$> desugarInfix fixMap tm
+  desugarInfix fixMap op           = return op
 
 
 instance DesugarInfix Decl where
