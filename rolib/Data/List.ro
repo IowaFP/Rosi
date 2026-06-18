@@ -9,16 +9,13 @@ type List = \a. Mu (ListF a)
 nil : List a
 nil = 'Nil: tt
 
+infixr 5 `cons`
 cons : a -> List a -> List a
 cons = \hd tl. 'Cons: (pair hd tl)
 
+infixr 5 ::
+(::) = cons
 
-infixr 9 <>
-
-(<>) : a -> List a -> List a
-(<>) = cons
-
-infixr 9 `cons`
 
 sing : a -> List a
 sing = \ a. cons a nil
@@ -49,8 +46,13 @@ foldr = fix (\foldr f b.
 length : List a -> Nat
 length = foldr (\e a. succ a) 0
 
+infixr 1 `append`
 append : List a -> List a -> List a
 append = \ xs ys. foldr cons ys xs
+
+(<>) = append
+infixr 1 <>
+
 
 concat : List (List a) -> List a
 concat = foldr append nil
