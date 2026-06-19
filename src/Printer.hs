@@ -238,6 +238,10 @@ collectBinders = go "\\" where
   go s (ETyLam x (Just k) m) = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
   go s t                     = s <+> "." <+> ppr t
 
+instance Printable EInfixToken where
+  ppr (Operator qn f) = ppr qn
+  ppr (Operand e) = parens $ ppr e
+
 instance Printable Term where
   -- Special case for Nat
   ppr t | Just n <- fromPeano t =  ppre (show n)

@@ -28,6 +28,7 @@ import Text.Megaparsec.Error
 import Debug.Trace                qualified as T
 import Text.Megaparsec.Debug      (dbg)
 import Data.Map (fromAscList)
+import Checker.Monad (bind)
 
 
 --------------------------------------------------------------------------------
@@ -107,7 +108,8 @@ block p =
 
 Binder should be provided in *source* order. That is, if you have
 
-    \ x y z. M
+    
+     x y z. M
 
 The binder list should be provided as ["x", "y", "z"]
 
@@ -411,10 +413,14 @@ term = prefixes typedTerm where
 
   stringEqTerm = chainl1 catTerm $ op "~" (ebinary CStringEq)
 
-  catTerm = chainl1 d $ op "^" (ebinary CStringCat)
+  catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
+  infixExpr =  eliminateTrivial . EInfix <$> some (try (Operand <$> appTerm) <|> try ((`Operator` Nothing) <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
+    where
+          -- Not everything needs to be an EInfix.
+          eliminateTrivial (EInfix [Operand tm]) = tm
+          eliminateTrivial                     e = e
 
-  d = EInfix <$> some (try (Operand <$> appTerm) <|> try (Operator <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
 
 data AppTerm = Type Ty | Term Term | Op String
 
@@ -620,57 +626,3 @@ parse fileName moduleNames s =
        Left err -> do hPutStrLn stderr (errorBundlePretty err)
                       exitFailure
        Right tls -> return tls
-
-class DesugarInfix a where
-  desugarInfix :: FixityMap -> a -> IO a
-
-
-instance DesugarInfix Term where
-
-  desugarInfix fixMap ((EVar n qname))    = return (EVar n qname)
-  desugarInfix fixMap (ELam x ty tm)      = ELam x ty <$> desugarInfix fixMap tm
-  desugarInfix fixMap (EApp ft xt)        = EApp <$> desugarInfix fixMap ft <*> desugarInfix fixMap xt
-
-  desugarInfix fixMap (ETyLam s k tm )    = ETyLam s k <$> desugarInfix fixMap tm
-  desugarInfix fixMap (EPrLam p tm)       = EPrLam p <$> desugarInfix fixMap tm
-  desugarInfix fixMap (EInst tm insts)    = EInst <$> desugarInfix fixMap tm <*> pure insts
-
-  desugarInfix fixMap (ESing ty)          = return $ ESing ty
-  desugarInfix fixMap (ELabel tc lt xt)   = ELabel tc <$> desugarInfix fixMap lt <*> desugarInfix fixMap xt
-  desugarInfix fixMap (EUnlabel tc xt lt) = EUnlabel tc <$> desugarInfix fixMap xt <*> desugarInfix fixMap lt
-
-  desugarInfix fixMap (EConst c)          = return $ EConst c
-
-  desugarInfix fixMap (ELet x vt et)      = ELet x <$> desugarInfix fixMap vt <*> desugarInfix fixMap et
-  desugarInfix fixMap (ECast tm evid)     = ECast <$> desugarInfix fixMap tm <*> pure evid
-  desugarInfix fixMap (ETyped tm ty)      = ETyped <$> desugarInfix fixMap tm <*> pure ty
-
-  desugarInfix fixMap (EStringLit s)      = return $ EStringLit s
-  desugarInfix fixMap (EHole s)           = return $ EHole s
-
-  desugarInfix fixMap (EInfix tms)        = resolveFixities fixMap [] tms
-
-
--- TODO(mctano) handle
-  -- fixities
-  -- precedence level
-resolveFixities :: FixityMap -> [EInfixToken] -> [EInfixToken] -> IO Term
-
-resolveFixities fixMap [] [Operand tm] = desugarInfix fixMap tm
-resolveFixities fixMap [] ((Operand lhs):(Operator qn):rhs) = do lhs' <- desugarInfix fixMap lhs
-                                                                 EApp (EApp (EVar (-1) qn) lhs') <$> resolveFixities fixMap [] rhs
-resolveFixities fixMap [] tms = return (EInfix tms)
-
-fixity :: [(QName, Fixity)] -> QName -> Fixity
-fixity fixMap qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
-
-lookFor :: QName -> QName -> Bool
-lookFor [x] (y : ys) = x == y
-lookFor xs ys        = xs == ys
-
-instance DesugarInfix Decl where
-  desugarInfix fixMap (TmDecl qn ty tm) = TmDecl qn ty <$> desugarInfix fixMap  tm
-  desugarInfix fixMap x                    = return x
-
-instance DesugarInfix [Decl] where
-  desugarInfix fixMap = mapM (desugarInfix fixMap)

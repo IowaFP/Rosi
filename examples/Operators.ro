@@ -15,25 +15,34 @@ f = id
 -- Test that we support the Idris 2 operator set except for '.', '#', and '@'
 (+-*\/=?|&><!$%^~) = id
 
-infixr 8 +
+-- we can declare fixity for operators defined in the same file
+infixl 5 +
+
+infixl 7 //
+
+infixl 7 *
+
+infixl 5 -
 
 res = f ('hello := f "hello") $ f (f 'world := "world")
 
-hello_world = "hello" `Data.List.cons` nil <> "world" :: nil
+hello_world = "hello" `Data.List.cons` "world" :: nil
 
 
-ex_1 = 6 + 5 - 4 - 1
+ex_1 = (6 + (5 - 4) - 1) // 6
 ex_2 = 7 // 7 + 6 // 6
-ex_3 = 6 + (5 - 4) - 1
+ex_3 = 6 + 3 - (4 - 1)
 ex_4 = (4 + 4) // 2
-ex_5 = 7 * 7 // 7 + 7
+ex_5 = 7 * 0 + 5 * 1
 ex_6 = 20 - 7 * 2
-ex_7 = 9 - 1 * 2
+ex_7 = 9 // 2 + 3
 ex_8 = 6 + 5 - (4 - 1)
 ex_9 = 6 + 6 // 2
-ex_10 = 3 + 2 * 2
+ex_10 =  (*) 2 (3 + 2)
 ex_11 = 1 + 5 * 2 
-ex_12 = 7 - 1 * 2
-ex_13 = 7 - 1 * 2 + 1
+ex_12 = (7 - 1) * 2
+ex_13 = 7 * 3 // 2 + 1 * 2 + 1
 ex_14 =  7 * 7 // 7 + 7
 ex_15 = 1 + 2 + 3 + 4 + 5
+
+-- TODO(mctano) Examples to test prefix/postfix operators
