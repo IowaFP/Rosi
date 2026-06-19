@@ -23,6 +23,7 @@ data FixityKeyword = InfixL | InfixR | Infix | Prefix | Postfix
 data Fixity = Fixity FixityKeyword Int
   deriving (Data, Eq, Show)
 
+
 defaultFixity = Fixity InfixL 9
 
 type FixityMap = [(QName, Fixity)]

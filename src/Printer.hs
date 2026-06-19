@@ -329,3 +329,7 @@ renderString doc =
   unsafePerformIO $
   do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = False, printInstantiations = True, printIndices = True})
      return (P.renderString (P.layoutPretty (P.LayoutOptions P.Unbounded) d))
+
+
+renderPretty :: Printable a => a -> String
+renderPretty = renderString . ppr
