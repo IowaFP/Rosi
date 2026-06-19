@@ -53,6 +53,7 @@ options = [ Option [] [] (ReqArg (\s f -> f { inputs = inputs f ++ [s]}) "FILE")
           , Option [] ["reset"] (NoArg (const emptyFlags)) "reset flags" ]
 unprog (Prog ds) = ds
 
+
 parseChasing :: [FilePath] -> [FilePath] -> IO ([Decl], FixityMap)
 parseChasing additionalImportDirs fs =
   do fs' <- mapM findStartingPoint fs
