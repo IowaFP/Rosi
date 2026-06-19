@@ -91,59 +91,59 @@ instance DesugarInfix Term where
       -- TODO(mctano) Do prefix/postfix operators mean we might have adjacent terms after eliminating them? And does that mean I'll have to do a round of application resolution after all this?
 
       -- Invariants:
-      -- Every operator below the top operator in the stack has lower precedence
+      -- Every operator below the top operator in the opStack has lower precedence
 
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] e [] = Right e
-      -- when stack is empty, push the current term and next operator onto the stack
+      -- when opStack is empty, push the current term and next operator onto the opStack
       resolveFixities [] e (op1@(Operator _ _):(Operand e1):tail) = resolveFixities [op1, Operand e] e1 tail
       -- when right side is empty,
-      -- the current term must be an argument to the top operator in the stack.
-      -- and (by invariant) the operator has the highest precedence in the stack
+      -- the current term must be an argument to the top operator in the opStack.
+      -- and (by invariant) the operator has the highest precedence in the opStack
       -- so, if the operator is infix, it must take e0 and e as operands.
-      resolveFixities (op0@(Operator qn (Just fix0)): Operand e0:stack) e [] =
+      resolveFixities (op0@(Operator qn (Just fix0)): Operand e0:opStack) e [] =
         -- dubious case (what if another operator was supposed to take precedence over the prefix?)
         case fix0 of
         -- this is actually illegal because popping the operator means we have adjacent terms.
         Fixity Prefix _  ->
-          resolveFixities (Operand e0:stack) (app1 op0 e) []
+          resolveFixities (Operand e0:opStack) (app1 op0 e) []
           -- error "OOPS"
         Fixity Postfix _ -> error $ "Encountered postfix operator " ++ show op0 ++ " in illegal position."
-        _                -> resolveFixities stack (app2 op0 e0 e) []
+        _                -> resolveFixities opStack (app2 op0 e0 e) []
       
       -- -- happy case
-      resolveFixities wholeStack@(op0@(Operator _ (Just fix0)) : Operand e0 : stack) e wholeTail@(op1@(Operator _ (Just fix2)) : (Operand e1) : op2@(Operator _ (Just fix3)) : tail) =
+      resolveFixities wholeStack@(op0@(Operator _ (Just fix0)) : Operand e0 : opStack) e wholeTail@(op1@(Operator _ (Just fix2)) : (Operand e1) : op2@(Operator _ (Just fix3)) : tail) =
         -- TODO(mctano) handle pre/postfix
           case op0 `compare` op1 of
-                  --  - The operator at the top of the stack binds more tightly than that at the top of the
-                  --    tail.  In that case, we pop (e0, op0) from the stack, replace the current expression
+                  --  - The operator at the top of the opStack binds more tightly than that at the top of the
+                  --    tail.  In that case, we pop (e0, op0) from the opStack, replace the current expression
                   --    with (e0 op0 e), and loop;
                   -- TODO(mctano) handle pre/postfix
-                  GT -> resolveFixities stack (app2 op0 e0 e) (op1:Operand e1:op2:tail)
+                  GT -> resolveFixities opStack (app2 op0 e0 e) (op1:Operand e1:op2:tail)
                   LT -> case op1 `compare` op2 of
                             --  - The operator at the top of the tail binds more tightly than either the operator at
-                            --    the top of the stack or the operator following it in the tail.  In that case, we pop
+                            --    the top of the opStack or the operator following it in the tail.  In that case, we pop
                             --    (op1, e1) from the tail, replace the current expression with (e op1 e1), and loop;
-                            GT -> resolveFixities (op0:Operand e0:stack) (app2 op1 e e1) (op2:tail)
+                            GT -> resolveFixities (op0:Operand e0:opStack) (app2 op1 e e1) (op2:tail)
                             --  - The second operator in the tail binds more tightly than either of the others; in
-                            --    that case, we pop (op1, e1) from the tail, push (e, op1) onto the stack, and loop
+                            --    that case, we pop (op1, e1) from the tail, push (e, op1) onto the opStack, and loop
                             --    with e1 as the current expression.
-                            LT -> resolveFixities (op1:Operand e:op0:Operand e0:stack) e1 (op2:tail)
+                            LT -> resolveFixities (op1:Operand e:op0:Operand e0:opStack) e1 (op2:tail)
                             _  -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op1, op2)
                   EQ -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op0, op1)
 
-      resolveFixities wholeStack@(op0@(Operator _ _):Operand e0:stack) e wholeTail@[op1@(Operator qnR fxR), Operand e1] =
+      resolveFixities wholeStack@(op0@(Operator _ _):Operand e0:opStack) e wholeTail@[op1@(Operator qnR fxR), Operand e1] =
         case op0 `compare` op1 of
           -- TODO(mctano) handle pre/postfix
-          GT -> resolveFixities stack (app2 op0 e0 e) [op1, Operand e1]
-          LT -> resolveFixities (op0:Operand e0:stack) (app2 op1 e e1) []
+          GT -> resolveFixities opStack (app2 op0 e0 e) [op1, Operand e1]
+          LT -> resolveFixities (op0:Operand e0:opStack) (app2 op1 e e1) []
           EQ -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op0, op1)
 
 
-      resolveFixities stack e wholeTail@(Operand e1:tail) = T.trace (show (concatMap renderPretty stack, renderPretty e, concatMap renderPretty wholeTail)) Left (Operand e, Operand e1)
-      resolveFixities (Operand e0:stack) e tail = error $ "encountered adjacent terms " ++ show e0 ++ ", " ++ show e
-      -- resolveFixities ((Operand e0):stack) e ((Operator qnR fxR):tail) = undefined
-      resolveFixities stack e tail = error $ "unexpected input to resolveFixities: " ++ show (stack, e, tail)
+      resolveFixities opStack e wholeTail@(Operand e1:tail) = T.trace (show (concatMap renderPretty opStack, renderPretty e, concatMap renderPretty wholeTail)) Left (Operand e, Operand e1)
+      resolveFixities (Operand e0:opStack) e tail = error $ "encountered adjacent terms " ++ show e0 ++ ", " ++ show e
+      -- resolveFixities ((Operand e0):opStack) e ((Operator qnR fxR):tail) = undefined
+      resolveFixities opStack e tail = error $ "unexpected input to resolveFixities: " ++ show (opStack, e, tail)
 
       app1 (Operator qn _) = EApp (EVar (-1) qn)
       app2 (Operator qn _) e0 = EApp (EApp (EVar (-1) qn) e0)
