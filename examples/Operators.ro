@@ -71,4 +71,4 @@ ex_F5 = False /\ False \/ True
 ex_F6 = ! True \/ False
 
 -- unparsable
-ex_adjacent_pre_post = ! True $
+-- ex_adjacent_pre_post = ! True $
