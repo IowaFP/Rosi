@@ -1,10 +1,11 @@
 {-# OPTIONS_GHC -Wunused-imports #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module FixityResolution where
 
 import Data.Foldable (find)
-import Data.List     (intercalate)
+
 import Debug.Trace   qualified as T
-import Printer       (Printable (ppr), renderString)
+import Printer       (renderPretty)
 import Syntax
 
 class DesugarInfix a where
@@ -12,13 +13,27 @@ class DesugarInfix a where
 
 instance Ord EInfixToken where
   compare l@(Operator _ (Just f1)) r@(Operator _ (Just f2)) = compare f1 f2
-  compare l r                                               = error $ "tried to compare invalid arguments " ++ show l ++ ", " ++ show r
+  compare l r                                               = error $ "tried to compare invalid arguments " ++ renderPretty l ++ ", " ++ renderPretty r
 
 instance Ord Fixity where
-  compare (Fixity InfixL l1) (Fixity InfixL l2) | l1 == l2 = GT
-  compare (Fixity InfixR l1) (Fixity InfixR l2) | l1 == l2 = LT
-  compare (Fixity _  l1) (Fixity _ l2) = compare l1 l2
+  -- We may want to handle the possible configurations in the higher level function
+  -- if both are prefix w/equal precedence, and they're both in front ... ! ! x ...
+  -- the inner one takes precedence ... (! (! x)) ...
+  -- if both are prefix and one is after, ... ! x ! ..., it's okay to handle the right expression first
+  compare (Fixity Prefix l0) (Fixity Prefix l1) | l0 == l1 = LT
+  -- if we have two prefix operators of different levels, we can use the precedence to decide
+  -- but does this work for `... ! x ! ...` ?
+  compare (Fixity Prefix l0) (Fixity Prefix l1) = compare l0 l1
 
+  -- if we have a prefix before and a postfix after, (! x $) use precedence.
+  -- (we assume that `... ! $ ...` has been caught and ruled out before here).
+  compare (Fixity Prefix l0) (Fixity Postfix l1) = compare l0 l1
+  compare (Fixity InfixL l0) (Fixity InfixL l1) | l0 == l1 = GT
+  compare (Fixity InfixR l0) (Fixity InfixR l1) | l0 == l1 = LT
+  -- aside from Prefix, if the fixity is equal, we use the precedence
+  compare (Fixity fix0 l0) (Fixity fix1 l1) | fix0 == fix1  = compare l0 l1
+  -- if either is non-associative, or if associativity is different, and precedence is equal, return EQ
+  compare (Fixity _  _) (Fixity _ _) = EQ
 
 instance DesugarInfix Term where
 
@@ -58,16 +73,15 @@ instance DesugarInfix Term where
                                     Right e           -> e
                                     Left p@(op1@(Operator _ fix1), op2@(Operator _ fix2))
                                       -> error $ "Could not resolve precedence between ("
-                                              ++ (renderString . ppr) op1
+                                              ++ renderPretty op1
                                               ++ ") ["
                                               ++ show fix1
                                               ++ "] and ("
-                                              ++ (renderString . ppr) op2
+                                              ++ renderPretty op2
                                               ++ ") ["
                                               ++ show fix2
                                               ++ "] in "
-                                              ++ unwords (map (renderString . ppr) exp)
-                                              
+                                              ++ unwords (map renderPretty exp)
       resolveFixitiesF []       = error "resolveFixitiesF called with empty list"
 
       resolveFixities :: [EInfixToken] -> Term -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
@@ -115,18 +129,18 @@ instance DesugarInfix Term where
                             --    that case, we pop (op1, e1) from the tail, push (e, op1) onto the stack, and loop
                             --    with e1 as the current expression.
                             LT -> resolveFixities (op1:Operand e:op0:Operand e0:stack) e1 (op2:tail)
-                            _  -> T.trace (show (concatMap (renderString . ppr) wholeStack, (renderString . ppr) e, concatMap (renderString . ppr) wholeTail)) Left (op1, op2)
-                  EQ -> T.trace (show (concatMap (renderString . ppr) wholeStack, (renderString . ppr) e, concatMap (renderString . ppr) wholeTail)) Left (op0, op1)
+                            _  -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op1, op2)
+                  EQ -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op0, op1)
 
       resolveFixities wholeStack@(op0@(Operator _ _):Operand e0:stack) e wholeTail@[op1@(Operator qnR fxR), Operand e1] =
         case op0 `compare` op1 of
           -- TODO(mctano) handle pre/postfix
           GT -> resolveFixities stack (app2 op0 e0 e) [op1, Operand e1]
           LT -> resolveFixities (op0:Operand e0:stack) (app2 op1 e e1) []
-          EQ -> T.trace (show (concatMap (renderString . ppr) wholeStack, (renderString . ppr) e, concatMap (renderString . ppr) wholeTail)) Left (op0, op1)
+          EQ -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op0, op1)
 
 
-      resolveFixities stack e wholeTail@(Operand e1:tail) = T.trace (show (concatMap (renderString . ppr) stack, (renderString . ppr) e, concatMap (renderString . ppr) wholeTail)) Left (Operand e, Operand e1)
+      resolveFixities stack e wholeTail@(Operand e1:tail) = T.trace (show (concatMap renderPretty stack, renderPretty e, concatMap renderPretty wholeTail)) Left (Operand e, Operand e1)
       resolveFixities (Operand e0:stack) e tail = error $ "encountered adjacent terms " ++ show e0 ++ ", " ++ show e
       -- resolveFixities ((Operand e0):stack) e ((Operator qnR fxR):tail) = undefined
       resolveFixities stack e tail = error $ "unexpected input to resolveFixities: " ++ show (stack, e, tail)
