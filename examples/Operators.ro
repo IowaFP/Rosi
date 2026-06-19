@@ -46,3 +46,24 @@ ex_14 =  7 * 7 // 7 + 7
 ex_15 = 1 + 2 + 3 + 4 + 5
 
 -- TODO(mctano) Examples to test prefix/postfix operators
+
+prefix 1 !
+
+(!) = Ro.Base.not
+(/\) = Ro.Base.and
+(\/) = Ro.Base.or
+
+ex_T1 = ! False
+ex_T2 = ! ! True
+ex_T3 = ! ! ! False
+ex_T4 = ! ! ! ! True
+ex_T5 = True /\ False \/ True
+ex_T6 = !False \/ !True
+
+ex_F1 = ! True
+ex_F2 = ! ! False
+ex_F3 = ! ! ! True
+ex_F4 = ! ! ! ! False
+ex_F5 = False /\ False \/ True
+ex_F6 = ! True \/ False
+
