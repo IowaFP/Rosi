@@ -24,9 +24,9 @@ infixl 7 *
 
 infixl 5 -
 
-res = f ('hello := f "hello") $$ f (f 'world := "world")
+-- res = f ('hello := f "hello") $$ f (f 'world := "world")
 
-hello_world = "hello" `Data.List.cons` "world" :: nil
+-- hello_world = "hello" `Data.List.cons` "world" :: nil
 
 
 ex_1 = (6 + (5 - 4) - 1) // 6
