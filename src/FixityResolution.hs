@@ -63,10 +63,10 @@ instance DesugarInfix Term where
     where
       collectFixities :: [EInfixToken] -> [EInfixToken]
       collectFixities = map (\ case (Operand e) -> Operand e
-                                    (Operator qn _) -> Operator qn (Just (fixityOf qn)))
+                                    (Operator qn _) -> Operator qn (Just (lookupFixity qn)))
 
-      fixityOf :: QName -> Fixity
-      fixityOf qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
+      lookupFixity :: QName -> Fixity
+      lookupFixity qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
 
       resolveFixitiesF :: [EInfixToken] -> Term
       resolveFixitiesF exp@((Operand op):ops) = case resolveFixities [] op ops of
