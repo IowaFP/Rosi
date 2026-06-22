@@ -1,54 +1,40 @@
 {-# OPTIONS_GHC -Wunused-imports #-}
-{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 module FixityResolution where
 
 import Data.Foldable (find)
 
-import Debug.Trace   qualified as T
+import Data.List     (intercalate)
 import Printer       (renderPretty)
 import Syntax
-import Data.List (intercalate)
 
 class DesugarInfix a where
   desugarInfix :: FixityMap -> a -> a
 
 instance Ord EInfixToken where
   compare l@(Operator _ (Just f1)) r@(Operator _ (Just f2)) = compare f1 f2
-  compare l r                                               = error $ "tried to compare invalid arguments " ++ renderPretty l ++ ", " ++ renderPretty r
+  compare l r                                               = error $ "tried to compare invalid arguments " ++ show l ++ ", " ++ show r
 
 instance Ord Fixity where
-  -- We may want to handle the possible configurations in the higher level function
-  -- if both are prefix w/equal precedence, and they're both in front ... ! ! x ...
-  -- the inner one takes precedence ... (! (! x)) ...
-  -- if both are prefix and one is after, ... ! x ! ..., it's okay to handle the right expression first
-  --  (Fixity _ l0) (Fixity Prefix l1) | l0 == l1 = LT
-  -- if we have two prefix operators of different levels, we can use the precedence to decide
-  -- but does this work for `... ! x ! ...` ?
-  compare (Fixity Prefix l0) (Fixity Prefix l1) | l0 == l1 = LT
-  -- postfix should never appear on left side
+  -- postfix should never appear on lhs side
   compare (Fixity Postfix _) (Fixity _ _) = error "SHOULDN'T GET HERE"
-
-  -- compare (Fixity Prefix l0) (Fixity Prefix l1) = compare l0 l1
-  -- compare (Fixity Postfix l0) (Fixity Postfix l1) = compare l0 l1
-  
+  -- (if both are prefix and one is after, we must handle the inner prefix operator first
+  compare (Fixity Prefix _) (Fixity Prefix _)  = LT
   -- if we have a prefix before and a postfix after, (! x $) use precedence.
   -- (we assume that `... ! $ ...` has been ruled out before here).
   compare (Fixity Prefix l0) (Fixity Postfix l1) = compare l0 l1
-
-  -- otherwise prefix or postfix after always binds more tightly
+  -- otherwise, postfix on rhs always binds more tightly than infix
+  compare (Fixity _ _) (Fixity Postfix _)  = LT
+  -- and prefix (on either side) always binds more tightly than infix
   compare (Fixity _ _) (Fixity Prefix _)  = LT
-  compare (Fixity _ _) (Fixity Postfix l1)  = LT
+  compare (Fixity Prefix _) (Fixity _ _)  = GT
 
-  -- associativity applies when level is equal
+  -- associativity applies when infix level is equal
   compare (Fixity InfixL l0) (Fixity InfixL l1) | l0 == l1 = GT
   compare (Fixity InfixR l0) (Fixity InfixR l1) | l0 == l1 = LT
-  -- otherwise, use the level to determine binding order
+  -- if infix associativity is mixed, or both are non-associative, we use the precedence level
+  -- (equal precedence is ambiguous)
   compare (Fixity _ l0) (Fixity _ l1) = compare l0 l1
-
-  -- aside from Prefix, if the fixity is equal, we use the precedence
-  -- compare (Fixity fix0 l0) (Fixity fix1 l1) | fix0 == fix1  = compare l0 l1
-  -- if either is non-associative, or if associativity is different, and precedence is equal, return EQ
-  compare (Fixity _  _) (Fixity _ _) = EQ
 
 instance DesugarInfix Term where
 
@@ -74,7 +60,7 @@ instance DesugarInfix Term where
   desugarInfix fixMap (EHole s)           = EHole s
 
                                           -- we make the recursive call to desugar subterms before collecting and resolving fixities
-  desugarInfix fixMap (EInfix ops)        = (resolveFixitiesF . collectFixities . desugarInfix fixMap) ops
+  desugarInfix fixMap (EInfix _ops)        = (resolveFixitiesF . collectFixities . desugarInfix fixMap) _ops
     where
       collectFixities :: [EInfixToken] -> [EInfixToken]
       collectFixities = map (\ case (Operand e) -> Operand e
@@ -87,7 +73,7 @@ instance DesugarInfix Term where
       resolveFixitiesF []       = error "resolveFixitiesF called with empty list"
       resolveFixitiesF exp = case resolveFixities [] [] exp of
                                     Right e           -> e
-                                    Left p@(op1@(Operator _ fix1), op2@(Operator _ fix2))
+                                    Left (op1@(Operator _ fix1), op2@(Operator _ fix2))
                                       -> error $ "Could not resolve precedence between ("
                                               ++ renderPretty op1
                                               ++ ") ["
@@ -98,6 +84,12 @@ instance DesugarInfix Term where
                                               ++ show fix2
                                               ++ "] in "
                                               ++ unwords (map renderPretty exp)
+                                    Left (op1, op2) -> error $ "resolveFixities tried to compare precedence between "
+                                                            ++ show op1
+                                                            ++ " and "
+                                                            ++ show op2
+                                                            ++ "in the context of the expression "
+                                                            ++ unwords (map renderPretty exp)
 
       resolveFixities :: [EInfixToken] -> [Term] -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
 
@@ -107,109 +99,85 @@ instance DesugarInfix Term where
 
       -- Invariants:
       -- Every operator below the top operator in the opStack has lower precedence
-      -- Every term below the top term in the tmStack appears earlier in the expression
+      -- Every term below the top term in the tmStack appears earlier in the expression (TODO(mctano) refine this)
+      -- the top tm in the tmstack appears to the left of the tail,
+      -- if the tmStack is not empty, the top op in the tmstack appears directly to the left of the top tm in the tmStack
       -- Everything in opStack and tmStack appears before everything in tail.
-      -- everything in opstack
 
       resolveFixities [] [] [] = error "resolveFixities fixities called with all empty stacks"
+      resolveFixities (op0@(Operator _ Nothing):ops) tms tail = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op0 ++ ". inputs = " ++ dumpStacks (op0:ops) tms tail
+      resolveFixities ops tms (op1@(Operator _ Nothing):tail) = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op1 ++ ". inputs = " ++ dumpStacks ops tms (op1:tail)
+
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] [e] [] = Right e
-      -- when either stack is empty, push the next token to the appropriate stack
-      resolveFixities [] tms (op@(Operator _ _):tail) = resolveFixities [op] tms tail
+      -- when either stack is empty, push the next token to the appropriate stack (unless it is a postfix operator)
+      resolveFixities (op0:ops) [] (op1@(Operator _ _):tail) =
+        case op0 `compare` op1 of
+          GT -> error $ "Can't apply op " ++ renderPretty op0 ++ " without a term to apply it to. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
+          LT -> case fixityOf op1 of
+            Prefix  -> resolveFixities (op1:op0:ops) [] tail
+            Postfix -> error $ "Can't apply postfix op " ++ renderPretty op0 ++ " without a term to apply it to. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
+            _       ->  error $ "Can't apply prefix " ++ renderPretty op0 ++ " without a term on left-hand-side. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
+          EQ -> Left (op0, op1)
+      resolveFixities [] [] (op@(Operator _ _):tail) =
+        case fixityOf op of
+          Postfix -> error $ "Encountered postfix operator in head position. inputs = " ++ dumpStacks [] [] (op:tail)
+          _       -> resolveFixities [op] [] tail
+      -- ("","! True","\\/ : ! : (True)")
+      resolveFixities [] (tm0:tms) (op0@(Operator _ _):tail) =
+        case fixityOf op0 of
+          Postfix -> resolveFixities [] (app1 op0 tm0:tms) tail
+          _       -> resolveFixities [op0] (tm0:tms) tail
       resolveFixities [] tms ((Operand tm):tail) = resolveFixities [] (tm:tms) tail
       resolveFixities ops [] ((Operand tm):tail) = resolveFixities ops [tm] tail
-      resolveFixities ops [] (op@(Operator _ _):tail) = resolveFixities (op:ops) [] tail
+
       -- when top of stack is an operator:
-      resolveFixities (op0:ops) (tm:tms) (op1@(Operator _ _):tail) =
+      resolveFixities (op0:ops) (tm0:tms) (op1@(Operator _ _):tail) =
         case op0 `compare` op1 of
           GT -> case fixityOf op0 of
-                Prefix -> resolveFixities ops (app1 op0 tm: tms) (op1:tail)
+                Prefix -> resolveFixities ops (app1 op0 tm0: tms) (op1:tail)
                 Postfix -> error "TODO Avoid pushing Postfix onto stack"
                 _ -> case tms of
-                      (e:es) -> resolveFixities ops (app2 op0 tm e:es) (op1:tail)
-                      [] -> error $ "TODO Need two operands for " ++ renderPretty op0 ++ ", but there is only one on stack: " ++ renderPretty tm
+                      (e:es) -> resolveFixities ops (app2 op0 e tm0:es) (op1:tail)
+                      []     -> resolveFixities (op1:op0:ops) (tm0:tms) tail
           LT -> case fixityOf op1 of
-                Postfix -> resolveFixities (op0:ops) (app1 op1 tm: tms) tail
-                _ -> resolveFixities (op1:op0:ops) (tm:tms) tail
+                Postfix -> resolveFixities (op0:ops) (app1 op1 tm0: tms) tail
+                _       -> resolveFixities (op1:op0:ops) (tm0:tms) tail
           EQ -> Left (op0, op1)
       -- when top of stack is a term:
       resolveFixities (op0:ops) (tm0:tms) ((Operand tm1):tail) =
         case fixityOf op0 of
-          Prefix -> resolveFixities ops (app1 op0 tm1:tm0:tms) tail
+          Prefix  -> resolveFixities ops (app1 op0 tm1:tm0:tms) tail
           Postfix -> error "TODO Avoid pushing Postfix onto stack"
           -- Is the top argument on the term stack an operand of the current top op?
-          _ -> resolveFixities (op0:ops) (tm1:tm0:tms) tail
+          _       -> resolveFixities (op0:ops) (tm1:tm0:tms) tail
       resolveFixities (op0:ops) (tm0:tms) [] =
         case fixityOf op0 of
           Prefix -> resolveFixities ops (app1 op0 tm0:tms) []
           Postfix -> error "TODO Avoid pushing Postfix onto stack"
           -- Is the top argument on the term stack an operand of the current top op?
           _ -> case tms of
-                      (e:es) -> resolveFixities ops (app2 op0 tm0 e:es) []
-                      [] -> error $ "TODO Need two operands for " ++ renderPretty op0 ++ ", but there is only one on stack: " ++ renderPretty tm0
+                      (e:es) ->  resolveFixities ops (app2 op0 e tm0:es) []
+                      []     -> error $ "TODO Need two operands for " ++ renderPretty op0 ++ ", but there is only one on stack: " ++ renderPretty tm0
 
-      -- resolveFixities [] e (op1@(Operator _ _):(Operand e1):tail) = resolveFixities [op1, Operand e] e1 tail
-      -- -- when right side is empty,
-      -- -- the current term must be an argument to the top operator in the opStack.
-      -- -- and (by invariant) the operator has the highest precedence in the opStack
-      -- -- so, if the operator is infix, it must take e0 and e as operands.
-      -- resolveFixities (op0@(Operator qn (Just fix0)): Operand e0:opStack) e [] =
-      --   -- dubious case (what if another operator was supposed to take precedence over the prefix?)
-      --   case fix0 of
-      --   -- this is actually illegal because popping the operator means we have adjacent terms.
-      --   Fixity Prefix _  ->
-      --     resolveFixities (Operand e0:opStack) (app1 op0 e) []
-      --     -- error "OOPS"
-      --   Fixity Postfix _ -> error $ "Encountered postfix operator " ++ show op0 ++ " in illegal position."
-      --   _                -> resolveFixities opStack (app2 op0 e0 e) []
-
-      -- -- -- happy case
-      -- resolveFixities wholeStack@(op0@(Operator _ (Just fix0)) : Operand e0 : opStack) e wholeTail@(op1@(Operator _ (Just fix2)) : (Operand e1) : op2@(Operator _ (Just fix3)) : tail) =
-      --   -- TODO(mctano) handle pre/postfix
-      --     case op0 `compare` op1 of
-      --             --  - The operator at the top of the opStack binds more tightly than that at the top of the
-      --             --    tail.  In that case, we pop (e0, op0) from the opStack, replace the current expression
-      --             --    with (e0 op0 e), and loop;
-      --             -- TODO(mctano) handle pre/postfix
-      --             GT -> resolveFixities opStack (app2 op0 e0 e) (op1:Operand e1:op2:tail)
-      --             LT -> case op1 `compare` op2 of
-      --                       --  - The operator at the top of the tail binds more tightly than either the operator at
-      --                       --    the top of the opStack or the operator following it in the tail.  In that case, we pop
-      --                       --    (op1, e1) from the tail, replace the current expression with (e op1 e1), and loop;
-      --                       GT -> resolveFixities (op0:Operand e0:opStack) (app2 op1 e e1) (op2:tail)
-      --                       --  - The second operator in the tail binds more tightly than either of the others; in
-      --                       --    that case, we pop (op1, e1) from the tail, push (e, op1) onto the opStack, and loop
-      --                       --    with e1 as the current expression.
-      --                       LT -> resolveFixities (op1:Operand e:op0:Operand e0:opStack) e1 (op2:tail)
-      --                       _  -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op1, op2)
-      --             EQ -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op0, op1)
-
-      -- resolveFixities wholeStack@(op0@(Operator _ _):Operand e0:opStack) e wholeTail@[op1@(Operator qnR fxR), Operand e1] =
-      --   case op0 `compare` op1 of
-      --     -- TODO(mctano) handle pre/postfix
-      --     GT -> resolveFixities opStack (app2 op0 e0 e) [op1, Operand e1]
-      --     LT -> resolveFixities (op0:Operand e0:opStack) (app2 op1 e e1) []
-      --     EQ -> T.trace (show (concatMap renderPretty wholeStack, renderPretty e, concatMap renderPretty wholeTail)) Left (op0, op1)
-
-
-      -- resolveFixities opStack e wholeTail@(Operand e1:tail) = T.trace (show (concatMap renderPretty opStack, renderPretty e, concatMap renderPretty wholeTail)) Left (Operand e, Operand e1)
-      -- resolveFixities (Operand e0:opStack) e tail = error $ "encountered adjacent terms " ++ show e0 ++ ", " ++ show e
-      -- -- resolveFixities ((Operand e0):opStack) e ((Operator qnR fxR):tail) = undefined
       resolveFixities opStack e tail = error $ "unexpected input to resolveFixities: " ++ dumpStacks opStack e tail
 
-      app1 (Operator qn _) = EApp (EVar (-1) qn)
-      app2 (Operator qn _) e0 = EApp (EApp (EVar (-1) qn) e0)
+      app1 (Operator qn _) tm = EApp (EVar (-1) qn) tm
+      app1 e tm               = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
+      app2 (Operator qn _) tm1 tm2 = EApp (EApp (EVar (-1) qn) tm1) tm2
+      app2 e tm1 tm2               = error $ "tried to apply term " ++ show e ++ " to terms " ++ show tm1 ++ " and " ++ show tm2
 
       fixityOf (Operator _ (Just (Fixity fx _))) = fx
-      fixityOf op = error $ "fixityOf called with invalid token " ++ renderPretty op
+      fixityOf op                                = error $ "fixityOf called with invalid token " ++ renderPretty op
 
-      dumpStacks opStack e tail = show (concatMap renderPretty opStack, intercalate " , " $ map renderPretty e, concatMap renderPretty tail)
+      dumpStacks :: [EInfixToken] -> [Term] -> [EInfixToken] -> String
+      dumpStacks opStack e tail = show ( intercalate " : " $ map renderPretty opStack, intercalate " : " $ map renderPretty e,  intercalate " : " $ map renderPretty tail)
 
 
 
-lookFor :: QName -> QName -> Bool
-lookFor [x] (y : ys) = x == y
-lookFor xs ys        = xs == ys
+      lookFor :: QName -> QName -> Bool
+      lookFor [x] (y : ys) = x == y
+      lookFor xs ys        = xs == ys
 
 -- desugar all subterms in the list of operators and operands
 -- this must be called before passing the list of tokens to resolveFixities
