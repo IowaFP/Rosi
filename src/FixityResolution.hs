@@ -93,16 +93,17 @@ instance DesugarInfix Term where
 
       resolveFixities :: [EInfixToken] -> [Term] -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
 
-      -- Based on Garrett's algorithm from habit/alb
+      -- Based on Garrett's algorithm from habit/alb, generalized to allow for prefix and postfix operators.
+      -- The presence of prefix and postfix operators means we can't assume that the expression consists of alternating operators and subterms.
 
       -- TODO(mctano) Do prefix/postfix operators mean we might have adjacent terms after eliminating them? And does that mean I'll have to do a round of application resolution after all this?
 
       -- Invariants:
       -- Every operator below the top operator in the opStack has lower precedence
-      -- Every term below the top term in the tmStack appears earlier in the expression (TODO(mctano) refine this)
-      -- the top tm in the tmstack appears to the left of the tail,
-      -- if the tmStack is not empty, the top op in the tmstack appears directly to the left of the top tm in the tmStack
-      -- Everything in opStack and tmStack appears before everything in tail.
+      -- Every term below the top term in the tmStack appears to the left
+      -- the top tm in the tmstack appears to the left of the tail
+      -- if the tmStack is not empty, the top op in the opStack appears directly to the left of the top tm in the tmStack
+      -- Everything in opStack and tmStack appears to the left of everything in tail.
 
       resolveFixities [] [] [] = error "resolveFixities fixities called with all empty stacks"
       resolveFixities (op0@(Operator _ Nothing):ops) tms tail = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op0 ++ ". inputs = " ++ dumpStacks (op0:ops) tms tail
@@ -131,7 +132,7 @@ instance DesugarInfix Term where
       resolveFixities [] tms ((Operand tm):tail) = resolveFixities [] (tm:tms) tail
       resolveFixities ops [] ((Operand tm):tail) = resolveFixities ops [tm] tail
 
-      -- when top of stack is an operator:
+      -- when head of tail is an operator:
       resolveFixities (op0:ops) (tm0:tms) (op1@(Operator _ _):tail) =
         case op0 `compare` op1 of
           GT -> case fixityOf op0 of
@@ -149,13 +150,11 @@ instance DesugarInfix Term where
         case fixityOf op0 of
           Prefix  -> resolveFixities ops (app1 op0 tm1:tm0:tms) tail
           Postfix -> error "TODO Avoid pushing Postfix onto stack"
-          -- Is the top argument on the term stack an operand of the current top op?
           _       -> resolveFixities (op0:ops) (tm1:tm0:tms) tail
       resolveFixities (op0:ops) (tm0:tms) [] =
         case fixityOf op0 of
           Prefix -> resolveFixities ops (app1 op0 tm0:tms) []
           Postfix -> error "TODO Avoid pushing Postfix onto stack"
-          -- Is the top argument on the term stack an operand of the current top op?
           _ -> case tms of
                       (e:es) ->  resolveFixities ops (app2 op0 e tm0:es) []
                       []     -> error $ "Expected two operands for " 
