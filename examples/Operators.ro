@@ -47,16 +47,39 @@ ex_15 = 1 + 2 + 3 + 4 + 5
 
 prefix 1 !
 prefix 2 !!
+prefix 3 !!!
 postfix 1 $
 postfix 2 $$
+postfix 3 $$$
+prefix 1 %
+prefix 2 %%
+prefix 3 %%%
 
 (!) = Ro.Base.not
 (!!) = not
+(!!!) = not
 (/\) = Ro.Base.and
 (\/) = Ro.Base.or
 
-($) = id
-($$) = id
+(==>) p q = ! p \/ q
+
+infixl 6 /\
+infixl 6 \/
+infixr 4 ==>
+
+($) : Bool -> Nat
+($) = 'True: u -> 1
+    | 'False: u -> 0
+($$) = ($)
+($$$) = ($$)
+
+natToBool : Nat -> Bool
+natToBool = 'Succ: u -> True 
+          | 'Zero: u -> False
+
+(%) = natToBool
+(%%) = natToBool
+(%%%) = natToBool
 
 -- TODO(mctano) examples with (==>) to test order of application for asymmetric operators
 
@@ -66,6 +89,10 @@ ex_T3 = ! ! ! False
 ex_T4 = ! ! ! ! True
 ex_T5 = True /\ False \/ True
 ex_T6 = !False \/ !True
+ex_T7 = True ==> True
+ex_T8 = True ==> False ==> True ==> False
+ex_T9 = False ==> True
+ex_T10 = False ==> False
 
 ex_F1 = ! True
 ex_F2 = ! ! False
@@ -73,11 +100,19 @@ ex_F3 = ! ! ! True
 ex_F4 = ! ! ! ! False
 ex_F5 = False \/ True /\ False
 ex_F6 = ! True \/ ! True
+ex_F7 = True ==> True \/ False ==> False
+ex_F8 = True ==> True ==> True ==> False
+ex_F9 = True ==> ! False ==> ! True
+ex_F10 = ! False ==> ! True /\ ! False
 
--- these are unparsable if precedences are equal.
-ex_adjacent_pre_post1 = ! True $$
-ex_adjacent_pre_post2 = !! True $
-ex_adjacent_pre_post3 = ! (True $$)
-ex_adjacent_pre_post4 = (! True) $
+-- these won't typecheck if precedence isn't resolved correctly
+-- TODO(mctano) Which is correct?
+-- (!!! (% ((!!! True) $$))) -- actual behavior
+-- ((!!! % (!!! True)) $$) -- if we somehow have to compare !!! against $$, despite % appearing between them.
+ex_adjacent_pre_post1 = (!!! (% ((!!! True) $$)))
+ex_adjacent_pre_post2 = ! ! (% ((%%% 1) $$))
+ex_adjacent_pre_post3 = ! % %%% 0 $$
+ex_adjacent_pre_post4 = (!! ! %% True $$$)
 
 -- TODO(mctano) examples which result in adjacent expressions.
+-- ex_adjacent_pre_post3 = ! ((+) 1) %%% 0 $$
