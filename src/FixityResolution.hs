@@ -158,7 +158,13 @@ instance DesugarInfix Term where
           -- Is the top argument on the term stack an operand of the current top op?
           _ -> case tms of
                       (e:es) ->  resolveFixities ops (app2 op0 e tm0:es) []
-                      []     -> error $ "TODO Need two operands for " ++ renderPretty op0 ++ ", but there is only one on stack: " ++ renderPretty tm0
+                      []     -> error $ "Expected two operands for " 
+                                      ++ renderPretty op0 
+                                      ++ ", but there is only one on stack: " 
+                                      ++ renderPretty tm0
+                                      ++ "\n (If you expect " 
+                                      ++ renderPretty op0 
+                                      ++ " to be unary, make sure its fixity was declared."
 
       resolveFixities opStack e tail = error $ "unexpected input to resolveFixities: " ++ dumpStacks opStack e tail
 
