@@ -1,6 +1,6 @@
 import Ro.Base, Data.List, Data.Nat
 
-($$) a b = a ++ b
+($++$) a b = a ++ b
 
 f = id
 
@@ -24,14 +24,14 @@ infixl 7 *
 
 infixl 5 -
 
--- res = f ('hello := f "hello") $$ f (f 'world := "world")
+res = f ('hello := f "hello") $++$ f (f 'world := "world")
 
--- hello_world = "hello" `Data.List.cons` "world" :: nil
+hello_world = "hello" `Data.List.cons` "world" :: nil
 
 
 ex_1 = (6 + (5 - 4) - 1) // 6
 ex_2 = 7 // 7 + 6 // 6
-ex_3 = 6 + 3 - (4 - 1)
+ex_3 = 6 + 4 - 3 - 1
 ex_4 = (4 + 4) // 2
 ex_5 = 7 * 0 + 5 * 1
 ex_6 = 20 - 7 * 2
@@ -45,16 +45,20 @@ ex_13 = 7 * 3 // 2 + 1 * 2 + 1
 ex_14 =  7 * 7 // 7 + 7
 ex_15 = 1 + 2 + 3 + 4 + 5
 
--- TODO(mctano) Examples to test prefix/postfix operators
-
 prefix 1 !
+prefix 2 !!
 postfix 1 $
+postfix 2 $$
 
 (!) = Ro.Base.not
+(!!) = not
 (/\) = Ro.Base.and
 (\/) = Ro.Base.or
 
 ($) = id
+($$) = id
+
+-- TODO(mctano) examples with (==>) to test order of application for asymmetric operators
 
 ex_T1 = ! False
 ex_T2 = ! ! True
@@ -67,8 +71,13 @@ ex_F1 = ! True
 ex_F2 = ! ! False
 ex_F3 = ! ! ! True
 ex_F4 = ! ! ! ! False
-ex_F5 = False /\ False \/ True
-ex_F6 = ! True \/ False
+ex_F5 = False \/ True /\ False
+ex_F6 = ! True \/ ! True
 
--- unparsable
--- ex_adjacent_pre_post = ! True $
+-- these are unparsable if precedences are equal.
+ex_adjacent_pre_post1 = ! True $$
+ex_adjacent_pre_post2 = !! True $
+ex_adjacent_pre_post3 = ! (True $$)
+ex_adjacent_pre_post4 = (! True) $
+
+-- TODO(mctano) examples which result in adjacent expressions.
