@@ -114,5 +114,17 @@ ex_adjacent_pre_post2 = ! ! (% ((%%% 1) $$))
 ex_adjacent_pre_post3 = ! % %%% 0 $$
 ex_adjacent_pre_post4 = (!! ! %% True $$$)
 
--- TODO(mctano) examples which result in adjacent expressions.
--- ex_adjacent_pre_post3 = ! ((+) 1) %%% 0 $$
+-- TODO(mctano) confirm how we want to handle examples which result in adjacent expressions.
+-- alternate example: ((+) 1) %%% 0 $$
+-- ex_adjacent_exprs = f %%% 0 $$
+-- f %%% 0 $$
+-- f ((%%%) 0) $$ -- now that ((%%%) 0) is an expression, we could apply f to it.
+  -- option a: keep going with operator resolution on rhs
+    -- f (((%%%) 0) $$)
+    -- then apply adjacent expressions at the end
+    -- (f (((%%%) 0) $$))
+  -- option b: now that we have adjacent expressions, apply them.
+    -- (f ((%%%) 0)) $$
+    -- then continue with operator resolution
+    -- (($$) (f ((%%%) 0)) )
+  -- option c: reject this as invalid (current behavior)
