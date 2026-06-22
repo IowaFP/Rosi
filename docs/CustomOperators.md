@@ -1,4 +1,4 @@
-# Programmer Defined Operators
+# Custom Operators
 
 ## Operator definitions
 
