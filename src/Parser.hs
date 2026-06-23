@@ -435,8 +435,9 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
                  , buildNumber <$> number
                  , EStringLit <$> stringLit
                  , do symbol "("
-                      t <- do ts <- commaSep1 term
+                      t <- do ts <- commaSep term
                               case (ts, mapM labeledTerm ts) of
+                                 ([], _)            -> return (EVar (-1) (reverse ["Ro", "Base", "tt"]))
                                  ([t], _)           -> return t
                                  (_, Just (t : ts)) -> return (foldl (\t1 t2 -> EApp (EApp (EConst CConcat) t1) t2) t ts)
                                  (_, Nothing)       -> unexpected $ Label (fromList "unlabeled term")
