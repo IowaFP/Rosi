@@ -1,6 +1,6 @@
 import Ro.Base, Data.List, Data.Nat
 
-($$) a b = a ++ b
+($++$) a b = a ++ b
 
 f = id
 
@@ -24,14 +24,14 @@ infixl 7 *
 
 infixl 5 -
 
-res = f ('hello := f "hello") $$ f (f 'world := "world")
+res = f ('hello := f "hello") $++$ f (f 'world := "world")
 
 hello_world = "hello" `Data.List.cons` "world" :: nil
 
 
 ex_1 = (6 + (5 - 4) - 1) // 6
 ex_2 = 7 // 7 + 6 // 6
-ex_3 = 6 + 3 - (4 - 1)
+ex_3 = 6 + 4 - 1 - 4 + 1 - 3
 ex_4 = (4 + 4) // 2
 ex_5 = 7 * 0 + 5 * 1
 ex_6 = 20 - 7 * 2
@@ -45,16 +45,43 @@ ex_13 = 7 * 3 // 2 + 1 * 2 + 1
 ex_14 =  7 * 7 // 7 + 7
 ex_15 = 1 + 2 + 3 + 4 + 5
 
--- TODO(mctano) Examples to test prefix/postfix operators
-
 prefix 1 !
+prefix 2 !!
+prefix 3 !!!
 postfix 1 $
+postfix 2 $$
+postfix 3 $$$
+prefix 1 %
+prefix 2 %%
+prefix 3 %%%
 
 (!) = Ro.Base.not
+(!!) = not
+(!!!) = not
 (/\) = Ro.Base.and
 (\/) = Ro.Base.or
 
-($) = id
+(==>) p q = ! p \/ q
+
+infixl 6 /\
+infixl 6 \/
+infixr 4 ==>
+
+($) : Bool -> Nat
+($) = 'True: u -> 1
+    | 'False: u -> 0
+($$) = ($)
+($$$) = ($$)
+
+natToBool : Nat -> Bool
+natToBool = 'Succ: u -> True 
+          | 'Zero: u -> False
+
+(%) = natToBool
+(%%) = natToBool
+(%%%) = natToBool
+
+-- TODO(mctano) examples with (==>) to test order of application for asymmetric operators
 
 ex_T1 = ! False
 ex_T2 = ! ! True
@@ -62,13 +89,43 @@ ex_T3 = ! ! ! False
 ex_T4 = ! ! ! ! True
 ex_T5 = True /\ False \/ True
 ex_T6 = !False \/ !True
+ex_T7 = True ==> True
+ex_T8 = True ==> False ==> True ==> False
+ex_T9 = False ==> True
+ex_T10 = False ==> False
 
 ex_F1 = ! True
 ex_F2 = ! ! False
 ex_F3 = ! ! ! True
 ex_F4 = ! ! ! ! False
-ex_F5 = False /\ False \/ True
-ex_F6 = ! True \/ False
+ex_F5 = False \/ True /\ False
+ex_F6 = ! True \/ ! True
+ex_F7 = True ==> True \/ False ==> False
+ex_F8 = True ==> True ==> True ==> False
+ex_F9 = True ==> ! False ==> ! True
+ex_F10 = ! False ==> ! True /\ ! False
 
--- unparsable
--- ex_adjacent_pre_post = ! True $
+-- these (probably) won't typecheck if precedence isn't resolved correctly
+-- TODO(mctano) Confirm this is the behavior we want for multiple prefix and postfix.
+-- !!! (% ((!!! True) $$)) -- actual behavior
+-- (!!! (% (!!! True))) $$ -- if we somehow have to compare !!! against $$, despite % appearing between them.
+ex_adjacent_pre_post1 = (!!! (% ((!!! True) $$)))
+ex_adjacent_pre_post2 = ! ! (% ((%%% 1) $$))
+ex_adjacent_pre_post3 = ! % %%% 0 $$
+ex_adjacent_pre_post4 = (!! ! %% True $$$)
+
+-- TODO(mctano) confirm how we want to handle examples which result in adjacent expressions.
+-- alternate example:
+-- ex_adjacent_exprs = ((+) 1) %%% 0 $$
+-- ex_adjacent_exprs = f %%% 0 $$
+-- f %%% 0 $$
+-- f ((%%%) 0) $$ -- now that ((%%%) 0) is an expression, we could apply f to it.
+  -- option a: keep going with operator resolution on rhs
+    -- f (((%%%) 0) $$)
+    -- then apply adjacent expressions at the end
+    -- (f (((%%%) 0) $$))
+  -- option b: now that we have adjacent expressions, apply them.
+    -- (f ((%%%) 0)) $$
+    -- then continue with operator resolution
+    -- (($$) (f ((%%%) 0)) )
+  -- option c: reject this as invalid (current behavior)

@@ -506,7 +506,6 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
   buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
 
 data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixityDecl Fixity
-
   deriving (Data, Eq, Show, Typeable)
 
 data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKeyword
@@ -589,6 +588,8 @@ defns moduleNames tls
           go seen [] = []
           go seen (("", _) : tls) =
             go seen tls
+          -- skip fixity declarations so we don't get scope errors later.
+          go seen ((x, FixityDecl _) : tls) = go seen tls
           go seen ((x, _) : tls)
             | x `elem` seen = go seen tls
             | otherwise = x : go (x : seen) tls
