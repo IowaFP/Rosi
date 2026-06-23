@@ -58,36 +58,25 @@ infixr 3 `cons`
 
 ## Precedence Rules
 
-- Prefix and postfix operators always take precedence over infix operators.
-- Associativity applies when two `infixr` or `infixl` expressions have the same precedence level.
-- The precedence level for `prefix` and `postfix` operators only matters when an expression appears between a prefix and postfix operator.
+- Left or right associativity applies when two `infixr` or `infixl` expressions have the same precedence level.
+
+
+
+- A prefix always binds tighter than an infix to its left, and vice versa for postfix. So, in `P \/ ! Q`, `!` must apply to `Q`, even if `\/` has higher precedence, but in `! P \/ Q`, the relative precedence determines whether it's `(! P) \/ Q` or `! (P \/ Q)`.
+
 - Expressions containing ambiguous combinations of operators will be rejected. This includes:
   - An expression between a `prefix` and `postfix` operator of the same precedence.
   - An expression between a `infixl` and `infixr` operator of the same precedence.
   - An expression between two `infix` operators of the same precedence.
-  - Expressions involving `prefix` and `postfix` operators which, after applying the operators, contain adjacent expressions. e.g.
 
-    ```
-    -- $ is a prefix operator which stands for the identity function
-    prefix 5 $
-    ($) : a -> a
-    ($) = id
-    
-    -- not allowed
-    $ f $ g
-
-    -- okay
-    ($ f) ($ g)
-    ```
-
-- When multiple `prefix` operators appear in front of an expression, and multiple `postfix` operators appear after, they are resolved from the inside out, even if the outer operators have higher precedence than the ones of the same fixity.
-  For this example, assume that `$`, `$$`, and `$$$` are `prefix` with precedence 1, 2, and 3, respectively, and the corresponding `%`, `%%`, and `%%%` operators are likewise `postfix`.
+- When one or more `prefix` operators appear in front of an expression, and one or more `postfix` operators appear after, they are resolved from the inside out, even if the outer operators have higher precedence than the inner ones of the same fixity.
+In this example, assume that `$`, `$$`, and `$$$` are `prefix`, while `%`, `%%`, and `%%%` are `postfix`, with each set having precedences 1, 2, and 3, respectively.
   
-  ```
-    -- first we compare $ with %%. %% has higher precedence
-    $$$ $ x %%
-    -- then we apply the innermost prefix operator.
-    $$$ ($ (x %%))
-    -- then finally the remaining prefix operator.
-    ($$$ ($ (x %%)))
-  ```
+```
+  -- first we compare $ with %%. %% has higher precedence
+  $$$ $ x %%
+  -- then we apply the innermost prefix operator.
+  $$$ ($ (x %%))
+  -- then finally the remaining prefix operator.
+  ($$$ ($ (x %%)))
+```

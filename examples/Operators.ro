@@ -114,7 +114,7 @@ ex_T2 = True \/ False <<< -- if <<< binds loosely, False. if <<< binds tightly, 
 ex_T3 = True ==> True <<< <<
 ex_T4 = True ==> True << <<<
 ex_T5 = True /\ False \/ True
-ex_T6 = !False \/ !True
+ex_T6 = ! False \/ ! True
 ex_T7 = ! ! False || True
 ex_T8 = True ==> False ==> True ==> False
 ex_T9 = True ==> False <<
@@ -140,8 +140,6 @@ ex_adjacent_pre_post2 = ! ! (% ((%%% 1) $$))
 ex_adjacent_pre_post3 = ! % %%% 0 $$
 ex_adjacent_pre_post4 = (!! ! %% True $$$)
 
--- TODO(mctano) confirm how we want to handle examples which result in adjacent expressions.
-
 
 swap = \f. (\a b. f b a)
 (<->*) = swap
@@ -150,8 +148,8 @@ swap = \f. (\a b. f b a)
 prefix 11 <->*
 postfix 11 *<->
 
--- ex_adjacent_exprs1 = <->* cons "a" "b" -- "ba"
--- ex_adjacent_exprs2 = cons *<-> "a" "b" -- "ba"
+ex_adjacent_exprs1 = f <->* (^) "a" "b" -- "ba"
+ex_adjacent_exprs2 = (^) *<-> "a" "b" -- "ba"
 
 
 

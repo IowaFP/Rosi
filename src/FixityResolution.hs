@@ -8,6 +8,7 @@ import Data.List     (intercalate)
 import Printer       (renderPretty)
 import Syntax
 import qualified Debug.Trace as T
+import Data.List.NonEmpty (nonEmpty)
 
 class DesugarInfix a where
   desugarInfix :: FixityMap -> a -> a
@@ -30,7 +31,7 @@ instance Ord Fixity where
   -- thus adjacent postfixes associate left, regardless of precedence level
   compare (Fixity Postfix _) (Fixity _ _) = GT
   
-  -- if fixity or associativity is mixed, or if both are non-associative, we use the precedence level
+  -- otherwise, we use the precedence level
   -- (equal precedence is ambiguous)
   compare (Fixity _ l0) (Fixity _ l1) = compare l0 l1
 
@@ -58,11 +59,18 @@ instance DesugarInfix Term where
   desugarInfix fixMap (EHole s)           = EHole s
 
                                           -- we make the recursive call to desugar subterms before collecting and resolving fixities
-  desugarInfix fixMap (EInfix _ops)        = (resolveFixitiesF . collectFixities . desugarInfix fixMap) _ops
+  desugarInfix fixMap (EInfix _ops)        = (resolveFixitiesF . padWithApply . collectFixities . desugarInfix fixMap) _ops
     where
       collectFixities :: [EInfixToken] -> [EInfixToken]
       collectFixities = map (\ case (Operand e) -> Operand e
-                                    (Operator qn _) -> Operator qn (Just (lookupFixity qn)))
+                                    (Operator qn Nothing) -> Operator qn (Just (lookupFixity qn))
+                                    (Operator qn (Just fx)) -> Operator qn (Just fx)
+                            )
+
+      padWithApply [] = []
+      padWithApply (Operand tm:op@(Operator _ (Just (Fixity Prefix _))):xs) = Operand tm:explicitApp:op:padWithApply xs
+      padWithApply (op@(Operator _ (Just (Fixity Postfix _))):Operand tm:xs) = op:explicitApp:padWithApply (Operand tm:xs)
+      padWithApply (x:xs) = x:padWithApply xs
 
       lookupFixity :: QName -> Fixity
       lookupFixity qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
@@ -83,11 +91,11 @@ instance DesugarInfix Term where
                                               ++ "] in "
                                               ++ unwords (map renderPretty exp)
                                     Left (Operand e1, Operand e2) -> error $ "resolving infix operators resulted in adjacent expressions ("
-                                                                           ++ renderPretty e1
+                                                                           ++ show e1
                                                                            ++ ") and ("
                                                                            ++ renderPretty e2
                                                                            ++ ") in the context of the expression "
-                                                                           ++ unwords (map renderPretty exp)
+                                                                           ++ unwords (map show exp)
                                                                            ++ ". Use parentheses around adjacent expressions to avoid ambiguity."
                                     Left (op1, op2) -> error $ "resolveFixities tried to compare precedence between "
                                                             ++ show op1
@@ -118,11 +126,7 @@ instance DesugarInfix Term where
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] [e] [] = Right e
 
-
-      -- when head of tail is a term, and top of opStack is postfix, apply the op to the tmStack
-      resolveFixities (op0@(Operator _ (Just (Fixity Postfix _))):ops) tmStack tail = resolveFixities ops (applyOp op0 tmStack) tail
-
-      -- otherwise, when head of tail is a term, push it on the term stack.
+      -- when head of tail is a term, push it on the term stack.
       resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
 
       -- when opStack is empty, and head of tail is an operator, push it on opStack
@@ -143,6 +147,8 @@ instance DesugarInfix Term where
 
       app1 (Operator qn _) tm = EApp (EVar (-1) qn) tm
       app1 e tm               = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
+      -- eliminate explicit application
+      app2 (Operator ["__Apply"] _) tm1 tm2 = EApp tm1 tm2
       app2 (Operator qn _) tm1 tm2 = EApp (EApp (EVar (-1) qn) tm1) tm2
       app2 e tm1 tm2               = error $ "tried to apply term " ++ show e ++ " to terms " ++ show tm1 ++ " and " ++ show tm2
 

@@ -134,7 +134,7 @@ identifier  =
      if s `elem` keywords
      then unexpected $ Label (fromList "reserved word")
      else return s
-  where keywords = ["let", "in", "forall", "infixl", "infixr", "infix", "prefix", "postfix"]
+  where keywords = ["let", "in", "forall", "infixl", "infixr", "infix", "prefix", "postfix", "__Apply"]
 
 lidentifier :: Parser String
 lidentifier =
@@ -415,7 +415,7 @@ term = prefixes typedTerm where
 
   catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
-  infixExpr =  eliminateTrivial . EInfix <$> some (try (Operand <$> appTerm) <|> try ((`Operator` Nothing) <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
+  infixExpr =  eliminateTrivial . EInfix . concat <$> some (try appTerm <|> try (singleton . (`Operator` Nothing) <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
     where
           -- Not everything needs to be an EInfix.
           eliminateTrivial (EInfix [Operand tm]) = tm
@@ -424,16 +424,17 @@ term = prefixes typedTerm where
 
 data AppTerm = Type Ty | Term Term | Op String
 
-appTerm :: Parser Term
+appTerm :: Parser [EInfixToken]
 appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
-             app t ts where
+             app (t:ts) where
 
   -- TODO(mctano) resolve operators
-  app :: AppTerm -> [AppTerm] -> Parser Term
-  app (Term t) []            = return t
-  app (Type _) _             = unexpected (Label $ fromList "type argument")
-  app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
-  app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
+  app :: [AppTerm] -> Parser [EInfixToken]
+  app [Term t]          = return [Operand t]
+  app (Type _:_)             = unexpected (Label $ fromList "type argument")
+  app (Term t:Term u : ts) = (Operand t:) . (explicitApp:) <$> app (Term u:ts)
+
+  app (Term t:Type u : ts) = app (Term (EInst t (Known [TyArg u])):ts)
 
   goal s = Goal . (s,) <$> newIORef Nothing
 
@@ -623,7 +624,7 @@ defns moduleNames tls
                     | otherwise -> fail $ "too many kind signatures for " ++ x
                   ([], [], [], [], _) -> fail $ "no definition for " ++ x
                   r -> fail $ "too much definition of " ++ x
-        
+
         moduleName = intercalate "." (reverse moduleNames)
 
 

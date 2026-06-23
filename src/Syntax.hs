@@ -403,6 +403,10 @@ data Const =
 data EInfixToken = Operator [String] (Maybe Fixity) | Operand Term
   deriving (Data, Eq, Show, Typeable)
 
+explicitApp :: EInfixToken
+explicitApp = Operator ["__Apply"] (Just (Fixity InfixL 10))
+
+
 data Term =
     EVar Int QName | ELam String (Maybe Ty) Term | EApp Term Term
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
