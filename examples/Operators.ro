@@ -34,6 +34,8 @@ infixl 5 -
 -- (<>) : Nat -> Nat
 -- (<>) n = 0
 
+-- infixr 1 $++$
+
 res = f ('hello := f "hello") $++$ f (f 'world := "world")
 
 hello_world = "hello" :: "world" :: nil
@@ -139,20 +141,19 @@ ex_adjacent_pre_post3 = ! % %%% 0 $$
 ex_adjacent_pre_post4 = (!! ! %% True $$$)
 
 -- TODO(mctano) confirm how we want to handle examples which result in adjacent expressions.
--- alternate example:
--- ex_adjacent_exprs = ((+) 1) %%% 0 $$
--- ex_adjacent_exprs = f %%% 0 $$
--- f %%% 0 $$
--- f ((%%%) 0) $$ -- now that ((%%%) 0) is an expression, we could apply f to it.
-  -- option a: keep going with operator resolution on rhs
-    -- f (((%%%) 0) $$)
-    -- then apply adjacent expressions at the end
-    -- (f (((%%%) 0) $$))
-  -- option b: now that we have adjacent expressions, apply them.
-    -- (f ((%%%) 0)) $$
-    -- then continue with operator resolution
-    -- (($$) (f ((%%%) 0)) )
-  -- option c: reject this as invalid (current behavior)
+
+
+swap = \f. (\a b. f b a)
+(<->*) = swap
+(*<->) = swap
+
+prefix 11 <->*
+postfix 11 *<->
+
+-- ex_adjacent_exprs1 = <->* cons "a" "b" -- "ba"
+-- ex_adjacent_exprs2 = cons *<-> "a" "b" -- "ba"
+
+
 
 -- exponent
 (**) : Nat -> Nat -> Nat
