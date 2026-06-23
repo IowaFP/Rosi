@@ -24,9 +24,24 @@ infixl 7 *
 
 infixl 5 -
 
+-- declaring :: as left-associating breaks uses without parentheses
+-- infixl 5 ::
+
+-- (::) = Data.List.cons
+
+-- prefix 1 <>
+
+-- (<>) : Nat -> Nat
+-- (<>) n = 0
+
 res = f ('hello := f "hello") $++$ f (f 'world := "world")
 
-hello_world = "hello" `Data.List.cons` "world" :: nil
+hello_world = "hello" :: "world" :: nil
+
+-- try_add_with_football = cons 1 5
+-- try_list_concat = cons nil nil
+
+-- z = <> 5
 
 
 ex_1 = (6 + (5 - 4) - 1) // 6
@@ -45,27 +60,38 @@ ex_13 = 7 * 3 // 2 + 1 * 2 + 1
 ex_14 =  7 * 7 // 7 + 7
 ex_15 = 1 + 2 + 3 + 4 + 5
 
-prefix 1 !
-prefix 2 !!
-prefix 3 !!!
-postfix 1 $
-postfix 2 $$
-postfix 3 $$$
-prefix 1 %
-prefix 2 %%
-prefix 3 %%%
+prefix 7 !
+prefix 8 !!
+prefix 9 !!!
+postfix 7 $
+postfix 8 $$
+postfix 9 $$$
+prefix 7 %
+prefix 8 %%
+prefix 9 %%%
 
 (!) = Ro.Base.not
 (!!) = not
 (!!!) = not
 (/\) = Ro.Base.and
 (\/) = Ro.Base.or
+(&&) = Ro.Base.and
+(||) = Ro.Base.or
 
-(==>) p q = ! p \/ q
+(==>) p q = (! p) \/ q
 
 infixl 6 /\
+infixl 9 || -- or with highest precedence
 infixl 6 \/
+infixl 9 && -- and with highest precedence
 infixr 4 ==>
+
+postfix 1 << -- loosely binding postfix negation
+postfix 9 <<< -- tightly binding postfix negation
+
+(<<) = not
+(<<<) = not
+
 
 ($) : Bool -> Nat
 ($) = 'True: u -> 1
@@ -81,29 +107,27 @@ natToBool = 'Succ: u -> True
 (%%) = natToBool
 (%%%) = natToBool
 
--- TODO(mctano) examples with (==>) to test order of application for asymmetric operators
-
 ex_T1 = ! False
-ex_T2 = ! ! True
-ex_T3 = ! ! ! False
-ex_T4 = ! ! ! ! True
+ex_T2 = True \/ False <<< -- if <<< binds loosely, False. if <<< binds tightly, True
+ex_T3 = True ==> True <<< <<
+ex_T4 = True ==> True << <<<
 ex_T5 = True /\ False \/ True
 ex_T6 = !False \/ !True
-ex_T7 = True ==> True
+ex_T7 = ! ! False || True
 ex_T8 = True ==> False ==> True ==> False
-ex_T9 = False ==> True
-ex_T10 = False ==> False
+ex_T9 = True ==> False <<
+ex_T10 = True ==> False <<<
 
 ex_F1 = ! True
-ex_F2 = ! ! False
-ex_F3 = ! ! ! True
-ex_F4 = ! ! ! ! False
+ex_F2 = ! False <<
+ex_F3 = True ==> False << <<<
+ex_F4 = True \/ False << -- if << binds loosely, False. if << binds tightly, True
 ex_F5 = False \/ True /\ False
-ex_F6 = ! True \/ ! True
+ex_F6 = ! True || ! False
 ex_F7 = True ==> True \/ False ==> False
-ex_F8 = True ==> True ==> True ==> False
-ex_F9 = True ==> ! False ==> ! True
-ex_F10 = ! False ==> ! True /\ ! False
+ex_F8 = ! False || True
+ex_F9 = True ==> ! False ==> ! True || True
+ex_F10 = ! False ==> ! True || ! False
 
 -- these (probably) won't typecheck if precedence isn't resolved correctly
 -- TODO(mctano) Confirm this is the behavior we want for multiple prefix and postfix.
@@ -129,3 +153,23 @@ ex_adjacent_pre_post4 = (!! ! %% True $$$)
     -- then continue with operator resolution
     -- (($$) (f ((%%%) 0)) )
   -- option c: reject this as invalid (current behavior)
+
+-- exponent
+(**) : Nat -> Nat -> Nat
+(**) = fix (\exp x. 
+    ('Zero: m -> 1
+    |'Succ: m -> x * (exp x m))
+  )
+
+infixl 9 **
+
+(&) : Nat -> Nat
+(&) = mult 3
+
+prefix 1 &
+
+exp_1 = 2**0
+exp_2 = 2**1
+exp_4 = 2**2
+exp_8 = 2**3 -- 8
+exp_24 = & 2**3

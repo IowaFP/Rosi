@@ -7,6 +7,7 @@ import Data.Foldable (find)
 import Data.List     (intercalate)
 import Printer       (renderPretty)
 import Syntax
+import qualified Debug.Trace as T
 
 class DesugarInfix a where
   desugarInfix :: FixityMap -> a -> a
@@ -16,23 +17,20 @@ instance Ord EInfixToken where
   compare l r                                               = error $ "tried to compare invalid arguments " ++ show l ++ ", " ++ show r
 
 instance Ord Fixity where
-  -- postfix should never appear on lhs side
-  compare (Fixity Postfix _) (Fixity _ _) = error "SHOULDN'T GET HERE"
-  -- (if both are prefix and one is after, we must handle the inner prefix operator first
-  compare (Fixity Prefix _) (Fixity Prefix _)  = LT
-  -- if we have a prefix before and a postfix after, (! x $) use precedence.
-  -- (we assume that `... ! $ ...` has been ruled out before here).
-  compare (Fixity Prefix l0) (Fixity Postfix l1) = compare l0 l1
-  -- otherwise, postfix on rhs always binds more tightly than infix
-  compare (Fixity _ _) (Fixity Postfix _)  = LT
-  -- and prefix (on either side) always binds more tightly than infix
-  compare (Fixity _ _) (Fixity Prefix _)  = LT
-  compare (Fixity Prefix _) (Fixity _ _)  = GT
-
   -- associativity applies when infix level is equal
   compare (Fixity InfixL l0) (Fixity InfixL l1) | l0 == l1 = GT
   compare (Fixity InfixR l0) (Fixity InfixR l1) | l0 == l1 = LT
-  -- if infix associativity is mixed, or both are non-associative, we use the precedence level
+
+  -- prefix on the right binds tight
+  -- thus adjacent prefixes associate right, regardless of precedence level
+  -- consider that in (P \/ ! Q), the ! must apply to  Q, even if \/ has higher precedence
+  compare (Fixity _ _) (Fixity Prefix _)  = LT
+
+  -- similarly, postfix on the left binds tight
+  -- thus adjacent postfixes associate left, regardless of precedence level
+  compare (Fixity Postfix _) (Fixity _ _) = GT
+  
+  -- if fixity or associativity is mixed, or if both are non-associative, we use the precedence level
   -- (equal precedence is ambiguous)
   compare (Fixity _ l0) (Fixity _ l1) = compare l0 l1
 
@@ -101,7 +99,6 @@ instance DesugarInfix Term where
       resolveFixities :: [EInfixToken] -> [Term] -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
 
       -- Based on Garrett's algorithm from habit/alb and Djikstra's shunting yard algorithm,
-      -- generalized to allow for prefix and postfix operators.
       -- The presence of prefix and postfix operators means we can't assume that the expression consists of alternating operators and subterms.
 
       -- Invariants:
@@ -109,6 +106,7 @@ instance DesugarInfix Term where
       -- Every term below the top term in the tmStack appears to its left
       -- Everything in opStack and tmStack appears to the left of everything in tail.
 
+      -- resolveFixities a b c | T.trace (dumpStacks a b c) False = undefined
       -- error cases. Should be unreachable.
       resolveFixities [] [] [] = error "resolveFixities fixities called with all empty stacks"
       resolveFixities (op0@(Operator _ Nothing):ops) tms tail = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op0 ++ ". inputs = " ++ dumpStacks (op0:ops) tms tail
@@ -123,35 +121,20 @@ instance DesugarInfix Term where
       -- when head of tail is a term, push it on the term stack.
       resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
 
-      -- when opStack is empty, and head of tail is an operator:
-        -- if it postfix, apply it to top of tmStack
-        -- otherwise, push it on opStack
-      resolveFixities [] tms (op1@(Operator _ _):tail) =
-        case fixityOf op1 of
-          Postfix -> resolveFixities [] (applyOp op1 tms) tail
-          _       -> resolveFixities [op1] tms tail
+      -- when opStack is empty, and head of tail is an operator, push it on opStack
+      resolveFixities [] tms (op1@(Operator _ _):tail) = resolveFixities [op1] tms tail
 
-      -- when tail is empty, pop from the opstack and apply to the top term (if prefix) or 2 terms (if infix)
-      resolveFixities (op0:ops) tmStack [] =
-        case fixityOf op0 of
-          Postfix -> error $ "Found postfix op " ++ renderPretty op0 ++ " on"
-          _       ->  resolveFixities ops (applyOp op0 tmStack) []
+      -- when tail is empty, pop from the opstack and apply to the top of tmStack
+      resolveFixities (op0:ops) tmStack [] = resolveFixities ops (applyOp op0 tmStack) []
 
       -- when opStack is nonempty, and head of tail is an operator:
       resolveFixities (op0:ops) tmStack (op1@(Operator _ _):tail) =
         -- compare top of opStack with head of tail:
         case op0 `compare` op1 of
           -- if top of opstack takes precedence, apply it to top of tmStack
-          -- (failing if there aren't enough terms on the stack)
-          GT -> case fixityOf op0 of
-                  Postfix -> error $ "Found postfix op " ++ renderPretty op0 ++ " on"
-                  _       -> resolveFixities ops (applyOp op0 tmStack) (op1:tail)
-          -- if head of tail takes precedence:
-            -- if it is postfix, apply it to top of tmStack.
-            -- otherwise, push it onto opStack.
-          LT -> case fixityOf op1 of
-                  Postfix -> resolveFixities (op0:ops) (applyOp op1 tmStack) tail
-                  _       -> resolveFixities (op1:op0:ops) tmStack tail
+          GT -> resolveFixities ops (applyOp op0 tmStack) (op1:tail)
+          -- if head of tail takes precedence push it onto opStack.
+          LT -> resolveFixities (op1:op0:ops) tmStack tail
           EQ -> Left (op0, op1)
 
       app1 (Operator qn _) tm = EApp (EVar (-1) qn) tm
@@ -164,7 +147,6 @@ instance DesugarInfix Term where
                                         ++ " without a term to apply it to."
       applyOp op@(Operator _ (Just (Fixity Prefix _))) (tm:tms) = app1 op tm:tms
       applyOp op@(Operator _ (Just (Fixity Postfix _))) (tm:tms) = app1 op tm:tms
-
       applyOp op [tm0] = error $ "Expected two operands for "
                                         ++ renderPretty op
                                         ++ ", but there is only one on stack: "
