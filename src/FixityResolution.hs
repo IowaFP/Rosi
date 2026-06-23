@@ -118,7 +118,11 @@ instance DesugarInfix Term where
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] [e] [] = Right e
 
-      -- when head of tail is a term, push it on the term stack.
+
+      -- when head of tail is a term, and top of opStack is postfix, apply the op to the tmStack
+      resolveFixities (op0@(Operator _ (Just (Fixity Postfix _))):ops) tmStack tail = resolveFixities ops (applyOp op0 tmStack) tail
+
+      -- otherwise, when head of tail is a term, push it on the term stack.
       resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
 
       -- when opStack is empty, and head of tail is an operator, push it on opStack
