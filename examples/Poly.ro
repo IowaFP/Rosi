@@ -278,6 +278,15 @@ b4 (g : ((forall a. a -> a) -> Pair Nat Bool) -> Nat) = g (\f. pair (f zero) (f 
 
 b5 (r : (forall a. a -> (forall b. b -> b)) -> Nat) = r (\x y. y)
 
+-- Examples from Lionel's work
+
+-- FAILS: don't know that `id` needs to be polymorphic in lambda
+-- b6 = (\id. pair (id true) (id zero)) id
+
+-- PERHAPS COULD SUCCEED? Why doesn't `revapp` push the known type of `id` into
+-- the lambda?
+-- b7 = revapp id (\id. pair (id true) (id zero))
+
 -- -- C: functions on polymorphic lists
 -- --------------------------------------------------------------------------------
 --
@@ -332,9 +341,13 @@ c9 = map unId (single oneId)
 
 d1 = app poly id
 
+d1' = app poly (\x. x)
+
 -- let D2 = revapp id poly;
 
 d2 = revapp id poly
+
+-- d2' = revapp (\x. x) poly
 
 -- let D3 = runST argST;
 
