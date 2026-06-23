@@ -107,73 +107,80 @@ instance DesugarInfix Term where
       -- Invariants:
       -- Every operator below the top operator in the opStack has lower precedence
       -- Every term below the top term in the tmStack appears to its left
-      -- the top tm in the tmstack appears to the left of the tail
       -- Everything in opStack and tmStack appears to the left of everything in tail.
-      
+
       -- error cases. Should be unreachable.
       resolveFixities [] [] [] = error "resolveFixities fixities called with all empty stacks"
       resolveFixities (op0@(Operator _ Nothing):ops) tms tail = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op0 ++ ". inputs = " ++ dumpStacks (op0:ops) tms tail
       resolveFixities ops tms (op1@(Operator _ Nothing):tail) = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op1 ++ ". inputs = " ++ dumpStacks ops tms (op1:tail)
-      -- Fail case: if we end up with adjacent expressions on the term stack, fail.
+      -- error case: if we end up with adjacent expressions on the term stack, fail.
       resolveFixities [] (e0:e1:es) [] = Left (Operand e1, Operand e0)
 
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] [e] [] = Right e
       -- when head of tail is a term, push it on the term stack.
       resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
-      -- when tmStack is empty, push the op to the op stack (unless it is a postfix operator)
-      resolveFixities (op0:ops) [] (op1@(Operator _ _):tail) =
-        case op0 `compare` op1 of
-          GT -> error $ "Can't apply op " ++ renderPretty op0 ++ " without a term to apply it to. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
-          LT -> case fixityOf op1 of
-            Prefix  -> resolveFixities (op1:op0:ops) [] tail
-            Postfix -> error $ "Can't apply postfix op " ++ renderPretty op0 ++ " without a term to apply it to. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
-            _       ->  error $ "Can't apply prefix " ++ renderPretty op0 ++ " without a term on left-hand-side. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
-          EQ -> Left (op0, op1)
       -- when opStack is empty, and head of tail is an operator:
         -- if it postfix, apply it to top of tmStack
         -- otherwise, push it on opStack
+
       resolveFixities [] tms (op1@(Operator _ _):tail) =
         case fixityOf op1 of
           Postfix -> case tms of
             (tm0:tms) -> resolveFixities [] (app1 op1 tm0:tms) tail
             [] -> error $ "Encountered postfix operator in head position. inputs = " ++ dumpStacks [] [] (op1:tail)
           _       -> resolveFixities [op1] tms tail
+
+      -- when tail is empty, pop from the opstack and apply to the top term (if prefix) or 2 terms (if infix)
+      resolveFixities (op0:ops) tmStack [] =
+        case (fixityOf op0, tmStack) of
+          (Postfix, _) -> error "TODO Avoid pushing Postfix onto stack"
+          (_, []) -> error $ "Can't apply op "
+                      ++ renderPretty op0
+                      ++ " without a term to apply it to. inputs = "
+                      ++ dumpStacks (op0:ops) tmStack []
+          (Prefix, tm0:tms) -> resolveFixities ops (app1 op0 tm0:tms) []
+          (_, tm0:tm1:tms) ->  resolveFixities ops (app2 op0 tm1 tm0:tms) []
+          (_, tm0:tms)     -> error $ "Expected two operands for "
+                               ++ renderPretty op0
+                               ++ ", but there is only one on stack: "
+                               ++ renderPretty tm0
+                               ++ "\n (If you expect "
+                               ++ renderPretty op0
+                               ++ " to be unary, make sure its fixity was declared."
+
       -- when opStack is nonempty, and head of tail is an operator:
+      resolveFixities (op0:ops) tmStack (op1@(Operator _ _):tail) =
         -- compare top of opStack with head of tail:
-          -- if top of opstack takes precedence, apply it.
+        case op0 `compare` op1 of
+          -- if top of opstack takes precedence, apply it to top of tmStack
+          -- (failing if there aren't enough terms on the stack)
+          GT -> case (fixityOf op0, tmStack) of
+                  (_, []) -> error $ "Can't apply op "
+                                        ++ renderPretty op0
+                                        ++ " without a term to apply it to. inputs = "
+                                        ++ dumpStacks (op0:ops) [] (op1:tail)
+                  (Postfix, _) -> error "TODO Avoid pushing Postfix onto stack"
+                  (Prefix, tm0:tms) -> resolveFixities ops (app1 op0 tm0: tms) (op1:tail)
+                  (_, [tm0]) -> error $ "Expected two operands for "
+                                        ++ renderPretty op0
+                                        ++ ", but there is only one on stack: "
+                                        ++ renderPretty tm0
+                                        ++ "\n (If you expect "
+                                        ++ renderPretty op0
+                                        ++ " to be unary, make sure its fixity was declared."
+                  (_,      tm0:tm1:tms) -> resolveFixities ops (app2 op0 tm1 tm0:tms) (op1:tail)
           -- if head of tail takes precedence:
             -- if it is postfix, apply it to top of tmStack.
-            -- otherwise, push it to opStack.
-      resolveFixities (op0:ops) (tm0:tms) (op1@(Operator _ _):tail) =
-        case op0 `compare` op1 of
-          GT -> case fixityOf op0 of
-                Prefix -> resolveFixities ops (app1 op0 tm0: tms) (op1:tail)
-                Postfix -> error "TODO Avoid pushing Postfix onto stack"
-                _ -> case tms of
-                      (e:es) -> resolveFixities ops (app2 op0 e tm0:es) (op1:tail)
-                      _ -> error "NO CASE"
-                      -- []     -> resolveFixities (op1:op0:ops) (tm0:tms) tail
-          LT -> case fixityOf op1 of
-                Postfix -> resolveFixities (op0:ops) (app1 op1 tm0: tms) tail
-                _       -> resolveFixities (op1:op0:ops) (tm0:tms) tail
+            -- otherwise, push it onto opStack.
+          LT -> case (fixityOf op1, tmStack) of
+                  (Postfix, []) -> error $ "Can't apply postfix op "
+                                         ++ renderPretty op0
+                                         ++ " without a term to apply it to. inputs = "
+                                         ++ dumpStacks (op0:ops) [] (op1:tail)
+                  (Postfix, tm0:tms) -> resolveFixities (op0:ops) (app1 op1 tm0: tms) tail
+                  (_, _)       -> resolveFixities (op1:op0:ops) tmStack tail
           EQ -> Left (op0, op1)
-      -- when tail is empty, pop from the opstack and apply to the top term (if postfix) or 2 terms (if infix)
-      resolveFixities (op0:ops) (tm0:tms) [] =
-        case fixityOf op0 of
-          Prefix -> resolveFixities ops (app1 op0 tm0:tms) []
-          Postfix -> error "TODO Avoid pushing Postfix onto stack"
-          _ -> case tms of
-                      (e:es) ->  resolveFixities ops (app2 op0 e tm0:es) []
-                      []     -> error $ "Expected two operands for " 
-                                      ++ renderPretty op0 
-                                      ++ ", but there is only one on stack: " 
-                                      ++ renderPretty tm0
-                                      ++ "\n (If you expect " 
-                                      ++ renderPretty op0 
-                                      ++ " to be unary, make sure its fixity was declared."
-      -- unhandled case
-      resolveFixities opStack e tail = error $ "unexpected input to resolveFixities: " ++ dumpStacks opStack e tail
 
       app1 (Operator qn _) tm = EApp (EVar (-1) qn) tm
       app1 e tm               = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
