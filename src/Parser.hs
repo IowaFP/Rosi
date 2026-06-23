@@ -576,8 +576,11 @@ defns moduleNames tls
         kindSigs = [(x, t) | (x, KindSig t) <- tls]
 
         -- hey, why not five times?
-        -- Get the last fixity declaration for each name.
-        -- TODO(mctano) ensure this gets the precedence right.
+        -- Get the fixity declarations for each name.
+        -- TODO(mctano): potential refinements:
+          -- make the fixity declaration part of the term declaration,
+          -- so that the result of fixity lookup will always match the result of term lookup.
+          -- reject if multiple fixity declarations appear in the same file
         fixDecls = [(x, fixity) | (x, FixityDecl fixity) <- tls]
         fixityMap = map (\(x, fx) -> (x : moduleNames, fx)) fixDecls
 

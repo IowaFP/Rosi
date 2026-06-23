@@ -70,7 +70,11 @@ parseChasing additionalImportDirs fs =
                (importedDefns, importedFixMap) <- chase importFns
                modify (\already -> fn : already)
                (chasedDecls, chasedFixMap) <- chase fns
-               return (importedDefns ++ decls ++ chasedDecls, importedFixMap <> fixMap <> chasedFixMap)
+               -- NOTE: (Tristan) In order to get make the fixity declaration precedence to behave like definitions
+               -- (i.e. fixity declared in current file is used instead of imported fixity, if both exist)
+               -- I need to concatenate the fixity maps in the opposite order.
+               -- I infer that the precedence of local vs. imported definitions is actually determined elsewhere.
+               return (importedDefns ++ decls ++ chasedDecls, fixMap ++ chasedFixMap ++ importedFixMap)
 
   findImport :: String -> IO ([String], FilePath)
   findImport s = check importDirs
