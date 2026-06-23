@@ -84,6 +84,13 @@ instance DesugarInfix Term where
                                               ++ show fix2
                                               ++ "] in "
                                               ++ unwords (map renderPretty exp)
+                                    Left (Operand e1, Operand e2) -> error $ "resolving infix operators resulted in adjacent expressions ("
+                                                                           ++ renderPretty e1
+                                                                           ++ ") and ("
+                                                                           ++ renderPretty e2
+                                                                           ++ ") in the context of the expression "
+                                                                           ++ unwords (map renderPretty exp)
+                                                                           ++ ". Use parentheses around adjacent expressions to avoid ambiguity."
                                     Left (op1, op2) -> error $ "resolveFixities tried to compare precedence between "
                                                             ++ show op1
                                                             ++ " and "
@@ -93,25 +100,28 @@ instance DesugarInfix Term where
 
       resolveFixities :: [EInfixToken] -> [Term] -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
 
-      -- Based on Garrett's algorithm from habit/alb, generalized to allow for prefix and postfix operators.
+      -- Based on Garrett's algorithm from habit/alb and Djikstra's shunting yard algorithm,
+      -- generalized to allow for prefix and postfix operators.
       -- The presence of prefix and postfix operators means we can't assume that the expression consists of alternating operators and subterms.
-
-      -- TODO(mctano) Do prefix/postfix operators mean we might have adjacent terms after eliminating them? And does that mean I'll have to do a round of application resolution after all this?
 
       -- Invariants:
       -- Every operator below the top operator in the opStack has lower precedence
-      -- Every term below the top term in the tmStack appears to the left
+      -- Every term below the top term in the tmStack appears to its left
       -- the top tm in the tmstack appears to the left of the tail
-      -- if the tmStack is not empty, the top op in the opStack appears directly to the left of the top tm in the tmStack
       -- Everything in opStack and tmStack appears to the left of everything in tail.
-
+      
+      -- error cases. Should be unreachable.
       resolveFixities [] [] [] = error "resolveFixities fixities called with all empty stacks"
       resolveFixities (op0@(Operator _ Nothing):ops) tms tail = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op0 ++ ". inputs = " ++ dumpStacks (op0:ops) tms tail
       resolveFixities ops tms (op1@(Operator _ Nothing):tail) = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op1 ++ ". inputs = " ++ dumpStacks ops tms (op1:tail)
+      -- Fail case: if we end up with adjacent expressions on the term stack, fail.
+      resolveFixities [] (e0:e1:es) [] = Left (Operand e1, Operand e0)
 
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] [e] [] = Right e
-      -- when either stack is empty, push the next token to the appropriate stack (unless it is a postfix operator)
+      -- when head of tail is a term, push it on the term stack.
+      resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
+      -- when tmStack is empty, push the op to the op stack (unless it is a postfix operator)
       resolveFixities (op0:ops) [] (op1@(Operator _ _):tail) =
         case op0 `compare` op1 of
           GT -> error $ "Can't apply op " ++ renderPretty op0 ++ " without a term to apply it to. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
@@ -120,19 +130,21 @@ instance DesugarInfix Term where
             Postfix -> error $ "Can't apply postfix op " ++ renderPretty op0 ++ " without a term to apply it to. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
             _       ->  error $ "Can't apply prefix " ++ renderPretty op0 ++ " without a term on left-hand-side. inputs = " ++ dumpStacks (op0:ops) [] (op1:tail)
           EQ -> Left (op0, op1)
-      resolveFixities [] [] (op@(Operator _ _):tail) =
-        case fixityOf op of
-          Postfix -> error $ "Encountered postfix operator in head position. inputs = " ++ dumpStacks [] [] (op:tail)
-          _       -> resolveFixities [op] [] tail
-      -- ("","! True","\\/ : ! : (True)")
-      resolveFixities [] (tm0:tms) (op0@(Operator _ _):tail) =
-        case fixityOf op0 of
-          Postfix -> resolveFixities [] (app1 op0 tm0:tms) tail
-          _       -> resolveFixities [op0] (tm0:tms) tail
-      resolveFixities [] tms ((Operand tm):tail) = resolveFixities [] (tm:tms) tail
-      resolveFixities ops [] ((Operand tm):tail) = resolveFixities ops [tm] tail
-
-      -- when head of tail is an operator:
+      -- when opStack is empty, and head of tail is an operator:
+        -- if it postfix, apply it to top of tmStack
+        -- otherwise, push it on opStack
+      resolveFixities [] tms (op1@(Operator _ _):tail) =
+        case fixityOf op1 of
+          Postfix -> case tms of
+            (tm0:tms) -> resolveFixities [] (app1 op1 tm0:tms) tail
+            [] -> error $ "Encountered postfix operator in head position. inputs = " ++ dumpStacks [] [] (op1:tail)
+          _       -> resolveFixities [op1] tms tail
+      -- when opStack is nonempty, and head of tail is an operator:
+        -- compare top of opStack with head of tail:
+          -- if top of opstack takes precedence, apply it.
+          -- if head of tail takes precedence:
+            -- if it is postfix, apply it to top of tmStack.
+            -- otherwise, push it to opStack.
       resolveFixities (op0:ops) (tm0:tms) (op1@(Operator _ _):tail) =
         case op0 `compare` op1 of
           GT -> case fixityOf op0 of
@@ -140,17 +152,13 @@ instance DesugarInfix Term where
                 Postfix -> error "TODO Avoid pushing Postfix onto stack"
                 _ -> case tms of
                       (e:es) -> resolveFixities ops (app2 op0 e tm0:es) (op1:tail)
-                      []     -> resolveFixities (op1:op0:ops) (tm0:tms) tail
+                      _ -> error "NO CASE"
+                      -- []     -> resolveFixities (op1:op0:ops) (tm0:tms) tail
           LT -> case fixityOf op1 of
                 Postfix -> resolveFixities (op0:ops) (app1 op1 tm0: tms) tail
                 _       -> resolveFixities (op1:op0:ops) (tm0:tms) tail
           EQ -> Left (op0, op1)
-      -- when top of stack is a term:
-      resolveFixities (op0:ops) (tm0:tms) ((Operand tm1):tail) =
-        case fixityOf op0 of
-          Prefix  -> resolveFixities ops (app1 op0 tm1:tm0:tms) tail
-          Postfix -> error "TODO Avoid pushing Postfix onto stack"
-          _       -> resolveFixities (op0:ops) (tm1:tm0:tms) tail
+      -- when tail is empty, pop from the opstack and apply to the top term (if postfix) or 2 terms (if infix)
       resolveFixities (op0:ops) (tm0:tms) [] =
         case fixityOf op0 of
           Prefix -> resolveFixities ops (app1 op0 tm0:tms) []
@@ -164,7 +172,7 @@ instance DesugarInfix Term where
                                       ++ "\n (If you expect " 
                                       ++ renderPretty op0 
                                       ++ " to be unary, make sure its fixity was declared."
-
+      -- unhandled case
       resolveFixities opStack e tail = error $ "unexpected input to resolveFixities: " ++ dumpStacks opStack e tail
 
       app1 (Operator qn _) tm = EApp (EVar (-1) qn) tm

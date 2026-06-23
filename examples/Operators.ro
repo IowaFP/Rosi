@@ -105,17 +105,18 @@ ex_F8 = True ==> True ==> True ==> False
 ex_F9 = True ==> ! False ==> ! True
 ex_F10 = ! False ==> ! True /\ ! False
 
--- these won't typecheck if precedence isn't resolved correctly
--- TODO(mctano) Which is correct?
--- (!!! (% ((!!! True) $$))) -- actual behavior
--- ((!!! % (!!! True)) $$) -- if we somehow have to compare !!! against $$, despite % appearing between them.
+-- these (probably) won't typecheck if precedence isn't resolved correctly
+-- TODO(mctano) Confirm this is the behavior we want for multiple prefix and postfix.
+-- !!! (% ((!!! True) $$)) -- actual behavior
+-- (!!! (% (!!! True))) $$ -- if we somehow have to compare !!! against $$, despite % appearing between them.
 ex_adjacent_pre_post1 = (!!! (% ((!!! True) $$)))
 ex_adjacent_pre_post2 = ! ! (% ((%%% 1) $$))
 ex_adjacent_pre_post3 = ! % %%% 0 $$
 ex_adjacent_pre_post4 = (!! ! %% True $$$)
 
 -- TODO(mctano) confirm how we want to handle examples which result in adjacent expressions.
--- alternate example: ((+) 1) %%% 0 $$
+-- alternate example:
+-- ex_adjacent_exprs = ((+) 1) %%% 0 $$
 -- ex_adjacent_exprs = f %%% 0 $$
 -- f %%% 0 $$
 -- f ((%%%) 0) $$ -- now that ((%%%) 0) is an expression, we could apply f to it.
