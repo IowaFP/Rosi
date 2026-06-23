@@ -165,22 +165,22 @@ instance HasVars Term where
   scope ECast{} = error "scope: ETyEqu"
   scope (EInfix s) = error $ "EInfix expression `" <> show (EInfix s) <> "` should have been desugared before scoping."
 instance HasVars Decl where
-  scope (TmDecl x Nothing m) =
-    TmDecl x <$> pure Nothing <*> withError (ErrContextTerm m) (scope m)
-  scope (TmDecl x (Just t) m) =
+  scope (TmDecl x Nothing m fx) =
+    TmDecl x <$> pure Nothing <*> withError (ErrContextTerm m) (scope m) <*> pure fx
+  scope (TmDecl x (Just t) m fx) =
     TmDecl x <$>
       withError (ErrContextType t) (Just <$> implicitQuantifiers t) <*>
-      withError (ErrContextTerm m) (scope m)
+      withError (ErrContextTerm m) (scope m) <*> pure fx
   scope (TyDecl x k t) =
     TyDecl x k <$>
       withError (ErrContextType t) (implicitQuantifiers t)
 
-declName (TmDecl x _ _) = x
+declName (TmDecl x _ _ _) = x
 declName (TyDecl x _ _)   = x
 
 scopeProg :: [Decl] -> ScopeM [Decl]
 scopeProg []                        = return []
-scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindGVar x (scopeProg ds)
+scopeProg (d@(TmDecl x _ _ _) : ds) = (:) <$> scope d <*> bindGVar x (scopeProg ds)
 scopeProg (d@(TyDecl x _ _) : ds)   = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)
 
 -- Testing code
@@ -188,4 +188,4 @@ deriving instance Show Error
 
 test1 =
   runScopeM $ scope $
-  TmDecl ["id"] (Just (TApp (TApp TFun (TVar (-1) ["a"])) (TVar (-1) ["a"]))) (ELam "x" Nothing (EVar (-1) ["x"]))
+  TmDecl ["id"] (Just (TApp (TApp TFun (TVar (-1) ["a"])) (TVar (-1) ["a"]))) (ELam "x" Nothing (EVar (-1) ["x"])) Nothing

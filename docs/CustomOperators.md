@@ -52,8 +52,9 @@ You can define a fixity for a backticked identifier as well, (as long as it is d
 infixr 3 `cons`
 ```
 
-- A definition/declaration pair in the current file/module will be used before a definition/declaration pair in an imported module
-- If multiple imported files contain fixity declarations for the same operator, then they must also contain conflicting top-level definitions for the operator. The compiler currently does not reject clashing import names, and which import ends up getting used is currently unpredictable (unless the definition also appears in the same file). It may currently be possible for the definition and the fixity declaration which are selected by the compiler to be from different files. When we address import ambiguity we should address fixity resolution ambiguity as well.
+- In general, a definition/declaration pair in the current file/module will be used before a definition/declaration pair in an imported module.
+<!-- TODO(mctano) Does the claimed consistency rely on the lookup procedures in Scope and in FixityResolution being the same? -->
+- If multiple imported files contain definitions for the same identifier, and the current file does not, it is currently unpredictable which definition will be used. However, the fixity declaration is tied to the term definition, so we can expect that the fixity declaration which is ultimately used will be from the same module as the term definition.
 
 ## Precedence Rules
 

@@ -200,8 +200,9 @@ instance DesugarInfix EInfixToken where
 
 
 instance DesugarInfix Decl where
-  desugarInfix fixMap (TmDecl qn ty tm) = TmDecl qn ty (desugarInfix fixMap tm)
+  desugarInfix fixMap (TmDecl qn ty tm fx) = TmDecl qn ty (desugarInfix fixMap tm) fx
   desugarInfix fixMap x                 = x
 
-instance DesugarInfix [Decl] where
-  desugarInfix fixMap = map (desugarInfix fixMap)
+
+desugarOperators decls = map (desugarInfix fixMap) decls where
+  fixMap = [ (qn, fx) | (TmDecl qn _ _ (Just fx))<- decls]

@@ -12,7 +12,7 @@ import Data.Char                  (isSpace)
 import Data.Data                  hiding (Fixity, Infix, Prefix)
 import Data.Functor
 import Data.IORef                 (newIORef)
-import Data.List                  (delete, intercalate, singleton, find)
+import Data.List                  (delete, find, intercalate, singleton)
 import Data.List.NonEmpty         (fromList)
 import Data.List.Split            (splitOn)
 import Data.Maybe                 (fromMaybe, isNothing)
@@ -25,10 +25,10 @@ import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
 import Text.Megaparsec.Error
 
+import Checker.Monad              (bind)
+import Data.Map                   (fromAscList)
 import Debug.Trace                qualified as T
 import Text.Megaparsec.Debug      (dbg)
-import Data.Map (fromAscList)
-import Checker.Monad (bind)
 
 
 --------------------------------------------------------------------------------
@@ -108,7 +108,7 @@ block p =
 
 Binder should be provided in *source* order. That is, if you have
 
-    
+
      x y z. M
 
 The binder list should be provided as ["x", "y", "z"]
@@ -564,11 +564,11 @@ defns moduleNames tls
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
-  | not (null unmatchedFixDecls) = fail $ intercalate "." (reverse moduleNames) ++ " contains fixity declaration(s) for [ " ++ intercalate ", " unmatchedFixDecls ++ " ] without definition(s) in the same module."
+  | not (null unmatchedFixDecls) = fail $ moduleName ++ " contains fixity declaration(s) for [ " ++ intercalate ", " unmatchedFixDecls ++ " ] without definition(s) in the same module."
   | otherwise =
     do ds <- mapM mkDecl names
        let
-       return (Prog (concat imports, ds, fixityMap))
+       return (Prog (concat imports, ds))
   where -- TODO: Why would not we *not* traverse this list four times?
         termDefs = [(x, t) | (x, TermDef t) <- tls]
         typeSigs = [(x, t) | (x, TypeSig t) <- tls]
@@ -605,20 +605,26 @@ defns moduleNames tls
 
         lookups x = map snd . filter ((x ==) . fst)
         mkDecl x =
-          case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs) of
-            (tm : tms, [], [], [])
-              | null tms -> return (TmDecl (x : moduleNames) Nothing tm)
-              | otherwise -> fail $ "too many definitions for " ++ x
-            (tm : tms, ty : tys, [], [])
-              | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm)
-              | not (null tms) -> fail $ "too many definitions for " ++ x
-              | otherwise -> fail $ "too many type signatures for " ++ x
-            ([], [], ty : tys, k : ks)
-              | null tys, null ks -> return (TyDecl (x : moduleNames) k ty)
-              | not (null tys) -> fail $ "too many definitions for " ++ x
-              | otherwise -> fail $ "too many kind signatures for " ++ x
-            ([], [], [], []) -> fail $ "no definition for " ++ x
-            r -> fail $ "too much definition of " ++ x
+          do fx <- case lookups x fixDecls of
+                        [] -> return Nothing
+                        (fx:fxs) | null fxs -> return (Just fx)
+                                 | otherwise -> fail $ "too many fixity declarations for " ++ x ++ " in " ++ moduleName
+             case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs, fx) of
+                  (tm : tms, [], [], [], fx)
+                    | null tms -> return (TmDecl (x : moduleNames) Nothing tm fx)
+                    | otherwise -> fail $ "too many definitions for " ++ x
+                  (tm : tms, ty : tys, [], [], fx)
+                    | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm fx)
+                    | not (null tms) -> fail $ "too many definitions for " ++ x
+                    | otherwise -> fail $ "too many type signatures for " ++ x
+                  ([], [], ty : tys, k : ks, _)
+                    | null tys, null ks -> return (TyDecl (x : moduleNames) k ty)
+                    | not (null tys) -> fail $ "too many definitions for " ++ x
+                    | otherwise -> fail $ "too many kind signatures for " ++ x
+                  ([], [], [], [], _) -> fail $ "no definition for " ++ x
+                  r -> fail $ "too much definition of " ++ x
+        
+        moduleName = intercalate "." (reverse moduleNames)
 
 
 

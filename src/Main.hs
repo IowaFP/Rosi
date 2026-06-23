@@ -23,7 +23,7 @@ import Parser
 import Printer
 import Scope
 import Syntax
-import FixityResolution (desugarInfix)
+import FixityResolution (desugarOperators)
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doPrintHelpMessage
@@ -54,27 +54,23 @@ options = [ Option [] [] (ReqArg (\s f -> f { inputs = inputs f ++ [s]}) "FILE")
 unprog (Prog ds) = ds
 
 
-parseChasing :: [FilePath] -> [FilePath] -> IO ([Decl], FixityMap)
+parseChasing :: [FilePath] -> [FilePath] -> IO ([Decl])
 parseChasing additionalImportDirs fs =
   do fs' <- mapM findStartingPoint fs
      evalStateT (chase fs') [] where
 
-  chase :: [([String], FilePath)] -> StateT [FilePath] IO ([Decl], FixityMap)
-  chase [] = return ([], [])
+  chase :: [([String], FilePath)] -> StateT [FilePath] IO ([Decl])
+  chase [] = return ([])
   chase ((moduleName, fn) : fns) =
     do already <- get
        if fn `elem` already
        then chase fns
-       else do (imports, decls, fixMap) <- unprog <$> liftIO (parse fn moduleName =<< readFile fn)
+       else do (imports, decls) <- unprog <$> liftIO (parse fn moduleName =<< readFile fn)
                importFns <- mapM (liftIO . findImport) imports
-               (importedDefns, importedFixMap) <- chase importFns
+               (importedDefns) <- chase importFns
                modify (\already -> fn : already)
-               (chasedDecls, chasedFixMap) <- chase fns
-               -- NOTE: (Tristan) In order to get make the fixity declaration precedence to behave like definitions
-               -- (i.e. fixity declared in current file is used instead of imported fixity, if both exist)
-               -- I need to concatenate the fixity maps in the opposite order.
-               -- I infer that the precedence of local vs. imported definitions is actually determined elsewhere.
-               return (importedDefns ++ decls ++ chasedDecls, fixMap ++ chasedFixMap ++ importedFixMap)
+               (chasedDecls) <- chase fns
+               return (importedDefns ++ decls ++ chasedDecls)
 
   findImport :: String -> IO ([String], FilePath)
   findImport s = check importDirs
@@ -110,8 +106,8 @@ main = do nowArgs <- getArgs
           writeIORef E.traceEvaluation (doTraceEvaluation flags)
           when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout LineBuffering
-          (decls, fixMap) <- parseChasing (imports flags) (inputs flags)
-          let deOpped = desugarInfix fixMap decls
+          (decls) <- parseChasing (imports flags) (inputs flags)
+          let deOpped = desugarOperators decls
           scoped <- reportErrors flags $ runScopeM $ scopeProg deOpped
           checked <- goCheck flags [] [] scoped
           when (doPrintTyped flags) $
@@ -125,14 +121,14 @@ main = do nowArgs <- getArgs
           do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
                -- Shouldn't be any holes in types...
              goCheck flags (KBDefn k t' : d) g ds
-        goCheck flags d g (TmDecl v (Just ty) te : ds) =
+        goCheck flags d g (TmDecl v (Just ty) te _ : ds) =
           do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints True ty KType)))
              (te', holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              te'' <- flattenE te'
              reportHoles flags holes
              ds' <- goCheck flags d ((v, ty') : g) ds
              return ((v, ty', te'') : ds')
-        goCheck flags d g (TmDecl v Nothing te : ds) =
+        goCheck flags d g (TmDecl v Nothing te _: ds) =
           do ((te', ty), holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
              ty' <- flattenT ty
              te'' <- flattenE te'

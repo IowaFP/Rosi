@@ -27,10 +27,10 @@ defaultFixity = Fixity InfixL 9
 
 type FixityMap = [(QName, Fixity)]
 
-data Program = Prog ([String], [Decl], FixityMap)
+data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
 
-data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term
+data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term (Maybe Fixity)
   deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
