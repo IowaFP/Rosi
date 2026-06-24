@@ -2,12 +2,10 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 module FixityResolution where
 
-import Data.Foldable      (find)
+import Data.Foldable (find)
 
-import Data.List          (intercalate)
-import Data.List.NonEmpty (nonEmpty)
-import Debug.Trace        qualified as T
-import Printer            (renderPretty)
+import Data.List     (intercalate)
+import Printer       (renderPretty)
 import Syntax
 
 class DesugarInfix a where
@@ -70,7 +68,7 @@ instance DesugarInfix Term where
       padWithApply []                                                                                        = []
       padWithApply (Operand tm:op@(Operator _ (Just (Fixity Prefix _))):xs)                                  = Operand tm:explicitApp:op:padWithApply xs
       padWithApply (op@(Operator _ (Just (Fixity Postfix _))):Operand tm:xs)                                 = op:explicitApp:padWithApply (Operand tm:xs)
-      padWithApply (op0@(Operator _ (Just (Fixity Postfix _))):op1@(Operator _ (Just (Fixity Prefix _))):xs) = op0:explicitApp:op1:padWithApply (xs)
+      padWithApply (op0@(Operator _ (Just (Fixity Postfix _))):op1@(Operator _ (Just (Fixity Prefix _))):xs) = op0:explicitApp:op1:padWithApply xs
 
       padWithApply (x:xs)                                                                                    = x:padWithApply xs
 
@@ -199,4 +197,5 @@ instance DesugarInfix Decl where
 
 
 desugarOperators decls = map (desugarInfix fixMap) decls where
-  fixMap = [ (qn, fx) | (TmDecl qn _ _ (Just fx))<- decls]
+  -- reverse to match lookup order of decls
+  fixMap = reverse [ (qn, fx) | (TmDecl qn _ _ (Just fx)) <- decls]

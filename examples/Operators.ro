@@ -29,10 +29,13 @@ infixl 5 -
 
 -- (::) = Data.List.cons
 
--- prefix 1 <>
 
--- (<>) : Nat -> Nat
--- (<>) n = 0
+-- check that we can override imported definition locally
+(<>) : Nat -> Nat
+(<>) n = 0
+z = <> 5
+
+prefix 1 <>
 
 -- infixr 1 $++$
 
@@ -43,7 +46,6 @@ hello_world = "hello" :: "world" :: nil
 -- try_add_with_football = cons 1 5
 -- try_list_concat = cons nil nil
 
--- z = <> 5
 
 
 ex_1 = (6 + (5 - 4) - 1) // 6

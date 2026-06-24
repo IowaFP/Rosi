@@ -18,12 +18,12 @@ import System.FilePath
 import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr, stdout)
 
 import Checker
+import FixityResolution      (desugarOperators)
 import Interp.Erased         as E
 import Parser
 import Printer
 import Scope
 import Syntax
-import FixityResolution (desugarOperators)
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doPrintHelpMessage
@@ -106,7 +106,7 @@ main = do nowArgs <- getArgs
           writeIORef E.traceEvaluation (doTraceEvaluation flags)
           when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout LineBuffering
-          (decls) <- parseChasing (imports flags) (inputs flags)
+          decls <- parseChasing (imports flags) (inputs flags)
           let deOpped = desugarOperators decls
           scoped <- reportErrors flags $ runScopeM $ scopeProg deOpped
           checked <- goCheck flags [] [] scoped

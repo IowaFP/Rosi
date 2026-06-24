@@ -430,8 +430,8 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
 
   -- TODO(mctano) resolve operators
   app :: [AppTerm] -> Parser [EInfixToken]
-  app [Term t]          = return [Operand t]
-  app (Type _:_)             = unexpected (Label $ fromList "type argument")
+  app [Term t]             = return [Operand t]
+  app (Type _:_)           = unexpected (Label $ fromList "type argument")
   app (Term t:Term u : ts) = (Operand t:) . (explicitApp:) <$> app (Term u:ts)
 
   app (Term t:Type u : ts) = app (Term (EInst t (Known [TyArg u])):ts)
@@ -518,7 +518,6 @@ topLevel = item lhs body where
           [ try $ ImportLHS <$ reserved "import"
           , try $ TypeLHS <$> lexeme typeIdentifier
           , try $ TermLHS <$> try (lexeme (try identifier <|> surroundedOp))
-          -- TODO(mctano) This is somewhat fragile. Consult with Garrett on how to properly handle "one line" declaration here.
           , try $ FixityLHS <$> lexeme fixityKeyword
           ]
   -- You would imagine that I could write `symbol "type" *> identifier` here.
@@ -578,10 +577,6 @@ defns moduleNames tls
 
         -- hey, why not five times?
         -- Get the fixity declarations for each name.
-        -- TODO(mctano): potential refinements:
-          -- make the fixity declaration part of the term declaration,
-          -- so that the result of fixity lookup will always match the result of term lookup.
-          -- reject if multiple fixity declarations appear in the same file
         fixDecls = [(x, fixity) | (x, FixityDecl fixity) <- tls]
         fixityMap = map (\(x, fx) -> (x : moduleNames, fx)) fixDecls
 
@@ -612,9 +607,12 @@ defns moduleNames tls
                                  | otherwise -> fail $ "too many fixity declarations for " ++ x ++ " in " ++ moduleName
              case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs, fx) of
                   (tm : tms, [], [], [], fx)
+                    -- TODO(mctano) If fixity declaration and type both exist, check that they match
+                    -- i.e. unary op is `A -> B`, binary op is `A -> B -> C`
                     | null tms -> return (TmDecl (x : moduleNames) Nothing tm fx)
                     | otherwise -> fail $ "too many definitions for " ++ x
                   (tm : tms, ty : tys, [], [], fx)
+                    -- TODO(mctano) If fixity declaration and type both exist, check that they match
                     | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm fx)
                     | not (null tms) -> fail $ "too many definitions for " ++ x
                     | otherwise -> fail $ "too many type signatures for " ++ x
