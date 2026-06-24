@@ -53,24 +53,22 @@ options = [ Option [] [] (ReqArg (\s f -> f { inputs = inputs f ++ [s]}) "FILE")
           , Option [] ["reset"] (NoArg (const emptyFlags)) "reset flags" ]
 unprog (Prog ds) = ds
 
-
-parseChasing :: [FilePath] -> [FilePath] -> IO ([Decl])
+parseChasing :: [FilePath] -> [FilePath] -> IO [Decl]
 parseChasing additionalImportDirs fs =
   do fs' <- mapM findStartingPoint fs
      evalStateT (chase fs') [] where
 
-  chase :: [([String], FilePath)] -> StateT [FilePath] IO ([Decl])
-  chase [] = return ([])
+  chase :: [([String], FilePath)] -> StateT [FilePath] IO [Decl]
+  chase [] = return []
   chase ((moduleName, fn) : fns) =
     do already <- get
        if fn `elem` already
        then chase fns
        else do (imports, decls) <- unprog <$> liftIO (parse fn moduleName =<< readFile fn)
                importFns <- mapM (liftIO . findImport) imports
-               (importedDefns) <- chase importFns
+               imported <- chase importFns
                modify (\already -> fn : already)
-               (chasedDecls) <- chase fns
-               return (importedDefns ++ decls ++ chasedDecls)
+               ((imported ++ decls) ++) <$> chase fns
 
   findImport :: String -> IO ([String], FilePath)
   findImport s = check importDirs
