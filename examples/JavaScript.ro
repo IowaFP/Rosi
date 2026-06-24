@@ -1,0 +1,3 @@
+hello_world = "Hello"
+
+function_def = \x. x

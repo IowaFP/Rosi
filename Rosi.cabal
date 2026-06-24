@@ -55,13 +55,34 @@ executable Rosi
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules: Checker, Checker.Monad, Checker.Normalize, Checker.Preds, Checker.Promote, Checker.Terms, Checker.Types, Checker.Utils, Checker.Unify, Interp.Erased, Parser, Printer, Scope, Syntax
+    other-modules: Checker, Checker.Monad, Checker.Normalize, Checker.Preds, Checker.Promote, Checker.Terms, Checker.Types, Checker.Utils, Checker.Unify, Interp.Erased, Parser, Printer, RosiJS.Compiler, Scope, Syntax
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
 
     -- Other library packages from which modules are imported.
     build-depends:    base >=4.18, filepath >= 1.5, megaparsec >= 9.6, mtl >= 2.3, syb >= 0.7, containers, prettyprinter, split, directory
+
+    ghc-options: -Wno-x-partial
+
+    -- Directories containing source files.
+    hs-source-dirs:   src
+
+    -- Base language which the package is written in.
+    default-language: GHC2024
+
+executable RosiJS
+        -- .hs or .lhs file containing the Main module.
+    main-is:          RosiJS/Main.hs
+
+    -- Modules included in this executable, other than Main.
+    other-modules: Checker, Checker.Monad, Checker.Normalize, Checker.Preds, Checker.Promote, Checker.Terms, Checker.Types, Checker.Utils, Checker.Unify, Interp.Erased, Parser, Printer, RosiJS.Compiler, Scope, Syntax
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+
+    -- Other library packages from which modules are imported.
+    build-depends:    bytestring ^>=0.12.2.0, base >=4.18, filepath >= 1.5, megaparsec >= 9.6, mtl >= 2.3, syb >= 0.7, containers, prettyprinter, split, directory, language-javascript==0.7.1.0
 
     ghc-options: -Wno-x-partial
 

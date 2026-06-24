@@ -1,0 +1,1 @@
+ const JavaScript_hello_world = Hello ; const JavaScript_function_def = x => x ; ; 
