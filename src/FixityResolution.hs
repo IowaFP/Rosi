@@ -2,13 +2,13 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 module FixityResolution where
 
-import Data.Foldable (find)
+import Data.Foldable      (find)
 
-import Data.List     (intercalate)
-import Printer       (renderPretty)
-import Syntax
-import qualified Debug.Trace as T
+import Data.List          (intercalate)
 import Data.List.NonEmpty (nonEmpty)
+import Debug.Trace        qualified as T
+import Printer            (renderPretty)
+import Syntax
 
 class DesugarInfix a where
   desugarInfix :: FixityMap -> a -> a
@@ -30,7 +30,7 @@ instance Ord Fixity where
   -- similarly, postfix on the left binds tight
   -- thus adjacent postfixes associate left, regardless of precedence level
   compare (Fixity Postfix _) (Fixity _ _) = GT
-  
+
   -- otherwise, we use the precedence level
   -- (equal precedence is ambiguous)
   compare (Fixity _ l0) (Fixity _ l1) = compare l0 l1
@@ -67,10 +67,12 @@ instance DesugarInfix Term where
                                     (Operator qn (Just fx)) -> Operator qn (Just fx)
                             )
 
-      padWithApply [] = []
-      padWithApply (Operand tm:op@(Operator _ (Just (Fixity Prefix _))):xs) = Operand tm:explicitApp:op:padWithApply xs
-      padWithApply (op@(Operator _ (Just (Fixity Postfix _))):Operand tm:xs) = op:explicitApp:padWithApply (Operand tm:xs)
-      padWithApply (x:xs) = x:padWithApply xs
+      padWithApply []                                                                                        = []
+      padWithApply (Operand tm:op@(Operator _ (Just (Fixity Prefix _))):xs)                                  = Operand tm:explicitApp:op:padWithApply xs
+      padWithApply (op@(Operator _ (Just (Fixity Postfix _))):Operand tm:xs)                                 = op:explicitApp:padWithApply (Operand tm:xs)
+      padWithApply (op0@(Operator _ (Just (Fixity Postfix _))):op1@(Operator _ (Just (Fixity Prefix _))):xs) = op0:explicitApp:op1:padWithApply (xs)
+
+      padWithApply (x:xs)                                                                                    = x:padWithApply xs
 
       lookupFixity :: QName -> Fixity
       lookupFixity qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
@@ -119,7 +121,7 @@ instance DesugarInfix Term where
       resolveFixities [] [] [] = error "resolveFixities fixities called with all empty stacks"
       resolveFixities (op0@(Operator _ Nothing):ops) tms tail = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op0 ++ ". inputs = " ++ dumpStacks (op0:ops) tms tail
       resolveFixities ops tms (op1@(Operator _ Nothing):tail) = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op1 ++ ". inputs = " ++ dumpStacks ops tms (op1:tail)
-      
+
       -- error case: if we end up with adjacent expressions on the term stack, fail.
       resolveFixities [] (e0:e1:es) [] = Left (Operand e1, Operand e0)
 
@@ -149,8 +151,8 @@ instance DesugarInfix Term where
       app1 e tm               = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
       -- eliminate explicit application
       app2 (Operator ["__Apply"] _) tm1 tm2 = EApp tm1 tm2
-      app2 (Operator qn _) tm1 tm2 = EApp (EApp (EVar (-1) qn) tm1) tm2
-      app2 e tm1 tm2               = error $ "tried to apply term " ++ show e ++ " to terms " ++ show tm1 ++ " and " ++ show tm2
+      app2 (Operator qn _) tm1 tm2          = EApp (EApp (EVar (-1) qn) tm1) tm2
+      app2 e tm1 tm2                        = error $ "tried to apply term " ++ show e ++ " to terms " ++ show tm1 ++ " and " ++ show tm2
 
       applyOp op [] = error $ "Can't apply op "
                                         ++ renderPretty op
@@ -193,7 +195,7 @@ instance DesugarInfix EInfixToken where
 
 instance DesugarInfix Decl where
   desugarInfix fixMap (TmDecl qn ty tm fx) = TmDecl qn ty (desugarInfix fixMap tm) fx
-  desugarInfix fixMap x                 = x
+  desugarInfix fixMap x                    = x
 
 
 desugarOperators decls = map (desugarInfix fixMap) decls where

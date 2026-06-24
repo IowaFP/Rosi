@@ -148,9 +148,12 @@ swap = \f. (\a b. f b a)
 prefix 11 <->*
 postfix 11 *<->
 
+(!*) = not
+prefix 11 !*
+
 ex_adjacent_exprs1 = f <->* (^) "a" "b" -- "ba"
 ex_adjacent_exprs2 = (^) *<-> "a" "b" -- "ba"
-
+ex_adjacent_exprs3 = and *<-> !* True False
 
 
 -- exponent
