@@ -36,8 +36,8 @@ infixl | infixr | infix |  prefix | postfix <number> <operator>
 e.g.
 
 ```
-infixl 5 (+)
-infixr 3 (::)
+infixl 5 +
+infixr 3 ::
 infixr <number> <operator>
 ```
 
