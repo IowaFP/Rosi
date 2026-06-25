@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wunused-imports #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
-module FixityResolution where
+module DesugarInfix where
 
 
 import Data.List (intercalate)
