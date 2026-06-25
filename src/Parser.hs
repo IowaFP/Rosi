@@ -26,6 +26,7 @@ import Text.Megaparsec.Char.Lexer qualified as P
 import Text.Megaparsec.Error
 
 import Checker.Monad              (bind)
+import Data.List                  (intersperse)
 import Data.Map                   (fromAscList)
 import Debug.Trace                qualified as T
 import Text.Megaparsec.Debug      (dbg)
@@ -418,22 +419,13 @@ term = prefixes typedTerm where
   infixExpr =  eliminateTrivial . EInfix . concat <$> some (try appTerm <|> try (singleton . flip (Operator (-1)) Nothing <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
     where
           -- Not everything needs to be an EInfix.
-          eliminateTrivial (EInfix [Operand tm]) = tm
-          eliminateTrivial                     e = e
-
-
-data AppTerm = Type Ty | Term Term | Op String
+          eliminateTrivial (EInfix [Operand (ATerm tm)]) = tm
+          eliminateTrivial (EInfix [Operand (AType ty)]) = error "found lonely type argument"
+          eliminateTrivial                     e         = e
 
 appTerm :: Parser [EInfixToken]
-appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
-             app (t:ts) where
-
-  app :: [AppTerm] -> Parser [EInfixToken]
-  app [Term t]             = return [Operand t]
-  app (Type _:_)           = unexpected (Label $ fromList "type argument")
-  app (Term t:Term u : ts) = (Operand t:) . (explicitApp:) <$> app (Term u:ts)
-
-  app (Term t:Type u : ts) = app (Term (EInst t (Known [TyArg u])):ts)
+appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
+             return . intersperse explicitApp . map Operand $ (t:ts) where
 
   goal s = Goal . (s,) <$> newIORef Nothing
 

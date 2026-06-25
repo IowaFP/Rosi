@@ -18,7 +18,7 @@ import System.FilePath
 import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr, stdout)
 
 import Checker
-import DesugarInfix      (desugarInfix)
+import DesugarInfix          (desugarInfix)
 import Interp.Erased         as E
 import Parser
 import Printer

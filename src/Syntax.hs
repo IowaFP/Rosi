@@ -397,9 +397,8 @@ data Const =
     deriving (Data, Eq, Show, Typeable)
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?
-
-data EInfixToken = Operator Int QName (Maybe Fixity) | Operand Term
-  deriving (Data, Eq, Show, Typeable)
+data EInfixToken = Operator Int QName (Maybe Fixity) | Operand AppTerm
+  deriving (Data, Eq, Show)
 
 explicitApp :: EInfixToken
 explicitApp = Operator (-1) ["__Apply"] (Just (Fixity InfixL 10))
@@ -413,6 +412,9 @@ data Term =
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
   | EStringLit String | EHole String
   deriving (Data, Eq, Show, Typeable)
+
+data AppTerm = AType Ty | ATerm Term
+  deriving (Data, Eq, Show)
 
 shiftENV :: [UVar] -> Int -> Int -> Term -> Term
 shiftENV _ _ _ e@(EVar {})       = e
@@ -432,8 +434,8 @@ shiftENV vs j n (EInfix ops)     = EInfix $ map (shiftENVfix vs j n) ops
 shiftENV _ _ _ e@(EStringLit {}) = e
 shiftENV _ _ _ e@(EHole {})      = e
 
-shiftENVfix vs j n (Operand tm) = Operand $ shiftENV vs j n tm
-shiftENVfix vs j n e            = e
+-- shiftENVfix vs j n (Operand tm) = Operand $ shiftENV vs j n tm
+shiftENVfix vs j n e            = error "should have desugared Einfix before now"
 
 shiftEN :: Int -> Int -> Term -> Term
 shiftEN = shiftENV []

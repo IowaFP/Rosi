@@ -185,6 +185,11 @@ instance HasVars EInfixToken where
   scope (Operator _ qn _) = do ~(EVar i qn', fx) <- var qn
                                return $ Operator i qn' fx
 
+instance HasVars AppTerm where
+  scope :: AppTerm -> ScopeM AppTerm
+  scope (ATerm tm) = ATerm <$> scope tm
+  scope (AType ty) = AType <$> scope ty
+
 scopeProg :: [Decl] -> ScopeM [Decl]
 scopeProg []                        = return []
 scopeProg (d@(TmDecl x _ _ f) : ds) = (:) <$> scope d <*> bindGVar x f (scopeProg ds)

@@ -100,7 +100,7 @@ instance DesugarInfix Term where
                                                             ++ "in the context of the expression "
                                                             ++ unwords (map renderPretty exp)
 
-      resolveFixities :: [EInfixToken] -> [Term] -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
+      resolveFixities :: [EInfixToken] -> [AppTerm] -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
 
       -- Based on Garrett's algorithm from habit/alb and Djikstra's shunting yard algorithm,
       -- The presence of prefix and postfix operators means we can't assume that the expression consists of alternating operators and subterms.
@@ -120,7 +120,8 @@ instance DesugarInfix Term where
       resolveFixities [] (e0:e1:es) [] = Left (Operand e1, Operand e0)
 
       -- Base case: we've successfully reduced to a term.
-      resolveFixities [] [e] [] = Right e
+      resolveFixities [] [ATerm tm] [] = Right tm
+      resolveFixities [] [AType t] [] = error $ "ended up with a type in term position. " ++ show t
 
       -- when head of tail is a term, push it on the term stack.
       resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
@@ -141,12 +142,14 @@ instance DesugarInfix Term where
           LT -> resolveFixities (op1:op0:ops) tmStack tail
           EQ -> Left (op0, op1)
 
-      app1 (Operator i qn _) tm = EApp (EVar i qn) tm
-      app1 e tm                 = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
+      app1 (Operator i qn _) (AType ty) = error $ "tried to illegally apply term-level operator to type " ++ show ty
+      app1 (Operator i qn _) (ATerm tm) = ATerm $ EApp (EVar i qn) tm
+      app1 e tm                         = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
       -- eliminate explicit application
-      app2 (Operator _ ["__Apply"] _) tm1 tm2 = EApp tm1 tm2
-      app2 (Operator i qn _) tm1 tm2          = EApp (EApp (EVar i qn) tm1) tm2
-      app2 e tm1 tm2                          = error $ "tried to apply term " ++ show e ++ " to terms " ++ show tm1 ++ " and " ++ show tm2
+      app2 (Operator _ ["__Apply"] _) (ATerm t) (AType u)     = ATerm (EInst t (Known [TyArg u]))
+      app2 (Operator _ ["__Apply"] _) (ATerm tm1) (ATerm tm2) = ATerm $ EApp tm1 tm2
+      app2 (Operator i qn _) (ATerm tm1) (ATerm tm2)          = ATerm (EApp (EApp (EVar i qn) tm1) tm2)
+      app2 e tm1 tm2                                          = error $ "tried to illegally apply expression " ++ show e ++ " to expressions " ++ show tm1 ++ " expressions " ++ show tm2
 
       applyOp op [] = error $ "Can't apply op "
                                         ++ renderPretty op
@@ -165,7 +168,7 @@ instance DesugarInfix Term where
       fixityOf (Operator _ _ (Just (Fixity fx _))) = fx
       fixityOf op                                  = error $ "fixityOf called with invalid token " ++ renderPretty op
 
-      dumpStacks :: [EInfixToken] -> [Term] -> [EInfixToken] -> String
+      dumpStacks :: [EInfixToken] -> [AppTerm] -> [EInfixToken] -> String
       dumpStacks opStack e tail = show ( intercalate " : " $ map renderPretty opStack, intercalate " : " $ map renderPretty e,  intercalate " : " $ map renderPretty tail)
 
 -- desugar all subterms in the list of operators and operands
@@ -178,6 +181,10 @@ instance DesugarInfix a => DesugarInfix [a] where
 instance DesugarInfix EInfixToken where
   desugarInfix (Operand tm) = Operand (desugarInfix tm)
   desugarInfix op           = op
+
+instance DesugarInfix AppTerm where
+  desugarInfix (ATerm tm) = ATerm (desugarInfix tm)
+  desugarInfix ty         = ty
 
 
 instance DesugarInfix Decl where

@@ -242,6 +242,10 @@ instance Printable EInfixToken where
   ppr (Operator i qn f) = ppr qn <+> "@" <+> ppre i
   ppr (Operand e)       = parens $ ppr e
 
+instance Printable AppTerm where
+  ppr (AType t) = ppr t
+  ppr (ATerm t) = "@" <+> ppr t
+
 instance Printable Term where
   -- Special case for Nat
   ppr t | Just n <- fromPeano t =  ppre (show n)
