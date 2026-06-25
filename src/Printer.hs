@@ -9,7 +9,6 @@ import Data.List                   (intercalate)
 import Data.String
 import Prettyprinter               qualified as P
 import Prettyprinter.Render.String qualified as P
-import Prettyprinter.Util          qualified as P
 import System.IO.Unsafe
 
 import Syntax
@@ -243,8 +242,8 @@ instance Printable EInfixToken where
   ppr (Operand e)       = parens $ ppr e
 
 instance Printable AppTerm where
-  ppr (AType t) = ppr t
-  ppr (ATerm t) = "@" <+> ppr t
+  ppr (AType t) = "@" <+> ppr t
+  ppr (ATerm t) = ppr t
 
 instance Printable Term where
   -- Special case for Nat

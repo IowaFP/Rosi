@@ -4,18 +4,14 @@ module Parser where
 
 import Syntax
 
-import Control.Monad              (foldM, guard, mplus, replicateM, void, when)
+import Control.Monad              (when)
 import Control.Monad.Reader
 import Control.Monad.State
 
-import Data.Char                  (isSpace)
 import Data.Data                  hiding (Fixity, Infix, Prefix)
-import Data.Functor
 import Data.IORef                 (newIORef)
-import Data.List                  (delete, find, intercalate, singleton)
+import Data.List                  (intercalate, intersperse, singleton)
 import Data.List.NonEmpty         (fromList)
-import Data.List.Split            (splitOn)
-import Data.Maybe                 (fromMaybe, isNothing)
 import Data.Void                  (Void)
 import System.Exit                (exitFailure)
 import System.IO                  (hPutStrLn, stderr)
@@ -23,13 +19,6 @@ import System.IO                  (hPutStrLn, stderr)
 import Text.Megaparsec            hiding (State)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
-import Text.Megaparsec.Error
-
-import Checker.Monad              (bind)
-import Data.List                  (intersperse)
-import Data.Map                   (fromAscList)
-import Debug.Trace                qualified as T
-import Text.Megaparsec.Debug      (dbg)
 
 
 --------------------------------------------------------------------------------
@@ -141,10 +130,9 @@ lidentifier :: Parser String
 lidentifier =
   char '\'' >> some (alphaNumChar <|> char '\'' <|> char '_')
 
-qidentifier  =
-  do xs <- many (try (identifier <* string "." <* notFollowedBy (string "\'" <|> string "#")))
-     x <- try identifier <|> try surroundedOp
-     return (x:reverse xs)
+qidentifier  = do xs <- many (try (identifier <* string "." <* notFollowedBy (string "\'" <|> string "#")))
+                  x <- termIdentifier
+                  return (x:reverse xs)
 
 
 -- TODO(mctano) centralize source of truth for reserved keywords and operators
@@ -182,9 +170,14 @@ commaSep1   = flip sepBy1 comma
 number      = P.decimal
 stringLit   = lexeme (char '"' >> manyTill P.charLiteral (char '"'))
 
-surroundedOp = immediateParens customOperator
+surroundedOp          = immediateParens customOperator
+
 surroundedQIdentifier = immediateBackticks qidentifier
-surroundedIdentifier = immediateBackticks identifier
+surroundedIdentifier  = immediateBackticks identifier
+
+termIdentifier = try surroundedOp <|> identifier
+
+
 
 
 ---------------------------------------------------------------------------------
@@ -296,8 +289,8 @@ atype = choice [ TLab <$> lexeme lidentifier
                , TSing <$> (char '#' >> atype)
                , tcon <*> atype
                , TRow <$> braces (commaSep labeledTy)
-               , const TString <$> reserved "String"
-               , TVar (-1) <$> (lexeme qidentifier)
+               , TString <$ reserved "String"
+               , TVar (-1) <$> lexeme qidentifier
                , parens ty ]
 
 pr :: Parser Pred
@@ -321,9 +314,9 @@ pr = choice [ do reserved "Fold"
 termLamBinders :: Parser [Either (String, Maybe Kind) (String, Maybe Ty)]
 termLamBinders =
   choice
-    [ singleton . Right . (, Nothing) <$> try (lexeme (try identifier <|> surroundedOp))
+    [ singleton . Right . (, Nothing) <$> try (lexeme termIdentifier)
     , singleton . Left  . (, Nothing) <$> lexeme (char '@' >> identifier)
-    , try $ parens $ do xs <- some (try (lexeme (try identifier <|> surroundedOp)))
+    , try $ parens $ do xs <- some (try (lexeme termIdentifier))
                         t <- colon >> ty
                         return (map (Right . (, Just t)) xs)
     , parens $ do xs <- some (lexeme (char '@' >> identifier))
@@ -342,7 +335,7 @@ term = prefixes typedTerm where
               return (foldr1 (.) (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs)))
          <|>
            do symbol "let"
-              x <- lexeme identifier
+              x <- lexeme termIdentifier
               mty <- optional $ symbol ":" >> ty
               symbol "="
               t <- term
@@ -381,7 +374,7 @@ term = prefixes typedTerm where
       do k <- choice [ ESing . TLab <$> lidentifier
                      , EVar (-1) <$> qidentifier ]
          symbol ":"
-         x <- lexeme identifier
+         x <- lexeme termIdentifier
          return (k, x)
 
     -- case ,k (\,x. ,t)
@@ -501,16 +494,16 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
 data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixityDecl Fixity
   deriving (Data, Eq, Show, Typeable)
 
-data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKeyword
+data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKind
   deriving (Show)
 
 topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
   lhs = choice
-          [ try $ ImportLHS <$ reserved "import"
-          , try $ TypeLHS <$> lexeme typeIdentifier
-          , try $ TermLHS <$> try (lexeme (try identifier <|> surroundedOp))
-          , try $ FixityLHS <$> lexeme fixityKeyword
+          [ ImportLHS <$ reserved "import"
+          , TypeLHS <$> lexeme typeIdentifier
+          , TermLHS <$> try (lexeme termIdentifier)
+          , FixityLHS <$> lexeme fixityKeyword
           ]
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
@@ -520,13 +513,13 @@ topLevel = item lhs body where
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
 
-  fixityKeyword :: Parser FixityKeyword
+  fixityKeyword :: Parser FixityKind
   fixityKeyword = choice
-    [ try $ InfixL <$ reserved "infixl"
-    , try $ InfixR <$ reserved "infixr"
-    , try $ Infix  <$ reserved "infix"
-    , try $ Prefix <$ reserved "prefix"
-    ,      Postfix <$ reserved "postfix"
+    [ InfixL <$ reserved "infixl"
+    , InfixR <$ reserved "infixr"
+    , Infix  <$ reserved "infix"
+    , Prefix <$ reserved "prefix"
+    , Postfix <$ reserved "postfix"
     ]
 
   typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))

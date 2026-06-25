@@ -6,7 +6,6 @@ import Control.Monad.State
 import Data.Bifunctor
 import Data.List
 import Data.Maybe
-import Debug.Trace          qualified as T
 import Syntax
 
 newtype ScopeM a = ScopeM { runScope :: ReaderT ([QName], [(QName, Maybe Fixity)]) (Except Error) a }

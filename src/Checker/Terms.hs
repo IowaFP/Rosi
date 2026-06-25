@@ -2,8 +2,6 @@
 module Checker.Terms where
 
 import Control.Monad
-import Control.Monad.Error.Class
-import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
 import Data.Generics              (everywhereM, mkM)

@@ -1,7 +1,6 @@
 module Checker.Types where
 
 import Control.Monad
-import Control.Monad.Error.Class
 import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer

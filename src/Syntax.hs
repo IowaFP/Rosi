@@ -5,7 +5,6 @@ import Control.Monad.IO.Class
 import Data.Bifunctor         (first)
 import Data.Generics          hiding (Fixity (..), GT, TyCon)
 import Data.IORef
-import Data.Map               (Map)
 import GHC.Stack
 
 --------------------------------------------------------------------------------
@@ -17,11 +16,30 @@ import GHC.Stack
 type Name = String
 type QName = [Name]
 
-data FixityKeyword = InfixL | InfixR | Infix | Prefix | Postfix
+data FixityKind = InfixL | InfixR | Infix | Prefix | Postfix
   deriving (Data, Eq, Show)
 
-data Fixity = Fixity FixityKeyword Int
+data Fixity = Fixity FixityKind Int
   deriving (Data, Eq, Show)
+
+instance Ord Fixity where
+  -- associativity applies when infix level is equal
+  compare (Fixity InfixL l0) (Fixity InfixL l1) | l0 == l1 = GT
+  compare (Fixity InfixR l0) (Fixity InfixR l1) | l0 == l1 = LT
+
+  -- prefix on the right binds tight
+  -- thus adjacent prefixes associate right, regardless of precedence level
+  -- consider that in (P \/ ! Q), the ! must apply to  Q, even if \/ has higher precedence
+  compare (Fixity _ _) (Fixity Prefix _)  = LT
+
+  -- similarly, postfix on the left binds tight
+  -- thus adjacent postfixes associate left, regardless of precedence level
+  compare (Fixity Postfix _) (Fixity _ _) = GT
+
+  -- otherwise, we use the precedence level
+  -- (equal precedence is ambiguous)
+  compare (Fixity _ l0) (Fixity _ l1) = compare l0 l1
+
 
 defaultFixity = Fixity InfixL 9
 
@@ -397,11 +415,6 @@ data Const =
     deriving (Data, Eq, Show, Typeable)
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?
-data EInfixToken = Operator Int QName (Maybe Fixity) | Operand AppTerm
-  deriving (Data, Eq, Show)
-
-explicitApp :: EInfixToken
-explicitApp = Operator (-1) ["__Apply"] (Just (Fixity InfixL 10))
 
 
 data Term =
@@ -412,6 +425,18 @@ data Term =
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
   | EStringLit String | EHole String
   deriving (Data, Eq, Show, Typeable)
+
+data EInfixToken = Operator Int QName (Maybe Fixity) | Operand AppTerm
+  deriving (Data, Eq, Show)
+
+
+instance Ord EInfixToken where
+  compare l@(Operator _ _ (Just f1)) r@(Operator _ _ (Just f2)) = compare f1 f2
+  compare l r                                                   = error $ "internal: tried to compare invalid arguments " ++ show l ++ ", " ++ show r
+
+explicitApp :: EInfixToken
+explicitApp = Operator (-1) ["__Apply"] (Just (Fixity InfixL 10))
+
 
 data AppTerm = AType Ty | ATerm Term
   deriving (Data, Eq, Show)
