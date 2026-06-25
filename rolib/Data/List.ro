@@ -15,11 +15,7 @@ infixr 5 ::
 
 
 sing : a -> List a
-sing = \ a. (::) a nil
-
--- TODO(mctano) this should work
--- sing : a -> List a
--- sing = \ a. a::nil
+sing = \ a. a::nil
 
 head : List a -> Maybe a
 head = 'Nil: u -> Nothing
@@ -124,9 +120,5 @@ showList = \ show. fix (\showList.
     | 'Cons: p -> show p.'1 ^ " :: " ^ showList p.'2))
 
 
-listTest1 = nth ((::) one ((::) two ((::) three nil))) two
-listTest2 = nth ((::) one ((::) two nil)) two
-
--- TODO(mctano) rework parsing to allow this:
--- listTest1 = nth (one::two::three::nil) two
--- listTest2 = nth (one::two::nil) two
+listTest1 = nth (one::two::three::nil) two
+listTest2 = nth (one::two::nil) two

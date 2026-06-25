@@ -134,17 +134,20 @@ qidentifier  = do xs <- many (try (identifier <* string "." <* notFollowedBy (st
                   x <- termIdentifier
                   return (x:reverse xs)
 
+-- we support all operator symbols supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" ) except for '.', '#', and '@'
+-- See (https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#data-types)
+isOperatorSymbol = (`elem` ":+-*\\/=?|&><!$%^~")
+                    -- alternate symbol set based on the `isSymbol` class. May be more trouble than it's worth.
+                    --  (\c -> (isSymbol c || c `elem` "-*\\/?&!%") && c /= '`')
 
 -- TODO(mctano) centralize source of truth for reserved keywords and operators
 customOperator :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 customOperator =
   do
     s <- takeWhile1P (Just "operator symbol")
-                     -- we support all operator symbols supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" ) except for '.', '#', and '@'
-                     -- See (https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#data-types)
-                     (`elem` ":+-*\\/=?|&><!$%^~")
-                     -- alternate symbol set based on the `isSymbol` class. May be more trouble than it's worth.
-                     --  (\c -> (isSymbol c || c `elem` "-*\\/?&!%") && c /= '`')
+
+                     isOperatorSymbol
+
     if s `elem` reserved
       then unexpected $ Label (fromList "reserved operator")
       else return s
@@ -425,7 +428,7 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   ctor = do x <- choice [ ESing . TLab <$> lidentifier
                         , EVar (-1) <$> qidentifier ]
             char ':'
-            notFollowedBy (char '=')
+            notFollowedBy (satisfy isOperatorSymbol)
             return (EApp (EVar (-1) (reverse ["Ro", "Base", "con"])) x)
 
   sing x = [x]
