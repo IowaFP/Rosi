@@ -160,7 +160,7 @@ customOperator =
       then unexpected $ Label (fromList "reserved operator")
       else return s
   where
-    reserved = [":", "++", "|", "^", "~", "@", "/", ":=", "=", "->", "#"]
+    reserved = [":", "++", "|", "^", "~", "@", "/", "\\", ":=", "=", "->", "#"]
 
 
 immediateParens = between (char '(') (char ')')
