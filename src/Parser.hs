@@ -119,12 +119,43 @@ lexeme p    = guardIndent p <* whitespace
 symbol      = lexeme . string
 reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
 
+constants = [("prj", CPrj),
+             ("inj", CInj),
+             ("(++)", CConcat),
+             ("(|)", CBranch),
+             ("syn", CSyn),
+             ("ana", CAna),
+             ("fold", CFold),
+             ("fix", CFix),
+             ("(^)", CStringCat),
+             ("(~)", CStringEq)
+            ]
+
+
+fixityKeywords = [("infixl",   InfixL),
+                  ("infixr",   InfixR),
+                  ("infix",     Infix),
+                  ("prefix",   Prefix),
+                  ("postfix", Postfix)
+                 ]
+
+
+fixityKeyword :: Parser FixityKind
+fixityKeyword = choice [ kind <$ reserved word | (word, kind) <- fixityKeywords]
+
+syntaxKeywords = ["let", "in", "forall"]
+
+reservedWords = syntaxKeywords ++ map fst fixityKeywords ++ map fst constants
+
+reservedOps = [":", "++", "|", "^", "~", "@", "/", "\\", ":=", "=", "->", "#", "."]
+
+
+identifier :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 identifier  =
-  do s <- ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
-     if s `elem` keywords
+  do s <- (:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_')
+     if s `elem` reservedWords
      then unexpected $ Label (fromList "reserved word")
      else return s
-  where keywords = ["let", "in", "forall", "infixl", "infixr", "infix", "prefix", "postfix", "__Apply"]
 
 lidentifier :: Parser String
 lidentifier =
@@ -134,25 +165,26 @@ qidentifier  = do xs <- many (try (identifier <* string "." <* notFollowedBy (st
                   x <- termIdentifier
                   return (x:reverse xs)
 
--- we support all operator symbols supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" ) except for '.', '#', and '@'
--- See (https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#data-types)
-isOperatorSymbol = (`elem` ":+-*\\/=?|&><!$%^~")
-                    -- alternate symbol set based on the `isSymbol` class. May be more trouble than it's worth.
-                    --  (\c -> (isSymbol c || c `elem` "-*\\/?&!%") && c /= '`')
+operatorSymbols = ":+-*\\/=?|&><!$%^~#@"
 
--- TODO(mctano) centralize source of truth for reserved keywords and operators
-customOperator :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
+-- we support all operator symbols supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" )
+-- See (https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#data-types)
+isOperatorSymbol = (`elem` operatorSymbols)
+-- alternate operator symbol predicate based on the `isSymbol` class. May be more trouble than it's worth.
+-- isOperatorSymbol c = isSymbol c || c `elem` "-*\\/?&!%") && c /= '`'
+
+operatorSymbol :: Parser Char
+operatorSymbol = satisfy isOperatorSymbol
+
+-- TODO(mctano) centralize source of truth for reserved syntaxKeywords and operators
+customOperator :: Parser String
 customOperator =
   do
-    s <- takeWhile1P (Just "operator symbol")
+    s <- takeWhile1P (Just "operator symbol") isOperatorSymbol
 
-                     isOperatorSymbol
-
-    if s `elem` reserved
+    if s `elem` reservedOps
       then unexpected $ Label (fromList "reserved operator")
       else return s
-  where
-    reserved = [":", "++", "|", "^", "~", "@", "/", "\\", ":=", "=", "->", "#"]
 
 
 immediateParens = between (char '(') (char ')')
@@ -428,7 +460,7 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   ctor = do x <- choice [ ESing . TLab <$> lidentifier
                         , EVar (-1) <$> qidentifier ]
             char ':'
-            notFollowedBy (satisfy isOperatorSymbol)
+            notFollowedBy operatorSymbol
             return (EApp (EVar (-1) (reverse ["Ro", "Base", "con"])) x)
 
   sing x = [x]
@@ -448,7 +480,7 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
        return (ELam "$x" Nothing (foldl buildSel (EVar (-1) ["$x"]) xs))
 
   aterm :: Parser Term
-  aterm = choice [ EConst <$> const
+  aterm = choice [ EConst <$> constant
                  , try (lexeme ctor)
                  , try (lexeme selection)
                  , try (lexeme stor)
@@ -477,22 +509,13 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   labeledTerm t@(ELabel _ _ _) = Just t
   labeledTerm _                = Nothing
 
-  const :: Parser Const
-  const = choice [reserved s >> return k | (s, k) <-
-                   [("prj", CPrj),
-                    ("inj", CInj),
-                    ("(++)", CConcat),
-                    ("(|)", CBranch),
-                    ("syn", CSyn),
-                    ("ana", CAna),
-                    ("fold", CFold),
-                    ("fix", CFix),
-                    ("(^)", CStringCat),
-                    ("(~)", CStringEq)]]
-
   buildNumber :: Int -> Term
   buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
   buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
+
+  constant :: Parser Const
+  constant =  choice [reserved s >> return k | (s, k) <-constants]
+
 
 data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixityDecl Fixity
   deriving (Data, Eq, Show, Typeable)
@@ -515,15 +538,6 @@ topLevel = item lhs body where
   --
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
-
-  fixityKeyword :: Parser FixityKind
-  fixityKeyword = choice
-    [ InfixL <$ reserved "infixl"
-    , InfixR <$ reserved "infixr"
-    , Infix  <$ reserved "infix"
-    , Prefix <$ reserved "prefix"
-    , Postfix <$ reserved "postfix"
-    ]
 
   typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
   body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
