@@ -320,9 +320,9 @@ pr = choice [ do reserved "Fold"
 termLamBinders :: Parser [Either (String, Maybe Kind) (String, Maybe Ty)]
 termLamBinders =
   choice
-    [ singleton . Right . (, Nothing) <$> lexeme identifier
+    [ singleton . Right . (, Nothing) <$> try (lexeme (try identifier <|> surroundedOp))
     , singleton . Left  . (, Nothing) <$> lexeme (char '@' >> identifier)
-    , try $ parens $ do xs <- some (lexeme identifier)
+    , try $ parens $ do xs <- some (try (lexeme (try identifier <|> surroundedOp)))
                         t <- colon >> ty
                         return (map (Right . (, Just t)) xs)
     , parens $ do xs <- some (lexeme (char '@' >> identifier))
@@ -415,7 +415,7 @@ term = prefixes typedTerm where
 
   catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
-  infixExpr =  eliminateTrivial . EInfix . concat <$> some (try appTerm <|> try (singleton . (`Operator` Nothing) <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
+  infixExpr =  eliminateTrivial . EInfix . concat <$> some (try appTerm <|> try (singleton . flip (Operator (-1)) Nothing <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
     where
           -- Not everything needs to be an EInfix.
           eliminateTrivial (EInfix [Operand tm]) = tm
@@ -428,7 +428,6 @@ appTerm :: Parser [EInfixToken]
 appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
              app (t:ts) where
 
-  -- TODO(mctano) resolve operators
   app :: [AppTerm] -> Parser [EInfixToken]
   app [Term t]             = return [Operand t]
   app (Type _:_)           = unexpected (Label $ fromList "type argument")
@@ -578,7 +577,6 @@ defns moduleNames tls
         -- hey, why not five times?
         -- Get the fixity declarations for each name.
         fixDecls = [(x, fixity) | (x, FixityDecl fixity) <- tls]
-        fixityMap = map (\(x, fx) -> (x : moduleNames, fx)) fixDecls
 
         imports  = [names | (_, ImportTL names) <- tls]
 

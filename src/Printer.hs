@@ -1,4 +1,4 @@
- {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Eta reduce" #-}
 module Printer where
@@ -239,8 +239,8 @@ collectBinders = go "\\" where
   go s t                     = s <+> "." <+> ppr t
 
 instance Printable EInfixToken where
-  ppr (Operator qn f) = ppr qn
-  ppr (Operand e) = parens $ ppr e
+  ppr (Operator i qn f) = ppr qn <+> "@" <+> ppre i
+  ppr (Operand e)       = parens $ ppr e
 
 instance Printable Term where
   -- Special case for Nat

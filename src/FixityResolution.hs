@@ -2,18 +2,17 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 module FixityResolution where
 
-import Data.Foldable (find)
 
-import Data.List     (intercalate)
-import Printer       (renderPretty)
+import Data.List (intercalate)
+import Printer   (renderPretty)
 import Syntax
 
 class DesugarInfix a where
-  desugarInfix :: FixityMap -> a -> a
+  desugarInfix :: a -> a
 
 instance Ord EInfixToken where
-  compare l@(Operator _ (Just f1)) r@(Operator _ (Just f2)) = compare f1 f2
-  compare l r                                               = error $ "tried to compare invalid arguments " ++ show l ++ ", " ++ show r
+  compare l@(Operator _ _ (Just f1)) r@(Operator _ _ (Just f2)) = compare f1 f2
+  compare l r                                                   = error $ "tried to compare invalid arguments " ++ show l ++ ", " ++ show r
 
 instance Ord Fixity where
   -- associativity applies when infix level is equal
@@ -35,51 +34,48 @@ instance Ord Fixity where
 
 instance DesugarInfix Term where
 
-  desugarInfix fixMap (EVar n qname)      = EVar n qname
-  desugarInfix fixMap (ELam x ty tm)      = ELam x ty (desugarInfix fixMap tm)
-  desugarInfix fixMap (EApp ft xt)        = EApp (desugarInfix fixMap ft) (desugarInfix fixMap xt)
+  desugarInfix (EVar n qname)      = EVar n qname
+  desugarInfix (ELam x ty tm)      = ELam x ty (desugarInfix tm)
+  desugarInfix (EApp ft xt)        = EApp (desugarInfix ft) (desugarInfix xt)
 
-  desugarInfix fixMap (ETyLam s k tm )    = ETyLam s k (desugarInfix fixMap tm)
-  desugarInfix fixMap (EPrLam p tm)       = EPrLam p (desugarInfix fixMap tm)
-  desugarInfix fixMap (EInst tm insts)    = EInst (desugarInfix fixMap tm) insts
+  desugarInfix (ETyLam s k tm )    = ETyLam s k (desugarInfix tm)
+  desugarInfix (EPrLam p tm)       = EPrLam p (desugarInfix tm)
+  desugarInfix (EInst tm insts)    = EInst (desugarInfix tm) insts
 
-  desugarInfix fixMap (ESing ty)          = ESing ty
-  desugarInfix fixMap (ELabel tc lt xt)   = ELabel tc (desugarInfix fixMap lt) (desugarInfix fixMap xt)
-  desugarInfix fixMap (EUnlabel tc xt lt) = EUnlabel tc (desugarInfix fixMap xt) ( desugarInfix fixMap lt)
+  desugarInfix (ESing ty)          = ESing ty
+  desugarInfix (ELabel tc lt xt)   = ELabel tc (desugarInfix lt) (desugarInfix xt)
+  desugarInfix (EUnlabel tc xt lt) = EUnlabel tc (desugarInfix xt) ( desugarInfix lt)
 
-  desugarInfix fixMap (EConst c)          = EConst c
+  desugarInfix (EConst c)          = EConst c
 
-  desugarInfix fixMap (ELet x vt et)      = ELet x (desugarInfix fixMap vt) (desugarInfix fixMap et)
-  desugarInfix fixMap (ECast tm evid)     = ECast (desugarInfix fixMap tm) evid
-  desugarInfix fixMap (ETyped tm ty)      = ETyped (desugarInfix fixMap tm) ty
+  desugarInfix (ELet x vt et)      = ELet x (desugarInfix vt) (desugarInfix et)
+  desugarInfix (ECast tm evid)     = ECast (desugarInfix tm) evid
+  desugarInfix (ETyped tm ty)      = ETyped (desugarInfix tm) ty
 
-  desugarInfix fixMap (EStringLit s)      = EStringLit s
-  desugarInfix fixMap (EHole s)           = EHole s
+  desugarInfix (EStringLit s)      = EStringLit s
+  desugarInfix (EHole s)           = EHole s
 
                                           -- we make the recursive call to desugar subterms before collecting and resolving fixities
-  desugarInfix fixMap (EInfix _ops)        = (resolveFixitiesF . padWithApply . collectFixities . desugarInfix fixMap) _ops
+  desugarInfix (EInfix _ops)        = (resolveFixitiesF . padWithApply . collectFixities . desugarInfix) _ops
     where
       collectFixities :: [EInfixToken] -> [EInfixToken]
       collectFixities = map (\ case (Operand e) -> Operand e
-                                    (Operator qn Nothing) -> Operator qn (Just (lookupFixity qn))
-                                    (Operator qn (Just fx)) -> Operator qn (Just fx)
+                                    (Operator todo qn Nothing) -> Operator todo qn (Just defaultFixity)
+                                    (Operator todo qn (Just fx)) -> Operator todo qn (Just fx)
                             )
 
-      padWithApply []                                                                                        = []
-      padWithApply (Operand tm:op@(Operator _ (Just (Fixity Prefix _))):xs)                                  = Operand tm:explicitApp:op:padWithApply xs
-      padWithApply (op@(Operator _ (Just (Fixity Postfix _))):Operand tm:xs)                                 = op:explicitApp:padWithApply (Operand tm:xs)
-      padWithApply (op0@(Operator _ (Just (Fixity Postfix _))):op1@(Operator _ (Just (Fixity Prefix _))):xs) = op0:explicitApp:op1:padWithApply xs
+      padWithApply []                                                                                            = []
+      padWithApply (Operand tm:op@(Operator _ _ (Just (Fixity Prefix _))):xs)                                    = Operand tm:explicitApp:op:padWithApply xs
+      padWithApply (op@(Operator _ _ (Just (Fixity Postfix _))):Operand tm:xs)                                   = op:explicitApp:padWithApply (Operand tm:xs)
+      padWithApply (op0@(Operator _ _ (Just (Fixity Postfix _))):op1@(Operator _ _ (Just (Fixity Prefix _))):xs) = op0:explicitApp:op1:padWithApply xs
 
-      padWithApply (x:xs)                                                                                    = x:padWithApply xs
-
-      lookupFixity :: QName -> Fixity
-      lookupFixity qname = maybe defaultFixity snd (find (lookFor qname . fst) fixMap)
+      padWithApply (x:xs)                                                                                        = x:padWithApply xs
 
       resolveFixitiesF :: [EInfixToken] -> Term
       resolveFixitiesF []       = error "resolveFixitiesF called with empty list"
       resolveFixitiesF exp = case resolveFixities [] [] exp of
                                     Right e           -> e
-                                    Left (op1@(Operator _ fix1), op2@(Operator _ fix2))
+                                    Left (op1@(Operator _ _ fix1), op2@(Operator _ _ fix2))
                                       -> error $ "Could not resolve precedence between ("
                                               ++ renderPretty op1
                                               ++ ") ["
@@ -117,8 +113,8 @@ instance DesugarInfix Term where
       -- resolveFixities a b c | T.trace (dumpStacks a b c) False = undefined
       -- error cases. Should be unreachable.
       resolveFixities [] [] [] = error "resolveFixities fixities called with all empty stacks"
-      resolveFixities (op0@(Operator _ Nothing):ops) tms tail = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op0 ++ ". inputs = " ++ dumpStacks (op0:ops) tms tail
-      resolveFixities ops tms (op1@(Operator _ Nothing):tail) = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op1 ++ ". inputs = " ++ dumpStacks ops tms (op1:tail)
+      resolveFixities (op0@(Operator _ _ Nothing):ops) tms tail = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op0 ++ ". inputs = " ++ dumpStacks (op0:ops) tms tail
+      resolveFixities ops tms (op1@(Operator _ _ Nothing):tail) = error $ "resolveFixities fixities called with missing Fixity on an operator: " ++ show op1 ++ ". inputs = " ++ dumpStacks ops tms (op1:tail)
 
       -- error case: if we end up with adjacent expressions on the term stack, fail.
       resolveFixities [] (e0:e1:es) [] = Left (Operand e1, Operand e0)
@@ -130,13 +126,13 @@ instance DesugarInfix Term where
       resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
 
       -- when opStack is empty, and head of tail is an operator, push it on opStack
-      resolveFixities [] tms (op1@(Operator _ _):tail) = resolveFixities [op1] tms tail
+      resolveFixities [] tms (op1@(Operator {}):tail) = resolveFixities [op1] tms tail
 
       -- when tail is empty, pop from the opstack and apply to the top of tmStack
       resolveFixities (op0:ops) tmStack [] = resolveFixities ops (applyOp op0 tmStack) []
 
       -- when opStack is nonempty, and head of tail is an operator:
-      resolveFixities (op0:ops) tmStack (op1@(Operator _ _):tail) =
+      resolveFixities (op0:ops) tmStack (op1@(Operator {}):tail) =
         -- compare top of opStack with head of tail:
         case op0 `compare` op1 of
           -- if top of opstack takes precedence, apply it to top of tmStack
@@ -145,18 +141,18 @@ instance DesugarInfix Term where
           LT -> resolveFixities (op1:op0:ops) tmStack tail
           EQ -> Left (op0, op1)
 
-      app1 (Operator qn _) tm = EApp (EVar (-1) qn) tm
-      app1 e tm               = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
+      app1 (Operator i qn _) tm = EApp (EVar i qn) tm
+      app1 e tm                 = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
       -- eliminate explicit application
-      app2 (Operator ["__Apply"] _) tm1 tm2 = EApp tm1 tm2
-      app2 (Operator qn _) tm1 tm2          = EApp (EApp (EVar (-1) qn) tm1) tm2
-      app2 e tm1 tm2                        = error $ "tried to apply term " ++ show e ++ " to terms " ++ show tm1 ++ " and " ++ show tm2
+      app2 (Operator _ ["__Apply"] _) tm1 tm2 = EApp tm1 tm2
+      app2 (Operator i qn _) tm1 tm2          = EApp (EApp (EVar i qn) tm1) tm2
+      app2 e tm1 tm2                          = error $ "tried to apply term " ++ show e ++ " to terms " ++ show tm1 ++ " and " ++ show tm2
 
       applyOp op [] = error $ "Can't apply op "
                                         ++ renderPretty op
                                         ++ " without a term to apply it to."
-      applyOp op@(Operator _ (Just (Fixity Prefix _))) (tm:tms) = app1 op tm:tms
-      applyOp op@(Operator _ (Just (Fixity Postfix _))) (tm:tms) = app1 op tm:tms
+      applyOp op@(Operator _ _ (Just (Fixity Prefix _))) (tm:tms) = app1 op tm:tms
+      applyOp op@(Operator _ _ (Just (Fixity Postfix _))) (tm:tms) = app1 op tm:tms
       applyOp op [tm0] = error $ "Expected two operands for "
                                         ++ renderPretty op
                                         ++ ", but there is only one on stack: "
@@ -166,36 +162,24 @@ instance DesugarInfix Term where
                                         ++ " to be unary, make sure its fixity was declared."
       applyOp op (tm0:tm1:tms) = app2 op tm1 tm0 : tms
 
-      fixityOf (Operator _ (Just (Fixity fx _))) = fx
-      fixityOf op                                = error $ "fixityOf called with invalid token " ++ renderPretty op
+      fixityOf (Operator _ _ (Just (Fixity fx _))) = fx
+      fixityOf op                                  = error $ "fixityOf called with invalid token " ++ renderPretty op
 
       dumpStacks :: [EInfixToken] -> [Term] -> [EInfixToken] -> String
       dumpStacks opStack e tail = show ( intercalate " : " $ map renderPretty opStack, intercalate " : " $ map renderPretty e,  intercalate " : " $ map renderPretty tail)
 
-
-
-      lookFor :: QName -> QName -> Bool
-      lookFor [x] (y : ys) = x == y
-      lookFor xs ys        = xs == ys
-
 -- desugar all subterms in the list of operators and operands
 -- this must be called before passing the list of tokens to resolveFixities
 -- to desugar infix operators at the current level
-instance DesugarInfix [EInfixToken] where
-  desugarInfix :: FixityMap -> [EInfixToken] -> [EInfixToken]
-  desugarInfix fixMap = map (desugarInfix fixMap)
+instance DesugarInfix a => DesugarInfix [a] where
+  desugarInfix = map desugarInfix
 
 
 instance DesugarInfix EInfixToken where
-  desugarInfix fixMap (Operand tm) = Operand (desugarInfix fixMap tm)
-  desugarInfix fixMap op           = op
+  desugarInfix (Operand tm) = Operand (desugarInfix tm)
+  desugarInfix op           = op
 
 
 instance DesugarInfix Decl where
-  desugarInfix fixMap (TmDecl qn ty tm fx) = TmDecl qn ty (desugarInfix fixMap tm) fx
-  desugarInfix fixMap x                    = x
-
-
-desugarOperators decls = map (desugarInfix fixMap) decls where
-  -- reverse to match lookup order of decls
-  fixMap = reverse [ (qn, fx) | (TmDecl qn _ _ (Just fx)) <- decls]
+  desugarInfix (TmDecl qn ty tm fx) = TmDecl qn ty (desugarInfix tm) fx
+  desugarInfix x                    = x

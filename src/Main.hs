@@ -18,7 +18,7 @@ import System.FilePath
 import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr, stdout)
 
 import Checker
-import FixityResolution      (desugarOperators)
+import FixityResolution      (desugarInfix)
 import Interp.Erased         as E
 import Parser
 import Printer
@@ -105,9 +105,9 @@ main = do nowArgs <- getArgs
           when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
-          let deOpped = desugarOperators decls
-          scoped <- reportErrors flags $ runScopeM $ scopeProg deOpped
-          checked <- goCheck flags [] [] scoped
+          scoped <- reportErrors flags $ runScopeM $ scopeProg decls
+          let deOpped = desugarInfix scoped
+          checked <- goCheck flags [] [] deOpped
           when (doPrintTyped flags) $
             mapM_ (putDocWLn 120 flags . pprTyping) checked
           evaled <- goEvalE [] checked

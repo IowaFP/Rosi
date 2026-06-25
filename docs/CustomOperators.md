@@ -43,8 +43,9 @@ infixr <number> <operator>
 
 A fixity declaration must appear in the same file as the operator's definition.
 
-<!-- TODO(mctano) confirm this is the default fixity that we we want. Consider requiring a fixity declaration in all cases. -->
 If there is no fixity declaration, the operator gets the default fixity and precedence, which is `infixl 9`.
+
+Fixity declarations must appear at the top level. If an operator is bound in a let or lambda binding, it gets the default fixity, even if there is a top-level fixity declaration for the same symbol in the same file.
 
 You can define a fixity for a backticked identifier as well, (as long as it is defined in the same file).
 
@@ -53,8 +54,8 @@ infixr 3 `cons`
 ```
 
 - In general, a definition/declaration pair in the current file/module will be used before a definition/declaration pair in an imported module.
-<!-- TODO(mctano) Does the claimed consistency rely on the lookup procedures in Scope and in FixityResolution being the same? -->
 - If multiple imported files contain definitions for the same identifier, and the current file does not, it is currently unpredictable which definition will be used. However, the fixity declaration is tied to the term definition, so we can expect that the fixity declaration which is ultimately used will be from the same module as the term definition.
+
 
 ## Precedence Rules
 

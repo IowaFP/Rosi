@@ -9,4 +9,4 @@ cabal run Rosi -- -i rolib -i examples examples/EE.ro -e szId,szConst,szNot,szId
 cabal run Rosi -- -i rolib examples/Operators.ro -e hello_world,res,ex_1,ex_2,ex_3,ex_4,ex_5,ex_6,ex_7,ex_8,ex_9,ex_10,ex_11,ex_12,ex_13,ex_14,ex_15\
 ex_T1,ex_T2,ex_T3,ex_T4,ex_T5,ex_T6,ex_T7,ex_T8,ex_T9,ex_T10,ex_F1,ex_F2,ex_F3,ex_F4,ex_F5,ex_F6,ex_F7,ex_F8,ex_F9,ex_F10\
 ex_adjacent_pre_post1,ex_adjacent_pre_post2,ex_adjacent_pre_post3,ex_adjacent_pre_post4\
-exp_1,exp_2,exp_4,exp_8,exp_24,ex_adjacent_exprs1,ex_adjacent_exprs2,ex_adjacent_exprs3
+exp_1,exp_2,exp_4,exp_8,exp_24,ex_adjacent_exprs1,ex_adjacent_exprs2,ex_adjacent_exprs3,fold\'

@@ -5,8 +5,8 @@ import Control.Monad.IO.Class
 import Data.Bifunctor         (first)
 import Data.Generics          hiding (Fixity (..), GT, TyCon)
 import Data.IORef
+import Data.Map               (Map)
 import GHC.Stack
-import Data.Map (Map)
 
 --------------------------------------------------------------------------------
 -- Top-level entities
@@ -24,8 +24,6 @@ data Fixity = Fixity FixityKeyword Int
   deriving (Data, Eq, Show)
 
 defaultFixity = Fixity InfixL 9
-
-type FixityMap = [(QName, Fixity)]
 
 data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
@@ -366,7 +364,7 @@ shiftTNV vs _ _ t@(TLab s) = t
 shiftTNV vs j n (TConApp k t) = TConApp k (shiftTNV vs j n t)
 shiftTNV vs j n (TMap t) = TMap (shiftTNV vs j n t)
 shiftTNV vs j n (TMapApp t) = TMapApp (shiftTNV vs j n t)
-shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t) where
+shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t)
 shiftTNV vs j n (TCompl r0 r1) = TCompl (shiftTNV vs j n r0) (shiftTNV vs j n r1)
 shiftTNV _ _ _  t@TString = t
 shiftTNV vs _ _ t = error $ "shiftTN: unhandled: " ++ show t
@@ -400,11 +398,11 @@ data Const =
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?
 
-data EInfixToken = Operator [String] (Maybe Fixity) | Operand Term
+data EInfixToken = Operator Int QName (Maybe Fixity) | Operand Term
   deriving (Data, Eq, Show, Typeable)
 
 explicitApp :: EInfixToken
-explicitApp = Operator ["__Apply"] (Just (Fixity InfixL 10))
+explicitApp = Operator (-1) ["__Apply"] (Just (Fixity InfixL 10))
 
 
 data Term =
@@ -430,8 +428,12 @@ shiftENV _ _ _ e@(EConst {})     = e
 shiftENV vs j n (ELet x e f)     = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
 shiftENV vs j n (ECast e q)      = ECast (shiftENV vs j n e) q
 shiftENV vs j n (ETyped e t)     = ETyped e (shiftTNV vs j n t)
+shiftENV vs j n (EInfix ops)     = EInfix $ map (shiftENVfix vs j n) ops
 shiftENV _ _ _ e@(EStringLit {}) = e
 shiftENV _ _ _ e@(EHole {})      = e
+
+shiftENVfix vs j n (Operand tm) = Operand $ shiftENV vs j n tm
+shiftENVfix vs j n e            = e
 
 shiftEN :: Int -> Int -> Term -> Term
 shiftEN = shiftENV []
