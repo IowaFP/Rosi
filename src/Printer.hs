@@ -238,11 +238,14 @@ collectBinders = go "\\" where
   go s t                     = s <+> "." <+> ppr t
 
 instance Printable EInfixToken where
-  ppr (Operator i qn f) = ppr qn <+> "@" <+> ppre i
+  ppr (Operator i qn f) = do pi <- asks printIndices
+                             if pi
+                              then ppr qn <> "@" <> ppre i
+                              else ppr qn
   ppr (Operand e)       = parens $ ppr e
 
 instance Printable AppTerm where
-  ppr (AType t) = "@" <+> ppr t
+  ppr (AType t) = "@" <> ppr t
   ppr (ATerm t) = ppr t
 
 instance Printable Term where
@@ -292,6 +295,7 @@ instance Printable Term where
   ppr (ECast m q) = parens (fillSep [ppr m <+> "<|", fromString (show q)])
   ppr (EStringLit s) = "\"" <> ppre s <> "\""
   ppr (EHole s) = "?" <> ppre s
+  ppr (EInfix ops) = parens ("EInfix" <+> fillSep (map ppr ops))
 
 instance Printable Evid where
   ppr _ = "<evid>"

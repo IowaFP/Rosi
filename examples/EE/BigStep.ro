@@ -73,7 +73,7 @@ evalF = \exp rec env.
            | 'Lam: e -> 'Clos: (pair env e)
            | 'App: p ->
                as 'Clos (rec p.'1 env) (\clos.
-                 (rec clos.'2) (cons (rec p.'2 env) clos.'1))
+                 (rec clos.'2) ((rec p.'2 env) :: clos.'1))
            )
 
 evalAB : forall valr.

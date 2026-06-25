@@ -75,7 +75,7 @@ ok = pair (plus @'nat @(Nat -> Nat -> Nat) 1 2) (plus @'bool @(Bool -> Bool -> B
 -- "In conventional closed-world overloading, each overloaded definition must be sufficientlly
 -- monomorphic to resove the overloading statically, but this is not necessary in our system."
 nary : forall b c : *. Pi { 'one := b -> List b , 'two := c -> c -> List c }
-nary = (#'one := \ x. sing x , #'two := \ x y. cons x (sing y))
+nary = (#'one := \ x. sing x , #'two := \ x y. x::(sing y))
 
 nlist : forall l : L , a b c : *. {l := a} < { 'one := b -> List b , 'two := c -> c -> List c } => a
 nlist = \@l @a @b @c. sel (nary @b @c) (any @l)

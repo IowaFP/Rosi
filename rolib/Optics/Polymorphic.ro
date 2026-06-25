@@ -125,7 +125,7 @@ sequence = \ ap. fix (\ sequence.
   ( case #'Nil (const (sel #'pure ap nil))
   | case #'Cons (\ p. sel #'ap ap
        (sel #'ap ap
-         (sel #'pure ap cons) (fst p))
+         (sel #'pure ap (::)) (fst p))
        (sequence (snd p)))))
 
 -- In order traversal of a list
