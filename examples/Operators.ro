@@ -205,4 +205,21 @@ op_made_of_reserved_symbols1 = 'l:=^.^"sssss"
 
 op_made_of_reserved_symbols2 = "hello" ^.^ "world"
 
-type_applied_to_term @ty tm = @ty tm
+
+
+widenVariant : forall a: *. Sigma r -> Sigma (r + {'a := a})
+widenVariant x = inj x
+
+monoId : forall t. t -> t
+monoId @t (x : t) = x
+
+
+postfix 11 ~~~
+(~~~) = id
+
+postfix_betwixt_type_application = widenVariant ~~~ @String
+
+monoIdYes = monoId ~~~ @String "yes"
+-- monoIdNo = monoId @Nat ~~~ "no"
+
+-- not_enough_args = "hello"::

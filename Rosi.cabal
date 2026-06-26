@@ -63,7 +63,7 @@ executable Rosi
     -- Other library packages from which modules are imported.
     build-depends:    base >=4.18, filepath >= 1.5, megaparsec >= 9.6, mtl >= 2.3, syb >= 0.7, containers, prettyprinter, split, directory
 
-    ghc-options: -Wno-x-partial -Wunused-imports
+    ghc-options: -Wno-x-partial -Wunused-imports -fmax-pmcheck-models=40
 
     -- Directories containing source files.
     hs-source-dirs:   src

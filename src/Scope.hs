@@ -181,9 +181,9 @@ instance HasVars Decl where
 
 instance HasVars EInfixToken where
   scope (Operand e) = Operand <$> scope e
-  scope explicitApp@(Operator _ ["__Apply"] _) = return explicitApp
-  scope (Operator _ qn _) = do ~(EVar i qn', fx) <- var qn
-                               return $ Operator i qn' fx
+  scope explicitApp@(Operator (Op _ ["__Apply"] _)) = return explicitApp
+  scope (Operator (Op _ qn _)) = do ~(EVar i qn', fx) <- var qn
+                                    return $ Operator (Op i qn' fx)
 
 instance HasVars AppTerm where
   scope :: AppTerm -> ScopeM AppTerm

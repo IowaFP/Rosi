@@ -240,11 +240,15 @@ collectBinders = go "\\" where
   go s t                     = s <+> "." <+> ppr t
 
 instance Printable EInfixToken where
-  ppr (Operator i qn f) = do pi <- asks printIndices
-                             if pi
-                              then ppr qn <> "@" <> ppre i
-                              else ppr qn
-  ppr (Operand e)       = parens $ ppr e
+  ppr :: EInfixToken -> RDoc ann
+  ppr (Operator op) = ppr op
+  ppr (Operand e)   = parens $ ppr e
+
+instance Printable EOp where
+    ppr ((Op i qn f)) = do pi <- asks printIndices
+                           if pi
+                             then ppre (stringFromQName qn) <> "@" <> ppre i
+                             else ppre (stringFromQName qn)
 
 instance Printable AppTerm where
   ppr (AType t) = "@" <> ppr t
@@ -336,15 +340,27 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
 
 instance Printable InfixDesugaringError where
   ppr :: InfixDesugaringError -> RDoc ann
-  ppr (AmbiguousPrecedenceError (Operator _ qn1 Nothing) _) = "internal: Missing fixity for operator" <+> ppre (stringFromQName qn1)
-  ppr (AmbiguousPrecedenceError  _ (Operator _ qn2 Nothing)) = "internal: Missing fixity for operator" <+> ppre (stringFromQName qn2)
-  ppr (AmbiguousPrecedenceError op1@(Operator _ _ fix1) op2@(Operator _ _ fix2))
-                                                = vsep ["Could not resolve precedence between"
-                                                                  , ppr op1 <+> "[" <> ppre (show fix1) <> "]",
-                                                                  "and",
-                                                                  ppr op2 <+> "[" <> ppre (show fix2) <> "]"]
-  ppr (AmbiguousPrecedenceError e1 e2) = "internal: AmbiguousPrecedence error created with invalid Operands " <+> ppre (show e1) <+> ppre (show e2)
-  ppr (OtherInfixResolutionError s) = ppre s
+  ppr (AmbiguousPrecedenceError op@(Op _ qn1 Nothing) _)     = "internal: Missing fixity for operator" <+> ppr op
+  ppr (AmbiguousPrecedenceError  _ op@( (Op _ qn2 Nothing))) = "internal: Missing fixity for operator" <+> ppr op
+  ppr (AmbiguousPrecedenceError op1@( (Op _ _ fix1)) op2@( (Op _ _ fix2)))
+                                                             = vsep ["Could not resolve precedence between"
+                                                                    , ppr op1 <+> "[" <> ppre (show fix1) <> "]"
+                                                                    , "and"
+                                                                    , ppr op2 <+> "[" <> ppre (show fix2) <> "]"
+                                                                    ]
+  ppr (IllegalApplyTypeToAny ty arg)                         = vsep ["Tried to illegally apply  explicit type argument ", ppr ty
+                                                                    , "to expression", ppr arg
+                                                                    , "Check your parentheses."]
+  ppr (IllegalApplyOpToTypeUnary op ty)                      = vsep ["Tried to illegally apply term-level operator ", ppr op
+                                                                    , "to explicit type argument", ppr ty
+                                                                    , "Check your parentheses."]
+  ppr (IllegalApplyOpToTypeBinary op arg1 arg2)              = vsep ["Tried to illegally apply term-level operator to a type in"
+                                                                    , ppr op <+> ppr arg1 <+> ppr arg2
+                                                                    , "Check your parentheses."]
+  ppr (NotEnoughArguments op expected stack)                 = hsep ["Not enough arguments for ", ppr op
+                                                                    , "expected", ppre expected, "but found", ppre (length stack)
+                                                                    ] <> if not (null stack) then ":" <+> ppr (head stack) else ""
+  ppr (OtherInfixResolutionError s)                          = ppre s
 
 renderString :: RDoc ann -> String
 renderString doc =

@@ -455,12 +455,12 @@ term = prefixes typedTerm where
 
   catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
-  infixExpr =  eliminateTrivial . EInfix . concat <$> some (try appTerm <|> try (singleton . flip (Operator (-1)) Nothing <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
+  infixExpr =  eliminateTrivial . EInfix . concat =<< some (try appTerm <|> try ((singleton . Operator) . flip (Op (-1)) Nothing <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
     where
           -- Not everything needs to be an EInfix.
-          eliminateTrivial (EInfix [Operand (ATerm tm)]) = tm
-          eliminateTrivial (EInfix [Operand (AType ty)]) = error "found lonely type argument"
-          eliminateTrivial                     e         = e
+          eliminateTrivial (EInfix [Operand (ATerm tm)]) = return tm
+          eliminateTrivial (EInfix [Operand (AType ty)]) = fail $ "Found only explicit type" ++ show ty ++ "where a term should be"
+          eliminateTrivial                     e         = return e
 
 appTerm :: Parser [EInfixToken]
 appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)

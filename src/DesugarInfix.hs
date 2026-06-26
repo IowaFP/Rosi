@@ -1,4 +1,7 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
+{-# OPTIONS_GHC -Werror=overlapping-patterns #-}
+{-# OPTIONS_GHC -fmax-pmcheck-models=40 #-}
+
 module DesugarInfix where
 
 
@@ -41,20 +44,22 @@ instance DesugarInfix Term where
     where
       collectFixities :: [EInfixToken] -> [EInfixToken]
       collectFixities = map (\case (Operand e)                  -> Operand e
-                                   (Operator todo qn Nothing)   -> Operator todo qn (Just defaultFixity)
-                                   (Operator todo qn (Just fx)) -> Operator todo qn (Just fx)
+                                   (Operator (Op todo qn Nothing))   -> Operator (Op todo qn (Just defaultFixity))
+                                   (Operator (Op todo qn (Just fx))) -> Operator (Op todo qn (Just fx))
                             )
 
 
-      padWithApply []                                                                                                = []
-      padWithApply (Operand tm : op@(Operator _ _ (Just (Fixity Prefix _))) : xs)                                    = Operand tm : explicitApp : op : padWithApply xs
-      padWithApply (op@(Operator _ _ (Just (Fixity Postfix _))) : Operand tm : xs)                                   = op : explicitApp : padWithApply (Operand tm : xs)
-      padWithApply (op0@(Operator _ _ (Just (Fixity Postfix _))) : op1@(Operator _ _ (Just (Fixity Prefix _))) : xs) = op0 : explicitApp : op1 : padWithApply xs
+      padWithApply []                                                                                                          = []
+      padWithApply (Operand tm : op@(Operator (Op _ _ (Just (Fixity Prefix _)))) : xs)                                         = Operand tm : explicitApp : op : padWithApply xs
+      padWithApply (op@(Operator (Op _ _ (Just (Fixity Postfix _)))) : Operand tm : xs)                                        = op : explicitApp : padWithApply (Operand tm : xs)
+      padWithApply (op0@(Operator (Op _ _ (Just (Fixity Postfix _)))) : op1@(Operator (Op _ _ (Just (Fixity Prefix _)))) : xs) = op0 : explicitApp : op1 : padWithApply xs
 
-      padWithApply (x : xs)                                                                                          = x : padWithApply xs
+
+      padWithApply (x : xs)                                                                                                    = x : padWithApply xs
 
       resolveFixitiesF :: [EInfixToken] -> Either Error Term
-      resolveFixitiesF []       = error "resolveFixitiesF called with empty list"
+      resolveFixitiesF []       = error "internal: resolveFixitiesF called with empty list"
+
       resolveFixitiesF exp = either
                                         report
                                         pure
@@ -62,7 +67,8 @@ instance DesugarInfix Term where
                                         where
                                           report err = Left $ ErrInfixDesugaring err exp
 
-      resolveFixities :: [EInfixToken] -> [AppTerm] -> [EInfixToken] -> Either InfixDesugaringError Term
+      resolveFixities :: [EOp] -> [AppTerm] -> [EInfixToken] -> Either InfixDesugaringError Term
+
 
       -- Based on Garrett's algorithm from habit/alb and Djikstra's shunting yard algorithm,
       -- The presence of prefix and postfix operators means we can't assume that the expression consists of alternating operators and subterms.
@@ -75,59 +81,70 @@ instance DesugarInfix Term where
       -- resolveFixities a b c | T.trace (dumpStacks a b c) False = undefined
       -- error cases. Should be unreachable.
       resolveFixities [] [] [] = error "internal: resolveFixities fixitieserror called with all empty stacks"
-
-    -- error case: if we end up with adjacent expressions on the term stack, fail.
-      resolveFixities [] (e0:e1:es) [] = Left $ AmbiguousPrecedenceError (Operand e1) (Operand e0)
+      resolveFixities [] [AType t] []        = error $ "internal: FixityResolution called with a sole type on tmStack. " ++ show t
+      resolveFixities [] tmStack@(at:_:_) [] = error $ "internal: FixityResolution called with multiple appTerms on tmStack, but empty opStack and tail" ++ show tmStack
 
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] [ATerm tm] [] = Right tm
-      resolveFixities [] [AType t] [] = error $ "internal: ended up with a type in term position. " ++ show t
 
       -- when head of tail is a term, push it on the term stack.
       resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
 
       -- when opStack is empty, and head of tail is an operator, push it on opStack
-      resolveFixities [] tms (op1@(Operator {}):tail) = resolveFixities [op1] tms tail
+      resolveFixities [] tms ((Operator op1):tail) = resolveFixities [op1] tms tail
 
       -- when tail is empty, pop from the opstack and apply to the top of tmStack
-      resolveFixities (op0:ops) tmStack [] = resolveFixities ops (applyOp op0 tmStack) []
+      resolveFixities (op0:ops) tmStack [] = do tmStack' <- applyOp op0 tmStack
+                                                resolveFixities ops tmStack' []
 
       -- when opStack is nonempty, and head of tail is an operator:
-      resolveFixities (op0:ops) tmStack (op1@(Operator {}):tail) =
+      resolveFixities (op0:ops) tmStack ((Operator op1):tail) =
         -- compare top of opStack with head of tail:
         case op0 `compare` op1 of
           -- if top of opstack takes precedence, apply it to top of tmStack
-          GT -> resolveFixities ops (applyOp op0 tmStack) (op1:tail)
+          GT -> do tmStack' <- applyOp op0 tmStack
+                   resolveFixities ops tmStack' (Operator op1:tail)
           -- if head of tail takes precedence push it onto opStack.
           LT -> resolveFixities (op1:op0:ops) tmStack tail
           EQ -> Left $ AmbiguousPrecedenceError op0 op1
 
-      app1 (Operator i qn _) (ATerm tm) = ATerm $ EApp (EVar i qn) tm
-      app1 (Operator i qn _) (AType ty) = error $ "tried to illegally apply term-level operator to type " ++ show ty
-      app1 e tm                         = error $ "internal: tried to illegally apply expression " ++ show e ++ " to expression " ++ show e
-      -- eliminate explicit application
-      app2 (Operator _ ["__Apply"] _) (ATerm t) (AType u)     = ATerm (EInst t (Known [TyArg u]))
-      app2 (Operator _ ["__Apply"] _) (ATerm tm1) (ATerm tm2) = ATerm $ EApp tm1 tm2
-      app2 (Operator i qn _) (ATerm tm1) (ATerm tm2)          = ATerm (EApp (EApp (EVar i qn) tm1) tm2)
-      app2 e tm1 tm2                                          = error $ concat ["internal: tried to illegally apply expression ", show e, " to expressions ", show tm1, " expressions ", show tm2]
 
-      applyOp op [] = error $ "Can't apply op "
-                                        ++ renderPretty op
-                                        ++ " without a term to apply it to."
-      applyOp op@(Operator _ _ (Just (Fixity Prefix _))) (tm:tms) = app1 op tm:tms
-      applyOp op@(Operator _ _ (Just (Fixity Postfix _))) (tm:tms) = app1 op tm:tms
-      -- TODO(mctano) convert the rest of these user errors to proper errors.
-      applyOp op [tm0] = error $ concat ["Expected two operands for ", renderPretty op
-                                        , ", but there is only one on stack: ", renderPretty tm0
-                                        , "\n (If you expect " , renderPretty op
-                                        , " to be unary, make sure its fixity was declared."]
-      applyOp op (tm0:tm1:tms) = app2 op tm1 tm0 : tms
+      app1 :: EOp -> AppTerm -> Either InfixDesugaringError AppTerm
+      app1 ( (Op i qn _)) (ATerm tm) = Right $ ATerm $ EApp (EVar i qn) tm
+      app1 op@(Op i qn _) (AType ty) = Left $ IllegalApplyOpToTypeUnary op ty
 
-      fixityOf (Operator _ _ (Just (Fixity fx _))) = fx
-      fixityOf op                                  = error $ "internal: fixityOf called with invalid token " ++ renderPretty op
+      app2 :: EOp -> AppTerm -> AppTerm -> Either InfixDesugaringError AppTerm
+      -- apply a term to a type
+      app2 (Op _ ["__Apply"] _) (ATerm t) (AType u)     = Right $ ATerm (EInst t (Known [TyArg u]))
+      -- apply a term to a term
+      app2 (Op _ ["__Apply"] _) (ATerm tm1) (ATerm tm2) = Right $ ATerm $ EApp tm1 tm2
+      -- apply an op to a term
+      app2 ((Op i qn _)) (ATerm tm1) (ATerm tm2)        = Right $ ATerm (EApp (EApp (EVar i qn) tm1) tm2)
+
+      -- error cases
+      app2 ( (Op _ ["__Apply"] _)) (AType ty) e         = Left $ IllegalApplyTypeToAny ty e
+      app2 op arg1@(AType _) arg2                       = Left $ IllegalApplyOpToTypeBinary op arg1 arg2
+      app2 op arg1 arg2@(AType _)                       = Left $ IllegalApplyOpToTypeBinary op arg1 arg2
+
+
+
+      applyOp :: EOp -> [AppTerm] -> Either InfixDesugaringError [AppTerm]
+
+      applyOp op (tm:tms)      | arityOf op == 1      = (<$> app1 op tm) (:tms)
+      applyOp op (tm0:tm1:tms) | arityOf op == 2      = (<$> app2 op tm1 tm0) (:tms)
+      applyOp op tmStack                              = Left $ NotEnoughArguments op (arityOf op) tmStack
+
+
+      fixityOf (Op _ _ (Just (Fixity fx _))) = fx
+      fixityOf op                            = error $ "internal: fixityOf called with invalid token " ++ renderPretty op
+
+
+      arityOf op                             = if fixityOf op `elem` [Prefix, Postfix] then 1 else 2
+
 
       dumpStacks :: [EInfixToken] -> [AppTerm] -> [EInfixToken] -> String
-      dumpStacks opStack e tail = show (pprStack opStack, pprStack e, pprStack tail)
+      dumpStacks opStack tmStack tail = show (pprStack opStack, pprStack tmStack, pprStack tail)
+
 
       pprStack :: Printable a => [a] -> String
       pprStack = intercalate " : " . map renderPretty

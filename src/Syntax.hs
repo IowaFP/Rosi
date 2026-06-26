@@ -426,15 +426,18 @@ data Term =
   | EStringLit String | EHole String
   deriving (Data, Eq, Show, Typeable)
 
-data EInfixToken = Operator Int QName (Maybe Fixity) | Operand AppTerm
+data EInfixToken = Operator EOp | Operand AppTerm
   deriving (Data, Eq, Show)
 
-instance Ord EInfixToken where
-  compare l@(Operator _ _ (Just f1)) r@(Operator _ _ (Just f2)) = compare f1 f2
+instance Ord EOp where
+  compare (Op _ _ (Just f1)) (Op _ _ (Just f2)) = compare f1 f2
   compare l r                                                   = error $ "internal: tried to compare EInfixTokens which are not operators" ++ show l ++ ", " ++ show r
 
 explicitApp :: EInfixToken
-explicitApp = Operator (-1) ["__Apply"] (Just (Fixity InfixL 10))
+explicitApp = Operator $ Op (-1) ["__Apply"] (Just (Fixity InfixL 10))
+
+data EOp = Op Int QName (Maybe Fixity)
+  deriving (Data, Eq, Show)
 
 
 data AppTerm = AType Ty | ATerm Term

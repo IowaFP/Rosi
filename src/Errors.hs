@@ -17,4 +17,9 @@ data Error = ErrContextDefn QName Error | ErrContextType Ty Error | ErrContextTe
            | ErrOther String
 
 data InfixDesugaringError =
-  AmbiguousPrecedenceError EInfixToken EInfixToken | OtherInfixResolutionError String
+  AmbiguousPrecedenceError EOp EOp 
+  | IllegalApplyTypeToAny Ty AppTerm
+  | IllegalApplyOpToTypeUnary EOp Ty
+  | IllegalApplyOpToTypeBinary EOp AppTerm AppTerm
+  | NotEnoughArguments EOp Int [AppTerm]
+  | OtherInfixResolutionError String
