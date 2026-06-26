@@ -15,6 +15,7 @@ import Data.IORef
 import GHC.Stack
 import System.IO.Unsafe     (unsafePerformIO)
 
+import Errors
 import Printer              hiding (level)
 import Syntax
 

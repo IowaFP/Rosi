@@ -10,6 +10,7 @@ import Data.List
 import Checker.Monad              hiding (collect, trace)
 import Checker.Normalize
 import Checker.Utils
+import Errors
 import Printer
 import Syntax
 

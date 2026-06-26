@@ -18,6 +18,7 @@ import Checker.Utils
 import Printer
 import Syntax
 
+import Errors
 import GHC.Stack
 
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool

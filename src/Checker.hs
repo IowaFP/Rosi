@@ -12,6 +12,7 @@ import Checker.Preds
 import Checker.Terms
 import Checker.Types
 
+import Errors
 import Syntax
 
 third f (a, b, c) = (a, b, f c)

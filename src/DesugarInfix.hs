@@ -3,37 +3,41 @@ module DesugarInfix where
 
 
 import Data.List (intercalate)
+import Errors
 import Printer   (Printable, renderPretty)
 import Syntax
 
 class DesugarInfix a where
-  desugarInfix :: a -> a
+  desugarInfix :: a -> Either Error a
 
 instance DesugarInfix Term where
 
-  desugarInfix (EVar n qname)      = EVar n qname
-  desugarInfix (ELam x ty tm)      = ELam x ty (desugarInfix tm)
-  desugarInfix (EApp ft xt)        = EApp (desugarInfix ft) (desugarInfix xt)
+  desugarInfix :: Term -> Either Error Term
+  desugarInfix (EVar n qname)      = return $ EVar n qname
+  desugarInfix (ELam x ty tm)      = ELam x ty <$> desugarInfix tm
+  desugarInfix (EApp ft xt)        = EApp <$> desugarInfix ft <*> desugarInfix xt
 
-  desugarInfix (ETyLam s k tm )    = ETyLam s k (desugarInfix tm)
-  desugarInfix (EPrLam p tm)       = EPrLam p (desugarInfix tm)
-  desugarInfix (EInst tm insts)    = EInst (desugarInfix tm) insts
+  desugarInfix (ETyLam s k tm )    = ETyLam s k <$> desugarInfix tm
+  desugarInfix (EPrLam p tm)       = EPrLam p <$> desugarInfix tm
+  desugarInfix (EInst tm insts)    = (`EInst` insts) <$> desugarInfix tm
 
-  desugarInfix (ESing ty)          = ESing ty
-  desugarInfix (ELabel tc lt xt)   = ELabel tc (desugarInfix lt) (desugarInfix xt)
-  desugarInfix (EUnlabel tc xt lt) = EUnlabel tc (desugarInfix xt) ( desugarInfix lt)
+  desugarInfix (ESing ty)          = return $ ESing ty
+  desugarInfix (ELabel tc lt xt)   = ELabel tc <$> desugarInfix lt <*> desugarInfix xt
+  desugarInfix (EUnlabel tc xt lt) = EUnlabel tc <$> desugarInfix xt <*> desugarInfix lt
 
-  desugarInfix (EConst c)          = EConst c
+  desugarInfix (EConst c)          = return $ EConst c
 
-  desugarInfix (ELet x vt et)      = ELet x (desugarInfix vt) (desugarInfix et)
-  desugarInfix (ECast tm evid)     = ECast (desugarInfix tm) evid
-  desugarInfix (ETyped tm ty)      = ETyped (desugarInfix tm) ty
+  desugarInfix (ELet x vt et)      = ELet x <$> desugarInfix vt <*> desugarInfix et
+  desugarInfix (ECast tm evid)     = (`ECast` evid) <$> desugarInfix tm
+  desugarInfix (ETyped tm ty)      = (`ETyped` ty) <$> desugarInfix tm
 
-  desugarInfix (EStringLit s)      = EStringLit s
-  desugarInfix (EHole s)           = EHole s
+  desugarInfix (EStringLit s)      = return $ EStringLit s
+  desugarInfix (EHole s)           = return $ EHole s
 
                                           -- we make the recursive call to desugar subterms before collecting and resolving fixities
-  desugarInfix (EInfix _ops)        = (resolveFixitiesF . padWithApply . collectFixities . desugarInfix) _ops
+  desugarInfix (EInfix _ops)        = do ops' <- desugarInfix _ops
+                                         let ops'' = padWithApply . collectFixities $ ops'
+                                         resolveFixitiesF ops''
     where
       collectFixities :: [EInfixToken] -> [EInfixToken]
       collectFixities = map (\case (Operand e)                  -> Operand e
@@ -49,28 +53,14 @@ instance DesugarInfix Term where
 
       padWithApply (x : xs)                                                                                          = x : padWithApply xs
 
-      resolveFixitiesF :: [EInfixToken] -> Term
+      resolveFixitiesF :: [EInfixToken] -> Either Error Term
       resolveFixitiesF []       = error "resolveFixitiesF called with empty list"
-      resolveFixitiesF exp = case resolveFixities [] [] exp of
-                                    Right e           -> e
-                                    Left (op1@(Operator _ _ fix1), op2@(Operator _ _ fix2))
-                                      -> error $ concat ["Could not resolve precedence between",
-                                                         " (", renderPretty op1, ") [", show fix1, "] and",
-                                                         " (", renderPretty op2, ") [", show fix2, "]",
-                                                         " in ", unwords (map renderPretty exp)]
-                                    Left (Operand e1, Operand e2) -> error $ concat ["resolving infix operators resulted in adjacent expressions ("
-                                                                           , show e1
-                                                                           , ") and ("
-                                                                           , renderPretty e2
-                                                                           , ") in the context of the expression "
-                                                                           , unwords (map show exp)
-                                                                           , ". Use parentheses around adjacent expressions to avoid ambiguity."]
-                                    Left (op1, op2) -> error $ concat [
-                                                                       "resolveFixities tried to compare precedence between "
-                                                                      , show op1 , " and ", show op2
-                                                                      , "in the context of the expression "
-                                                                      , unwords (map renderPretty exp)
-                                                                      ]
+      resolveFixitiesF exp = either
+                                        report
+                                        pure
+                                        (resolveFixities [] [] exp)
+                                        where
+                                          report (l, r) = Left $ ErrInfixDesugaring (AmbiguousPrecedenceError l r exp)
 
       resolveFixities :: [EInfixToken] -> [AppTerm] -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
 
@@ -84,18 +74,18 @@ instance DesugarInfix Term where
 
       -- resolveFixities a b c | T.trace (dumpStacks a b c) False = undefined
       -- error cases. Should be unreachable.
-      resolveFixities [] [] [] = error "resolveFixities fixities called with all empty stacks"
+      resolveFixities [] [] [] = error "internal: resolveFixities fixities called with all empty stacks"
       resolveFixities (op0@(Operator _ _ Nothing):ops) tms tail = error $ concat [
-        "resolveFixities fixities called with missing Fixity on an operator: " , show op0 , ". inputs = " , dumpStacks (op0:ops) tms tail]
+        "internal: resolveFixities fixities called with missing Fixity on an operator: " , show op0 , ". inputs = " , dumpStacks (op0:ops) tms tail]
       resolveFixities ops tms (op1@(Operator _ _ Nothing):tail) = error $ concat [
-        "resolveFixities fixities called with missing Fixity on an operator: " , show op1 , ". inputs = " , dumpStacks ops tms (op1:tail)]
+        "internal: resolveFixities fixities called with missing Fixity on an operator: " , show op1 , ". inputs = " , dumpStacks ops tms (op1:tail)]
 
       -- error case: if we end up with adjacent expressions on the term stack, fail.
       resolveFixities [] (e0:e1:es) [] = Left (Operand e1, Operand e0)
 
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] [ATerm tm] [] = Right tm
-      resolveFixities [] [AType t] [] = error $ "ended up with a type in term position. " ++ show t
+      resolveFixities [] [AType t] [] = error $ "internal: ended up with a type in term position. " ++ show t
 
       -- when head of tail is a term, push it on the term stack.
       resolveFixities ops tms ((Operand tm1):tail) = resolveFixities ops (tm1:tms) tail
@@ -118,18 +108,19 @@ instance DesugarInfix Term where
 
       app1 (Operator i qn _) (AType ty) = error $ "tried to illegally apply term-level operator to type " ++ show ty
       app1 (Operator i qn _) (ATerm tm) = ATerm $ EApp (EVar i qn) tm
-      app1 e tm                         = error $ "tried to apply term " ++ show e ++ " to term " ++ show e
+      app1 e tm                         = error $ "internal: tried to illegally apply expression " ++ show e ++ " to expression " ++ show e
       -- eliminate explicit application
       app2 (Operator _ ["__Apply"] _) (ATerm t) (AType u)     = ATerm (EInst t (Known [TyArg u]))
       app2 (Operator _ ["__Apply"] _) (ATerm tm1) (ATerm tm2) = ATerm $ EApp tm1 tm2
       app2 (Operator i qn _) (ATerm tm1) (ATerm tm2)          = ATerm (EApp (EApp (EVar i qn) tm1) tm2)
-      app2 e tm1 tm2                                          = error $ concat ["tried to illegally apply expression ", show e, " to expressions ", show tm1, " expressions ", show tm2]
+      app2 e tm1 tm2                                          = error $ concat ["internal: tried to illegally apply expression ", show e, " to expressions ", show tm1, " expressions ", show tm2]
 
       applyOp op [] = error $ "Can't apply op "
                                         ++ renderPretty op
                                         ++ " without a term to apply it to."
       applyOp op@(Operator _ _ (Just (Fixity Prefix _))) (tm:tms) = app1 op tm:tms
       applyOp op@(Operator _ _ (Just (Fixity Postfix _))) (tm:tms) = app1 op tm:tms
+      -- TODO(mctano) convert the rest of these user errors to proper errors.
       applyOp op [tm0] = error $ concat ["Expected two operands for ", renderPretty op
                                         , ", but there is only one on stack: ", renderPretty tm0
                                         , "\n (If you expect " , renderPretty op
@@ -137,7 +128,7 @@ instance DesugarInfix Term where
       applyOp op (tm0:tm1:tms) = app2 op tm1 tm0 : tms
 
       fixityOf (Operator _ _ (Just (Fixity fx _))) = fx
-      fixityOf op                                  = error $ "fixityOf called with invalid token " ++ renderPretty op
+      fixityOf op                                  = error $ "internal: fixityOf called with invalid token " ++ renderPretty op
 
       dumpStacks :: [EInfixToken] -> [AppTerm] -> [EInfixToken] -> String
       dumpStacks opStack e tail = show (pprStack opStack, pprStack e, pprStack tail)
@@ -148,19 +139,19 @@ instance DesugarInfix Term where
 -- desugar all subterms in the list of operators and operands
 -- this must be called before passing the list of tokens to resolveFixities
 -- to desugar infix operators at the current level
-instance DesugarInfix a => DesugarInfix [a] where
-  desugarInfix = map desugarInfix
+instance (DesugarInfix a) => DesugarInfix [a] where
+  desugarInfix = mapM desugarInfix
 
 
 instance DesugarInfix EInfixToken where
-  desugarInfix (Operand tm) = Operand (desugarInfix tm)
-  desugarInfix op           = op
+  desugarInfix (Operand tm) = Operand <$> desugarInfix tm
+  desugarInfix op           = return op
 
 instance DesugarInfix AppTerm where
-  desugarInfix (ATerm tm) = ATerm (desugarInfix tm)
-  desugarInfix ty         = ty
+  desugarInfix (ATerm tm) = ATerm <$> desugarInfix tm
+  desugarInfix ty         = return ty
 
 
 instance DesugarInfix Decl where
-  desugarInfix (TmDecl qn ty tm fx) = TmDecl qn ty (desugarInfix tm) fx
-  desugarInfix x                    = x
+  desugarInfix (TmDecl qn ty tm fx) = TmDecl qn ty <$> desugarInfix tm <*> pure fx
+  desugarInfix x                    = pure x

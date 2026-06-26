@@ -19,6 +19,7 @@ import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr,
 
 import Checker
 import DesugarInfix          (desugarInfix)
+import Errors
 import Interp.Erased         as E
 import Parser
 import Printer
@@ -106,7 +107,7 @@ main = do nowArgs <- getArgs
             hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
           scoped <- reportErrors flags $ runScopeM $ scopeProg decls
-          let deOpped = desugarInfix scoped
+          deOpped <- reportErrors flags $ desugarInfix scoped
           checked <- goCheck flags [] [] deOpped
           when (doPrintTyped flags) $
             mapM_ (putDocWLn 120 flags . pprTyping) checked

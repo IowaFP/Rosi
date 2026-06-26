@@ -11,6 +11,7 @@ import Prettyprinter               qualified as P
 import Prettyprinter.Render.String qualified as P
 import System.IO.Unsafe
 
+import Errors
 import Syntax
 
 data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool, printInstantiations :: Bool, printIndices :: Bool }
@@ -44,9 +45,10 @@ at n d = local (\po -> po {level = n}) d
 sep :: [RDoc ann] -> RDoc ann
 sep = fmap P.sep . sequence
 
-vsep, vcat :: [RDoc ann] -> RDoc ann
+vsep, vcat, hsep :: [RDoc ann] -> RDoc ann
 vsep = fmap P.vsep . sequence
 vcat = fmap P.vcat . sequence
+hsep = fmap P.hsep . sequence
 
 fillSep :: [RDoc ann] -> RDoc ann
 fillSep = fmap P.fillSep . sequence
@@ -329,7 +331,26 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrUnboundVar v) = "Unbound variable" <+> ppr v
         pprErr (ErrDuplicateDefinition v) = "Duplicate definition o" <+> ppr v
         pprErr (ErrTypeDesugaring t) = "Error in desugaring" <+> ppr t
+        pprErr (ErrInfixDesugaring e) = ppr e
         pprErr (ErrOther s) = ppre s
+
+instance Printable InfixDesugaringError where
+  ppr :: InfixDesugaringError -> RDoc ann
+  ppr (AmbiguousPrecedenceError op1@(Operator _ _ fix1) op2@(Operator _ _ fix2) exp)
+                                                = vsep ["Could not resolve precedence between"
+                                                                  , " (" <> ppr op1 <> ") [" <> ppre (show fix1) <> "]",
+                                                                  "and", " (" <> ppr op2 <> ") [" <> ppre (show fix2) <> "]"
+                                                                  , " in ", hsep $ map ppr exp]
+  ppr (AmbiguousPrecedenceError (Operand e1) (Operand e2) exp)
+                                        = vsep ["Resolving infix operators resulted in adjacent expressions"
+                                                          , " (" <> ppr e1 <> ") and (" <> ppr e2 <> ")"
+                                                          , "in the context of the expression " , hsep $ map ppr exp
+                                                          , ". Use parentheses around adjacent expressions to avoid ambiguity."]
+  ppr  (AmbiguousPrecedenceError op1 op2 exp) = vsep ["resolveFixities tried to compare precedence between "
+                                                        , ppr op1 , " and ", ppr op2
+                                                        , "in the context of the expression "
+                                                        , vsep $ map ppr exp
+                                                        ]
 
 renderString :: RDoc ann -> String
 renderString doc =

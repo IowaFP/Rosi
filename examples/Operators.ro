@@ -26,9 +26,11 @@ infixl 5 -
 
 
 
+(::) = Data.List.(::)
 -- declaring :: as left-associating breaks uses without parentheses
--- (::) = Data.List.(::)
 -- infixl 5 ::
+-- declaring :: as Non-Associative causes ambiguous precedence error
+infix 5 ::
 
 
 -- check that we can override imported definition locally

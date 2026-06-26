@@ -14,6 +14,7 @@ import Checker.Preds
 import Checker.Types              hiding (collect, trace)
 import Checker.Unify
 import Checker.Utils
+import Errors
 import Printer
 import Syntax
 

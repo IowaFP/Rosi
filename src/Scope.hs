@@ -6,6 +6,7 @@ import Control.Monad.State
 import Data.Bifunctor
 import Data.List
 import Data.Maybe
+import Errors
 import Syntax
 
 newtype ScopeM a = ScopeM { runScope :: ReaderT ([QName], [(QName, Maybe Fixity)]) (Except Error) a }
@@ -194,8 +195,6 @@ scopeProg []                        = return []
 scopeProg (d@(TmDecl x _ _ f) : ds) = (:) <$> scope d <*> bindGVar x f (scopeProg ds)
 scopeProg (d@(TyDecl x _ _) : ds)   = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)
 
--- Testing code
-deriving instance Show Error
 
 test1 =
   runScopeM $ scope $
