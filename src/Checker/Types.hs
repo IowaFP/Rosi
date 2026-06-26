@@ -1,7 +1,6 @@
 module Checker.Types where
 
 import Control.Monad
-import Control.Monad.Error.Class
 import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer
@@ -11,6 +10,7 @@ import Data.List
 import Checker.Monad              hiding (collect, trace)
 import Checker.Normalize
 import Checker.Utils
+import Errors
 import Printer
 import Syntax
 

@@ -25,7 +25,7 @@ wand0 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> 
   -- Notes: label constants have an initial quote
   -- Records are `Pi z`; I guess variants are `Sigma z`.  (Unicode? still sucks for GHC on Windows)
 wand0 = \(@x @y @z : R[*]) (@t : *) (m : Pi x) (n : Pi y).
-          prj @{'l := t} @z ((++) @x @y @z m n) / 'l
+          prj @{'l := t} @z ((++) @x @y @z m n) :/ 'l
   -- Not sure about punning singletons: Do we need to distinguish between the
   -- syntax for singleton #T and the type T?
 
@@ -33,30 +33,30 @@ wand0 = \(@x @y @z : R[*]) (@t : *) (m : Pi x) (n : Pi y).
 
 wand1 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
 wand1 = \(@x @y @z : R[*]) (@t : *) (m : Pi x) (n : Pi y).
-          prj (m ++ n) / 'l
+          prj (m ++ n) :/ 'l
 
 -- Should I be able to infer the presence of type abstractions from the type signature?
 -- wand2 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
--- wand2 = \ m : Pi x, n : Pi y. prj (m ++ n) / #'l
+-- wand2 = \ m : Pi x, n : Pi y. prj (m ++ n) :/ #'l
 
 -- Can infer types of function arguments:
 wand3 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
-wand3 = \ m n. prj (m ++ n) / 'l
+wand3 = \ m n. prj (m ++ n) :/ 'l
 
 -- Can infer kinds?
 
 wand5 : forall x y z t. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
-wand5 = \ m n. prj (m ++ n) / 'l
+wand5 = \ m n. prj (m ++ n) :/ 'l
 
 -- Automatically generalize undeclared variables, in alphabetical order...
 
 wand6 : x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
-wand6 = \ m n. prj (m ++ n) / 'l
+wand6 = \ m n. prj (m ++ n) :/ 'l
 
 -- Have first-class labels
 
 wand7 : x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
-wand7 = \l m n. prj (m ++ n) / l
+wand7 = \l m n. prj (m ++ n) :/ l
 
 -- And syntax for selection
 

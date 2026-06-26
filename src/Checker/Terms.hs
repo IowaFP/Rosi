@@ -2,8 +2,6 @@
 module Checker.Terms where
 
 import Control.Monad
-import Control.Monad.Error.Class
-import Control.Monad.IO.Class
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
 import Data.Generics              (everywhereM, mkM)
@@ -16,6 +14,7 @@ import Checker.Preds
 import Checker.Types              hiding (collect, trace)
 import Checker.Unify
 import Checker.Utils
+import Errors
 import Printer
 import Syntax
 
@@ -254,6 +253,8 @@ checkTerm0 e0@(EHole s) expected =
   do tcin <- ask
      tell (TCOut [] [(s, expected, tcin)])
      return e0
+checkTerm0 e0@((EInfix ss)) expected = error $ "internal: infix expression `" <> concatMap show ss <> "` should have been been desugared before type-checking."
+
 
 generalize :: Bool -> Term -> CheckM (Term, Ty)
 generalize topLevel e =

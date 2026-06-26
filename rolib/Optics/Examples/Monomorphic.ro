@@ -125,7 +125,7 @@ bob : Entry
 bob = (#'Entry := pair "bob" (con #'Skype "bobSkype"))
 
 book : Book
-book = cons alex (cons bob nil)
+book = alex::bob ::nil
 
 updatedBook : Book
 updatedBook = over (inOrder contactPhone) (add 2) book

@@ -7,8 +7,6 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Bifunctor       (first)
-import Data.List            (elemIndex, partition, sortOn)
-import Data.Maybe           (fromJust, isNothing)
 
 import Checker.Monad
 import Checker.Normalize

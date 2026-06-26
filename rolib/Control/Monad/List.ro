@@ -4,7 +4,7 @@ import Control.Monad , Control.Applicative
 fmapList : Functor List
 fmapList = fix (\ fmap f.
   ( (case #'Nil (const nil))
-  | (case #'Cons (\ p. cons (f (fst p)) (fmap f (snd p))))))
+  | (case #'Cons (\ p. (f (fst p))::(fmap f (snd p))))))
 
 apList : forall a b. List (a -> b) -> List a -> List b
 apList = \ fs xs. foldr (\ f ys. append (fmapList f xs) ys) nil fs

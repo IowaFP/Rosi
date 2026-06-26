@@ -33,7 +33,7 @@ odd = \ xs. even (tl xs)
 grab : forall a. Nat -> Stream a -> List a 
 grab = fix (\ grab n xs. match (out n)
     ( case #'Zero (const nil)
-    | case #'Succ (\ m. cons (hd xs) (grab m (tl xs)))))
+    | case #'Succ (\ m. (hd xs)::(grab m (tl xs)))))
 
 -- example
 firstTen : String

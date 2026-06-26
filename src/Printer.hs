@@ -1,4 +1,4 @@
- {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Eta reduce" #-}
 module Printer where
@@ -9,9 +9,9 @@ import Data.List                   (intercalate)
 import Data.String
 import Prettyprinter               qualified as P
 import Prettyprinter.Render.String qualified as P
-import Prettyprinter.Util          qualified as P
 import System.IO.Unsafe
 
+import Errors
 import Syntax
 
 data PrinterOptions = PO { level :: Int, printKinds :: Bool, printMaps :: Bool, printInstantiations :: Bool, printIndices :: Bool }
@@ -45,9 +45,10 @@ at n d = local (\po -> po {level = n}) d
 sep :: [RDoc ann] -> RDoc ann
 sep = fmap P.sep . sequence
 
-vsep, vcat :: [RDoc ann] -> RDoc ann
+vsep, vcat, hsep :: [RDoc ann] -> RDoc ann
 vsep = fmap P.vsep . sequence
 vcat = fmap P.vcat . sequence
+hsep = fmap P.hsep . sequence
 
 fillSep :: [RDoc ann] -> RDoc ann
 fillSep = fmap P.fillSep . sequence
@@ -238,6 +239,21 @@ collectBinders = go "\\" where
   go s (ETyLam x (Just k) m) = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
   go s t                     = s <+> "." <+> ppr t
 
+instance Printable EInfixToken where
+  ppr :: EInfixToken -> RDoc ann
+  ppr (Operator op) = ppr op
+  ppr (Operand e)   = parens $ ppr e
+
+instance Printable EOp where
+    ppr ((Op i qn f)) = do pi <- asks printIndices
+                           if pi
+                             then ppre (stringFromQName qn) <> "@" <> ppre i
+                             else ppre (stringFromQName qn)
+
+instance Printable AppTerm where
+  ppr (AType t) = "@" <> ppr t
+  ppr (ATerm t) = ppr t
+
 instance Printable Term where
   -- Special case for Nat
   ppr t | Just n <- fromPeano t =  ppre (show n)
@@ -285,6 +301,7 @@ instance Printable Term where
   ppr (ECast m q) = parens (fillSep [ppr m <+> "<|", fromString (show q)])
   ppr (EStringLit s) = "\"" <> ppre s <> "\""
   ppr (EHole s) = "?" <> ppre s
+  ppr (EInfix ops) = parens ("EInfix" <+> fillSep (map ppr ops))
 
 instance Printable Evid where
   ppr _ = "<evid>"
@@ -318,10 +335,39 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrUnboundVar v) = "Unbound variable" <+> ppr v
         pprErr (ErrDuplicateDefinition v) = "Duplicate definition o" <+> ppr v
         pprErr (ErrTypeDesugaring t) = "Error in desugaring" <+> ppr t
+        pprErr (ErrInfixDesugaring e exp) = vsep ["Infix resolution error", ppr e, "Error occured while desugaring expression " <+> hsep (map ppr exp)]
         pprErr (ErrOther s) = ppre s
+
+instance Printable InfixDesugaringError where
+  ppr :: InfixDesugaringError -> RDoc ann
+  ppr (AmbiguousPrecedenceError op@(Op _ qn1 Nothing) _)     = "internal: Missing fixity for operator" <+> ppr op
+  ppr (AmbiguousPrecedenceError  _ op@( (Op _ qn2 Nothing))) = "internal: Missing fixity for operator" <+> ppr op
+  ppr (AmbiguousPrecedenceError op1@( (Op _ _ fix1)) op2@( (Op _ _ fix2)))
+                                                             = vsep ["Could not resolve precedence between"
+                                                                    , ppr op1 <+> "[" <> ppre (show fix1) <> "]"
+                                                                    , "and"
+                                                                    , ppr op2 <+> "[" <> ppre (show fix2) <> "]"
+                                                                    ]
+  ppr (IllegalApplyTypeToAny ty arg)                         = vsep ["Tried to illegally apply  explicit type argument ", ppr ty
+                                                                    , "to expression", ppr arg
+                                                                    , "Check your parentheses."]
+  ppr (IllegalApplyOpToTypeUnary op ty)                      = vsep ["Tried to illegally apply term-level operator ", ppr op
+                                                                    , "to explicit type argument", ppr ty
+                                                                    , "Check your parentheses."]
+  ppr (IllegalApplyOpToTypeBinary op arg1 arg2)              = vsep ["Tried to illegally apply term-level operator to a type in"
+                                                                    , ppr op <+> ppr arg1 <+> ppr arg2
+                                                                    , "Check your parentheses."]
+  ppr (NotEnoughArguments op expected stack)                 = hsep ["Not enough arguments for ", ppr op
+                                                                    , "expected", ppre expected, "but found", ppre (length stack)
+                                                                    ] <> if not (null stack) then ":" <+> ppr (head stack) else ""
+  ppr (OtherInfixResolutionError s)                          = ppre s
 
 renderString :: RDoc ann -> String
 renderString doc =
   unsafePerformIO $
   do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = False, printInstantiations = True, printIndices = True})
      return (P.renderString (P.layoutPretty (P.LayoutOptions P.Unbounded) d))
+
+
+renderPretty :: Printable a => a -> String
+renderPretty = renderString . ppr

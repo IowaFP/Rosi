@@ -4,18 +4,14 @@ module Parser where
 
 import Syntax
 
-import Control.Monad              (foldM, guard, mplus, replicateM, void, when)
+import Control.Monad              (when)
 import Control.Monad.Reader
 import Control.Monad.State
 
-import Data.Char                  (isSpace)
-import Data.Data
-import Data.Functor
+import Data.Data                  hiding (Fixity, Infix, Prefix)
 import Data.IORef                 (newIORef)
-import Data.List                  (delete, intercalate, singleton)
+import Data.List                  (intercalate, intersperse, singleton)
 import Data.List.NonEmpty         (fromList)
-import Data.List.Split            (splitOn)
-import Data.Maybe                 (fromMaybe, isNothing)
 import Data.Void                  (Void)
 import System.Exit                (exitFailure)
 import System.IO                  (hPutStrLn, stderr)
@@ -23,9 +19,7 @@ import System.IO                  (hPutStrLn, stderr)
 import Text.Megaparsec            hiding (State)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
-import Text.Megaparsec.Error
 
-import Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Combinators I miss from Parsec
@@ -104,7 +98,8 @@ block p =
 
 Binder should be provided in *source* order. That is, if you have
 
-    \ x y z. M
+
+     x y z. M
 
 The binder list should be provided as ["x", "y", "z"]
 
@@ -122,24 +117,87 @@ whitespace = P.space space1 (P.skipLineComment "--") (P.skipBlockCommentNested "
 lexeme p    = guardIndent p <* whitespace
 
 symbol      = lexeme . string
-reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
 
+reserved :: String -> Parser ()
+reserved s  = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
+
+constants = [("prj", CPrj),
+             ("inj", CInj),
+             ("(++)", CConcat),
+             ("(|)", CBranch),
+             ("syn", CSyn),
+             ("ana", CAna),
+             ("fold", CFold),
+             ("fix", CFix),
+             ("(^)", CStringCat),
+             ("(~)", CStringEq)
+            ]
+
+constant :: Parser Const
+constant =  fromKeyMap constants
+
+
+fixityKeywords :: [(String, FixityKind)]
+fixityKeywords = [("infixl",   InfixL),
+                  ("infixr",   InfixR),
+                  ("infix",     Infix),
+                  ("prefix",   Prefix),
+                  ("postfix", Postfix)
+                 ]
+
+fixityKeyword :: Parser FixityKind
+fixityKeyword = fromKeyMap fixityKeywords
+
+fromKeyMap :: [(String, a)] -> Parser a
+fromKeyMap keyMap = choice [k <$ reserved s | (s, k) <- keyMap]
+
+syntaxKeywords = ["let", "in", "forall", "import"]
+
+reservedWords = syntaxKeywords ++ map fst fixityKeywords ++ map fst constants
+
+reservedOps = [":", "++", "|", "^", "~", "@", "\\", ":=", "=", "->", "#", ".", ":/"]
+
+namespace :: Parser String
+namespace = ((:) <$> upperChar) <*> many alphaNumChar <* char '.'
+
+identifier :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 identifier  =
-  do s <- ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
-     if s `elem` keywords
+  do s <- (:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_')
+     if s `elem` reservedWords
      then unexpected $ Label (fromList "reserved word")
      else return s
-  where keywords = ["let", "in", "forall"]
 
 lidentifier :: Parser String
 lidentifier =
   char '\'' >> some (alphaNumChar <|> char '\'' <|> char '_')
 
-qidentifier  =
-  do x <- identifier
-     xs <- many (try (string "." >> identifier))
-     return (reverse (x : xs))
+qidentifier  = do xs <- many (try namespace)
+                  x <- termIdentifier
+                  return (x:reverse xs)
 
+-- we support all operator chars supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" )
+-- See (https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#data-types)
+operatorChars = ":+-*\\/=.?|&><!@$%^~#"
+
+isOperatorChar = (`elem` operatorChars)
+-- alternate operator char predicate based on the `isSymbol` class. May be more trouble than it's worth.
+-- isOperatorChar c = isSymbol c || c `elem` "-*\\/?&!%") && c /= '`'
+
+operatorChar :: Parser Char
+operatorChar = satisfy isOperatorChar
+
+customOperator :: Parser String
+customOperator =
+  do
+    s <- takeWhile1P (Just "operator char") isOperatorChar
+
+    if s `elem` reservedOps
+      then unexpected $ Label (fromList "reserved operator")
+      else return s
+
+
+immediateParens = between (char '(') (char ')')
+immediateBackticks = between (char '`') (char '`')
 parens      = between (symbol "(") (symbol ")")
 angles      = between (symbol "<") (symbol ">")
 brackets    = between (symbol "[") (symbol "]")
@@ -153,8 +211,19 @@ semiSep1    = flip sepBy1 semi
 commaSep    = flip sepBy comma
 commaSep1   = flip sepBy1 comma
 
-number      = lexeme P.decimal
+number      = P.decimal
 stringLit   = lexeme (char '"' >> manyTill P.charLiteral (char '"'))
+
+surroundedOp          = immediateParens customOperator
+
+surroundedQIdentifier = immediateBackticks qidentifier
+surroundedIdentifier :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
+surroundedIdentifier  = immediateBackticks identifier
+
+termIdentifier = try surroundedOp <|> identifier
+
+
+
 
 ---------------------------------------------------------------------------------
 -- Parser
@@ -265,8 +334,8 @@ atype = choice [ TLab <$> lexeme lidentifier
                , TSing <$> (char '#' >> atype)
                , tcon <*> atype
                , TRow <$> braces (commaSep labeledTy)
-               , const TString <$> reserved "String"
-               , TVar (-1) <$> (lexeme qidentifier)
+               , TString <$ reserved "String"
+               , TVar (-1) <$> lexeme qidentifier
                , parens ty ]
 
 pr :: Parser Pred
@@ -290,9 +359,9 @@ pr = choice [ do reserved "Fold"
 termLamBinders :: Parser [Either (String, Maybe Kind) (String, Maybe Ty)]
 termLamBinders =
   choice
-    [ singleton . Right . (, Nothing) <$> lexeme identifier
+    [ singleton . Right . (, Nothing) <$> try (lexeme termIdentifier)
     , singleton . Left  . (, Nothing) <$> lexeme (char '@' >> identifier)
-    , try $ parens $ do xs <- some (lexeme identifier)
+    , try $ parens $ do xs <- some (try (lexeme termIdentifier))
                         t <- colon >> ty
                         return (map (Right . (, Just t)) xs)
     , parens $ do xs <- some (lexeme (char '@' >> identifier))
@@ -311,7 +380,7 @@ term = prefixes typedTerm where
               return (foldr1 (.) (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs)))
          <|>
            do symbol "let"
-              x <- lexeme identifier
+              x <- lexeme termIdentifier
               mty <- optional $ symbol ":" >> ty
               symbol "="
               t <- term
@@ -350,7 +419,7 @@ term = prefixes typedTerm where
       do k <- choice [ ESing . TLab <$> lidentifier
                      , EVar (-1) <$> qidentifier ]
          symbol ":"
-         x <- lexeme identifier
+         x <- lexeme termIdentifier
          return (k, x)
 
     -- case ,k (\,x. ,t)
@@ -377,32 +446,31 @@ term = prefixes typedTerm where
        choice
          [ do symbol ":="
               ELabel Nothing t <$> term
-         , do symbol "/"
+         , do symbol ":/"
               EUnlabel Nothing t <$> stringEqTerm
          , return t ]
 
   stringEqTerm = chainl1 catTerm $ op "~" (ebinary CStringEq)
 
-  catTerm = chainl1 appTerm $ op "^" (ebinary CStringCat)
+  catTerm = chainl1 infixExpr $ op "^" (ebinary CStringCat)
 
-data AppTerm = Type Ty | Term Term
+  infixExpr =  eliminateTrivial . EInfix . concat =<< some (try appTerm <|> try ((singleton . Operator) . flip (Op (-1)) Nothing <$> lexeme (try (singleton <$> customOperator) <|> surroundedQIdentifier)))
+    where
+          -- Not everything needs to be an EInfix.
+          eliminateTrivial (EInfix [Operand (ATerm tm)]) = return tm
+          eliminateTrivial (EInfix [Operand (AType ty)]) = fail $ "Found only explicit type" ++ show ty ++ "where a term should be"
+          eliminateTrivial                     e         = return e
 
-appTerm :: Parser Term
-appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
-             app t ts where
-
-  app :: AppTerm -> [AppTerm] -> Parser Term
-  app (Term t) []            = return t
-  app (Type _) _             = unexpected (Label $ fromList "type argument")
-  app (Term t) (Term u : ts) = app (Term (EApp t u)) ts
-  app (Term t) (Type u : ts) = app (Term (EInst t (Known [TyArg u]))) ts
+appTerm :: Parser [EInfixToken]
+appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
+             return . intersperse explicitApp . map Operand $ (t:ts) where
 
   goal s = Goal . (s,) <$> newIORef Nothing
 
   ctor = do x <- choice [ ESing . TLab <$> lidentifier
                         , EVar (-1) <$> qidentifier ]
             char ':'
-            notFollowedBy (char '=')
+            notFollowedBy operatorChar
             return (EApp (EVar (-1) (reverse ["Ro", "Base", "con"])) x)
 
   sing x = [x]
@@ -422,7 +490,7 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
        return (ELam "$x" Nothing (foldl buildSel (EVar (-1) ["$x"]) xs))
 
   aterm :: Parser Term
-  aterm = choice [ EConst <$> const
+  aterm = choice [ EConst <$> constant
                  , try (lexeme ctor)
                  , try (lexeme selection)
                  , try (lexeme stor)
@@ -432,7 +500,7 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
                  , ESing . TLab <$> lexeme lidentifier
                  , EVar (-1) <$> try (lexeme qidentifier)
                  , ESing <$> (char '#' >> atype)
-                 , buildNumber <$> number
+                 , buildNumber <$> lexeme number
                  , EStringLit <$> stringLit
                  , do symbol "("
                       t <- do ts <- commaSep term
@@ -451,34 +519,24 @@ appTerm = do (t : ts) <- some (Type <$> (char '@' >> atype) <|> Term <$> aterm)
   labeledTerm t@(ELabel _ _ _) = Just t
   labeledTerm _                = Nothing
 
-  const :: Parser Const
-  const = choice [reserved s >> return k | (s, k) <-
-                   [("prj", CPrj),
-                    ("inj", CInj),
-                    ("(++)", CConcat),
-                    ("(|)", CBranch),
-                    ("syn", CSyn),
-                    ("ana", CAna),
-                    ("fold", CFold),
-                    ("fix", CFix),
-                    ("(^)", CStringCat),
-                    ("(~)", CStringEq)]]
-
   buildNumber :: Int -> Term
   buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
   buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
 
-data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String]
+
+data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixityDecl Fixity
   deriving (Data, Eq, Show, Typeable)
 
-data LHS = TypeLHS String | TermLHS String | ImportLHS
+data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKind
+  deriving (Show)
 
 topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
   lhs = choice
           [ ImportLHS <$ reserved "import"
           , TypeLHS <$> lexeme typeIdentifier
-          , TermLHS <$> lexeme identifier
+          , TermLHS <$> try (lexeme termIdentifier)
+          , FixityLHS <$> lexeme fixityKeyword
           ]
   -- You would imagine that I could write `symbol "type" *> identifier` here.
   -- You would be wrong, because `identifier` is defined in terms of `lexeme`,
@@ -487,6 +545,7 @@ topLevel = item lhs body where
   --
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
+
   typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
   body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
   body (TypeLHS x) =
@@ -501,6 +560,10 @@ topLevel = item lhs body where
       , do bs <- many termLamBinders
            let binders = foldr (.) id (map (either (uncurry ETyLam) (uncurry ELam)) (concat bs))
            symbol "=" *> ((x,) . TermDef . binders <$> term) ]
+  body (FixityLHS fx) = do lvl <- lexeme number
+                           name <- lexeme (try customOperator <|> surroundedIdentifier)
+                           return (name, FixityDecl (Fixity fx lvl))
+
 
 prog :: [String] -> Parser Program
 prog moduleNames = whitespace >> block topLevel >>= defns moduleNames
@@ -510,20 +573,30 @@ defns moduleNames tls
   | not (null unmatchedTypeSigs) = fail $ "definitions of " ++ intercalate ", " unmatchedTypeSigs ++ " lack bodies"
   | not (null unmatchedTypeDefs) = fail $ "definitions of types " ++ intercalate ", " unmatchedTypeDefs ++ " lack kind signatures"
   | not (null unmatchedKindSigs) = fail $ "definitions of types " ++ intercalate ", " unmatchedKindSigs ++ " lack bodies"
+  | not (null unmatchedFixDecls) = fail $ moduleName ++ " contains fixity declaration(s) for [ " ++ intercalate ", " unmatchedFixDecls ++ " ] without definition(s) in the same module."
   | otherwise =
     do ds <- mapM mkDecl names
+       let
        return (Prog (concat imports, ds))
   where -- TODO: Why would not we *not* traverse this list four times?
         termDefs = [(x, t) | (x, TermDef t) <- tls]
         typeSigs = [(x, t) | (x, TypeSig t) <- tls]
         typeDefs = [(x, t) | (x, TypeDef t) <- tls]
         kindSigs = [(x, t) | (x, KindSig t) <- tls]
+
+        -- hey, why not five times?
+        -- Get the fixity declarations for each name.
+        fixDecls = [(x, fixity) | (x, FixityDecl fixity) <- tls]
+
         imports  = [names | (_, ImportTL names) <- tls]
+
 
         names = go [] tls where
           go seen [] = []
           go seen (("", _) : tls) =
             go seen tls
+          -- skip fixity declarations so we don't get scope errors later.
+          go seen ((x, FixityDecl _) : tls) = go seen tls
           go seen ((x, _) : tls)
             | x `elem` seen = go seen tls
             | otherwise = x : go (x : seen) tls
@@ -532,23 +605,33 @@ defns moduleNames tls
         unmatchedTypeSigs = filter (`notElem` map fst termDefs) (map fst typeSigs)
         unmatchedTypeDefs = filter (`notElem` map fst kindSigs) (map fst typeDefs)
         unmatchedKindSigs = filter (`notElem` map fst typeDefs) (map fst kindSigs)
+        unmatchedFixDecls = filter (`notElem` map fst termDefs) (map fst fixDecls)
 
         lookups x = map snd . filter ((x ==) . fst)
-
         mkDecl x =
-          case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs) of
-            (tm : tms, [], [], [])
-              | null tms -> return (TmDecl (x : moduleNames) Nothing tm)
-              | otherwise -> fail $ "too many definitions for " ++ x
-            (tm : tms, ty : tys, [], [])
-              | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm)
-              | not (null tms) -> fail $ "too many definitions for " ++ x
-              | otherwise -> fail $ "too many type signatures for " ++ x
-            ([], [], ty : tys, k : ks)
-              | null tys, null ks -> return (TyDecl (x : moduleNames) k ty)
-              | not (null tys) -> fail $ "too many definitions for " ++ x
-              | otherwise -> fail $ "too many kind signatures for " ++ x
-            _ -> fail $ "too much definition of " ++ x
+          do fx <- case lookups x fixDecls of
+                        [] -> return Nothing
+                        (fx:fxs) | null fxs -> return (Just fx)
+                                 | otherwise -> fail $ "too many fixity declarations for " ++ x ++ " in " ++ moduleName
+             case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs, fx) of
+                  (tm : tms, [], [], [], fx)
+                    | null tms -> return (TmDecl (x : moduleNames) Nothing tm fx)
+                    | otherwise -> fail $ "too many definitions for " ++ x
+                  (tm : tms, ty : tys, [], [], fx)
+                    | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm fx)
+                    | not (null tms) -> fail $ "too many definitions for " ++ x
+                    | otherwise -> fail $ "too many type signatures for " ++ x
+                  ([], [], ty : tys, k : ks, _)
+                    | null tys, null ks -> return (TyDecl (x : moduleNames) k ty)
+                    | not (null tys) -> fail $ "too many definitions for " ++ x
+                    | otherwise -> fail $ "too many kind signatures for " ++ x
+                  ([], [], [], [], _) -> fail $ "no definition for " ++ x
+                  r -> fail $ "too much definition of " ++ x
+
+        moduleName = intercalate "." (reverse moduleNames)
+
+
+
 
 parse :: String -> [String] -> String -> IO Program
 parse fileName moduleNames s =

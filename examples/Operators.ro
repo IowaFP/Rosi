@@ -1,0 +1,225 @@
+import Ro.Base, Data.List, Data.Nat
+
+($++$) a b = a ++ b
+
+f = id
+
+(+) = add
+
+(-) = monus
+
+(*) = mult
+
+(//) = div
+
+-- Test that we support the Idris 2 operator set except for '.', '#', and '@'
+(+-*\/=?|&><!$%^~) = id
+
+-- we can declare fixity for operators defined in the same file
+infixl 5 +
+
+infixl 7 //
+
+infixl 7 *
+
+infixl 5 -
+
+
+
+-- (::) = Data.List.(::)
+-- declaring :: as left-associating breaks uses without parentheses
+-- infixl 5 ::
+-- declaring :: as Non-Associative causes ambiguous precedence error
+-- infix 5 ::
+
+
+-- check that we can override imported definition locally
+(<>) : Nat -> Nat
+(<>) n = 0
+prefix 1 <>
+z = <> 5
+
+
+-- infixr 1 $++$
+
+res = f ('hello := f "hello") $++$ f (f 'world := "world")
+
+hello_world = "hello" :: "world" :: nil
+
+
+ex_1 = (6 + (5 - 4) - 1) // 6
+ex_2 = 7 // 7 + 6 // 6
+ex_3 = 6 + 4 - 1 - 4 + 1 - 3
+ex_4 = (4 + 4) // 2
+ex_5 = 7 * 0 + 5 * 1
+ex_6 = 20 - 7 * 2
+ex_7 = 9 // 2 + 3
+ex_8 = 6 + 5 - (4 - 1)
+ex_9 = 6 + 6 // 2
+ex_10 =  (*) 2 (3 + 2)
+ex_11 = 1 + 5 * 2 
+ex_12 = (7 - 1) * 2
+ex_13 = 7 * 3 // 2 + 1 * 2 + 1
+ex_14 =  7 * 7 // 7 + 7
+ex_15 = 1 + 2 + 3 + 4 + 5
+
+prefix 7 !
+prefix 8 !!
+prefix 9 !!!
+postfix 7 $
+postfix 8 $$
+postfix 9 $$$
+prefix 7 %
+prefix 8 %%
+prefix 9 %%%
+
+(!) = Ro.Base.not
+(!!) = not
+(!!!) = not
+(/\) = Ro.Base.and
+(\/) = Ro.Base.or
+(&&) = Ro.Base.and
+(||) = Ro.Base.or
+
+(==>) p q = (! p) \/ q
+
+infixl 6 /\
+infixl 9 || -- or with highest precedence
+infixl 6 \/
+infixl 9 && -- and with highest precedence
+infixr 4 ==>
+
+postfix 1 << -- loosely binding postfix negation
+postfix 9 <<< -- tightly binding postfix negation
+
+(<<) = not
+(<<<) = not
+
+
+($) : Bool -> Nat
+($) = 'True: u -> 1
+    | 'False: u -> 0
+($$) = ($)
+($$$) = ($$)
+
+natToBool : Nat -> Bool
+natToBool = 'Succ: u -> True 
+          | 'Zero: u -> False
+
+(%) = natToBool
+(%%) = natToBool
+(%%%) = natToBool
+
+ex_T1 = ! False
+ex_T2 = True \/ False <<< -- if <<< binds loosely, False. if <<< binds tightly, True
+ex_T3 = True ==> True <<< <<
+ex_T4 = True ==> True << <<<
+ex_T5 = True /\ False \/ True
+ex_T6 = ! False \/ ! True
+ex_T7 = ! ! False || True
+ex_T8 = True ==> False ==> True ==> False
+ex_T9 = True ==> False <<
+ex_T10 = True ==> False <<<
+
+ex_F1 = ! True
+ex_F2 = ! False <<
+ex_F3 = True ==> False << <<<
+ex_F4 = True \/ False << -- if << binds loosely, False. if << binds tightly, True
+ex_F5 = False \/ True /\ False
+ex_F6 = ! True || ! False
+ex_F7 = True ==> True \/ False ==> False
+ex_F8 = ! False || True
+ex_F9 = True ==> ! False ==> ! True || True
+ex_F10 = ! False ==> ! True || ! False
+
+-- these (probably) won't typecheck if precedence isn't resolved correctly
+ex_adjacent_pre_post1 = (!!! (% ((!!! True) $$)))
+ex_adjacent_pre_post2 = ! ! (% ((%%% 1) $$))
+ex_adjacent_pre_post3 = ! % %%% 0 $$
+ex_adjacent_pre_post4 = (!! ! %% True $$$)
+
+
+swap = \f. (\a b. f b a)
+(<->*) = swap
+(*<->) = swap
+
+prefix 11 <->*
+postfix 11 *<->
+
+(!*) = not
+prefix 11 !*
+
+ex_adjacent_exprs1 = f <->* (^) "a" "b" -- "ba"
+ex_adjacent_exprs2 = (^) *<-> "a" "b" -- "ba"
+ex_adjacent_exprs3 = and *<-> !* True False
+
+
+-- exponent
+(**) : Nat -> Nat -> Nat
+(**) = fix (\exp x. 
+    ('Zero: m -> 1
+    |'Succ: m -> x * (exp x m))
+  )
+
+infixl 9 **
+
+(&) : Nat -> Nat
+(&) = mult 3
+
+prefix 1 &
+
+exp_1 = 2**0
+exp_2 = 2**1
+exp_4 = 2**2
+exp_8 = 2**3 -- 8
+exp_24 = & 2**3
+
+(+++) : Nat -> Nat
+(+++) = succ
+
+-- infix 9 +++
+prefix 11 +++
+
+-- If I call the recursive parameter fold,
+-- It gets parsed using the fold operator inside the type arguments
+-- Operators.fold' = \p fix @((Fold a#121@15 => (#a#122@14 -> (forall l : L. forall u : %e#88. {l@1 := u@0} < a#121@17 => #l@1 -> a#122@16 u@0 -> a#123@15) -> (a#123@13 -> a#123@13 -> a#123@13) -> a#123@13 -> Pi a#121@15 -> a#123@13) -> a#124@12) -> a#125@11 -> Sigma {'Cons := Pi a#126@10, 'Nil := a#127@9} -> a#125@11) (\ (fold : (Fold a#121@7 => (#a#122@6 -> (forall l : L. forall u : %e#88. {l@1 := u@0} < a#121@9 => #l@1 -> a#122@8 u@0 -> a#123@7) -> (a#123@5 -> a#123@5 -> a#123@5) -> a#123@5 -> Pi a#121@7 -> a#123@5) -> a#124@4) -> a#125@3 -> Sigma {'Cons := Pi a#126@2, 'Nil := a#127@1} -> a#125@3) (+++ : Fold a#121@7 => (#a#122@6 -> (forall l : L. forall u : %e#88. {l@1 := u@0} < a#121@9 => #l@1 -> a#122@8 u@0 -> a#123@7) -> (a#123@5 -> a#123@5 -> a#123@5) -> a#123@5 -> Pi a#121@7 -> a#123@5) -> a#124@4) (z : a#125@3) . Ro.Base.case @('Nil) @(a#127@9) @(a#125@11) #'Nil (\ (u : a#127@1) . z) | Ro.Base.case @('Cons) @(Pi a#126@10) @(a#125@11) #'Cons (\ (p : Pi a#126@2) . Ro.Base.sel @('1) @([^8%i#68] (a#124@12 -> [^8%i#66] ((Fold a#121@15 => (#a#122@14 -> (forall l : L. forall u : %e#88. {l@1 := u@0} < a#121@17 => #l@1 -> a#122@16 u@0 -> a#123@15) -> (a#123@13 -> a#123@13 -> a#123@13) -> a#123@13 -> Pi a#121@15 -> a#123@13) -> a#124@12) -> [^8%i#64] (a#128@8 -> [^8%i#62] (a#125@11))))) @(a#126@10)  p #'1 [i#68] (+++ (fold @(a#122@14) @(a#121@15) @(a#123@13))) [i#66] +++ [i#64] (Ro.Base.sel @('2) @([^8%i#94] (a#128@8)) @(a#126@10)  p #'2 [i#94]) [i#62]))
+fold' : (Nat -> Nat -> Nat) -> Nat -> List Nat -> Nat
+fold' = (fix (\fold' (+++) z.
+  'Nil: u -> z
+  |'Cons: p -> p.'1 +++ fold' (+++) z p.'2))
+
+
+(:=>) : {l := t} < r => #l -> Pi r -> t 
+(:=>) l x = x.l
+infix 5 :=>
+
+(^.^) a b = b ^ a
+
+
+someRec = ('l := 1)
+
+(:=^.^) l a = "good"
+
+op_made_of_reserved_symbols1 : String
+op_made_of_reserved_symbols1 = 'l:=^.^"sssss"
+
+op_made_of_reserved_symbols2 = "hello" ^.^ "world"
+
+
+
+widenVariant : forall a: *. Sigma r -> Sigma (r + {'a := a})
+widenVariant x = inj x
+
+monoId : forall t. t -> t
+monoId @t (x : t) = x
+
+
+postfix 11 ~~~
+(~~~) = id
+
+postfix_betwixt_type_application = widenVariant ~~~ @String
+
+monoIdYes = monoId ~~~ @String "yes"
+-- monoIdNo = monoId @Nat ~~~ "no"
+
+-- not_enough_args = "hello"::

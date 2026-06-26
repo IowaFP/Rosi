@@ -9,11 +9,13 @@ type List = \a. Mu (ListF a)
 nil : List a
 nil = 'Nil: tt
 
-cons : a -> List a -> List a
-cons = \hd tl. 'Cons: (pair hd tl)
+infixr 5 ::
+(::) : a -> List a -> List a
+(::) = \hd tl. 'Cons: (pair hd tl)
+
 
 sing : a -> List a
-sing = \ a. cons a nil
+sing = \ a. a::nil
 
 head : List a -> Maybe a
 head = 'Nil: u -> Nothing
@@ -31,7 +33,7 @@ nth = fix (\nth l.
 map : (a -> b) -> List a -> List b
 map = fix (\map f.
              ( 'Nil: u -> 'Nil: u
-             | 'Cons: p -> cons (f p.'1) (map f p.'2)))
+             | 'Cons: p -> (f p.'1)::(map f p.'2)))
 
 foldr : (a -> b -> b) -> b -> List a -> b
 foldr = fix (\foldr f b.
@@ -41,8 +43,13 @@ foldr = fix (\foldr f b.
 length : List a -> Nat
 length = foldr (\e a. succ a) 0
 
+infixr 5 `append`
 append : List a -> List a -> List a
-append = \ xs ys. foldr cons ys xs
+append = \ xs ys. foldr (::) ys xs
+
+(<>) = append
+infixr 5 <>
+
 
 concat : List (List a) -> List a
 concat = foldr append nil
@@ -50,7 +57,7 @@ concat = foldr append nil
 take : List a -> Nat -> List a
 take = fix (\take xs. ( 'Zero: u -> nil
                        | 'Succ: pr -> ( 'Nil: u -> nil
-                                     | 'Cons: ys -> cons ys.'1 (take ys.'2 pr)) xs))
+                                     | 'Cons: ys -> ys.'1::(take ys.'2 pr)) xs))
 
 -- zipping
 
@@ -59,10 +66,10 @@ zip = fix (\zip.
               ( 'Nil: u -> const nil
               | 'Cons: xs -> 
                     (  'Nil: u -> nil
-                    | 'Cons: ys -> cons (pair xs.'1 ys.'1) (zip xs.'2 ys.'2))))
+                    | 'Cons: ys -> (pair xs.'1 ys.'1)::(zip xs.'2 ys.'2))))
 
 unzip : List (Pair a b) -> Pair (List a) (List b)
-unzip = foldr (\p xs_ys. (pair (cons p.'1 xs_ys.'1) (cons p.'2 xs_ys.'2))) (pair nil nil)
+unzip = foldr (\p xs_ys. (pair (p.'1::xs_ys.'1) (p.'2::xs_ys.'2))) (pair nil nil)
 
 -- equivalent to zip with a stream that repeats the first argument
 zipRepeat : a -> List b -> List (Pair a b)
@@ -70,7 +77,7 @@ zipRepeat = map . pair
 
 enumerate : List a -> List (Pair a Nat)
 enumerate = (fix (\enumerateHelper n. ( 'Nil: u -> nil
-                                      | 'Cons: xs -> cons (pair (xs.'1) n) (enumerateHelper (succ n) xs.'2)))
+                                      | 'Cons: xs -> (pair (xs.'1) n)::(enumerateHelper (succ n) xs.'2)))
             ) 0
 
 -- Searching and filtering
@@ -86,7 +93,7 @@ findAll : (a -> Bool) -> List a -> List a
 findAll = fix (\findAll f.
                     ( 'Nil: u -> nil
                     | 'Cons: xs -> (if (f xs.'1)
-                                       (cons xs.'1 (findAll f xs.'2))
+                                       (xs.'1::(findAll f xs.'2))
                                        (findAll f xs.'2))))
 
 findIndex : (a -> Bool) -> List a -> Maybe Nat
@@ -94,11 +101,11 @@ findIndex = \f xs. maybe Nothing (\x. Just (x.'2)) (find (\p. f p.'1) (enumerate
 
 filter : (a -> Bool) -> List a -> List a
 filter = \f ls. foldr (\e a. if (f e)
-                                (cons e a)
+                                (e::a)
                                         a) nil ls
 
 filterMaybe : List (Maybe a) -> List a
-filterMaybe = foldr (\e a. ( 'Just: x -> (cons x a)
+filterMaybe = foldr (\e a. ( 'Just: x -> (x::a)
                            | 'Nothing: u -> a) e) nil
 
 all : (a -> Bool) -> List a -> Bool
@@ -112,5 +119,6 @@ showList = \ show. fix (\showList.
     ( 'Nil: u -> "[]"
     | 'Cons: p -> show p.'1 ^ " :: " ^ showList p.'2))
 
-listTest1 = nth (cons one (cons two (cons three nil))) two
-listTest2 = nth (cons one (cons two nil)) two
+
+listTest1 = nth (one::two::three::nil) two
+listTest2 = nth (one::two::nil) two

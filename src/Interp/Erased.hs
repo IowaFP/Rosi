@@ -1,11 +1,9 @@
 module Interp.Erased where
 
-import Control.Monad.Reader
 import Data.IORef
-import Data.List            (elemIndex, intercalate, sortOn)
-import Data.Maybe           (fromMaybe, isJust)
-import Debug.Trace          qualified as T
-import Foreign              (toBool)
+import Data.List        (elemIndex, intercalate, sortOn)
+import Data.Maybe       (fromMaybe)
+import Debug.Trace      qualified as T
 import GHC.Stack
 import Printer
 import Syntax

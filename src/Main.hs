@@ -3,14 +3,12 @@
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module Main where
 
-import Control.Monad         (void, when, (<=<))
+import Control.Monad         (when)
 import Control.Monad.Reader  (runReaderT)
 import Control.Monad.State
 import Data.IORef
-import Data.List             (break, findIndex)
 import Data.List.Split
 import Data.String
-import Prettyprinter         qualified as P
 import Prettyprinter.Util    qualified as P
 import System.Console.GetOpt
 import System.Directory
@@ -20,6 +18,8 @@ import System.FilePath
 import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr, stdout)
 
 import Checker
+import DesugarInfix          (desugarInfix)
+import Errors
 import Interp.Erased         as E
 import Parser
 import Printer
@@ -107,7 +107,8 @@ main = do nowArgs <- getArgs
             hSetBuffering stdout LineBuffering
           decls <- parseChasing (imports flags) (inputs flags)
           scoped <- reportErrors flags $ runScopeM $ scopeProg decls
-          checked <- goCheck flags [] [] scoped
+          deOpped <- reportErrors flags $ desugarInfix scoped
+          checked <- goCheck flags [] [] deOpped
           when (doPrintTyped flags) $
             mapM_ (putDocWLn 120 flags . pprTyping) checked
           evaled <- goEvalE [] checked
@@ -119,14 +120,14 @@ main = do nowArgs <- getArgs
           do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
                -- Shouldn't be any holes in types...
              goCheck flags (KBDefn k t' : d) g ds
-        goCheck flags d g (TmDecl v (Just ty) te : ds) =
+        goCheck flags d g (TmDecl v (Just ty) te _ : ds) =
           do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints True ty KType)))
              (te', holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
              te'' <- flattenE te'
              reportHoles flags holes
              ds' <- goCheck flags d ((v, ty') : g) ds
              return ((v, ty', te'') : ds')
-        goCheck flags d g (TmDecl v Nothing te : ds) =
+        goCheck flags d g (TmDecl v Nothing te _: ds) =
           do ((te', ty), holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
              ty' <- flattenT ty
              te'' <- flattenE te'

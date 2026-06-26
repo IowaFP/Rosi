@@ -6,24 +6,29 @@ import Control.Monad.State
 import Data.Bifunctor
 import Data.List
 import Data.Maybe
+import Errors
 import Syntax
 
-newtype ScopeM a = ScopeM { runScope :: ReaderT ([QName], [QName]) (Except Error) a }
-  deriving (Functor, Applicative, Monad, MonadReader ([QName], [QName]), MonadError Error)
+newtype ScopeM a = ScopeM { runScope :: ReaderT ([QName], [(QName, Maybe Fixity)]) (Except Error) a }
+  deriving (Functor, Applicative, Monad, MonadReader ([QName], [(QName, Maybe Fixity)]), MonadError Error)
 
 runScopeM :: ScopeM a -> Either Error a
 runScopeM m = runExcept (runReaderT (runScope m) ([], []))
 
-bindVars :: ([QName], [QName]) -> ScopeM a -> ScopeM a
+bindVars :: ([QName], [(QName, Maybe Fixity)]) -> ScopeM a -> ScopeM a
 bindVars (tvs, vs) = local (bimap (reverse tvs ++) (reverse vs ++))
 
-bindTyVar, bindVar :: String -> ScopeM a -> ScopeM a
+bindTyVar :: Name -> ScopeM a -> ScopeM a
 bindTyVar tv = bindVars ([[tv, ""]], [])
-bindVar v    = bindVars ([], [[v, ""]])
 
-bindGTyVar, bindGVar :: QName -> ScopeM a -> ScopeM a
+bindVar :: String -> Maybe Fixity -> ScopeM a -> ScopeM a
+bindVar v f   = bindVars ([], [([v, ""], f)])
+
+bindGTyVar :: QName -> ScopeM a -> ScopeM a
 bindGTyVar tv = bindVars ([tv], [])
-bindGVar v    = bindVars ([], [v])
+
+bindGVar :: QName -> Maybe Fixity -> ScopeM a -> ScopeM a
+bindGVar v f   = bindVars ([], [(v, f)])
 
 lookFor :: QName -> QName -> Bool
 lookFor [x] (y : ys) = x == y
@@ -35,21 +40,21 @@ tyvar x = do names <- asks fst
                Nothing -> throwError (ErrUnboundTyVar x)
                Just i  -> return (i, names !! i)
 
-var :: QName -> ScopeM Term
+var :: QName -> ScopeM (Term, Maybe Fixity)
 var x = do names <- asks snd
            case finds names of
             [] -> throwError (ErrUnboundVar x)
             (([], i) : _) ->
-              return (EVar i (names !! i))
+              return (first (EVar i) (names !! i))
             ((xs, i) : _) ->
               do ls <- mapM (var . sing) xs
-                 sel <- var ["sel", "Base", "Ro"]
-                 return (foldl (\x l -> EApp (EApp sel x) l)
-                               (EVar i (names !! i))
+                 (sel, _) <- var ["sel", "Base", "Ro"]
+                 return (foldl (\x l -> (EApp (EApp sel (fst x)) (fst l), snd x))
+                               (first (EVar i) (names !! i))
                                (reverse ls))
 
   where splits = [splitAt n x | n <- [0..length x]]
-        finds names = [(xs, i) | (xs, x) <- splits, i <- maybeToList (findIndex (lookFor x) names)]
+        finds names = [(xs, i) | (xs, x) <- splits, i <- maybeToList (findIndex (lookFor x) (map fst names))]
         sing x = [x]
 
 bindableTyVars :: Ty -> State [Name] ()
@@ -142,15 +147,16 @@ instance HasVars Pred where
 -- type checking, and so starts with de Bruijn indices.
 
 instance HasVars Term where
-  scope (EVar _ x) = var x
+  scope (EVar _ x) = fst <$> var x
   scope (EConst c) = return (EConst c)
-  scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x (scope m)
+
+  scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x Nothing (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
   scope (ESing t) = ESing <$> scope t
   scope (ELabel k l m) = ELabel k <$> scope l <*> scope m
   scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l
-  scope (ELet x m n) = ELet x <$> scope m <*> bindVar x (scope n)
+  scope (ELet x m n) = ELet x <$> scope m <*> bindVar x Nothing (scope n)
   scope (ETyped m t) = ETyped <$> scope m <*> scope t
   scope (EInst m (Known is)) = EInst <$> scope m <*> (Known <$> mapM scopeI is) where
     scopeI (TyArg t) = TyArg <$> scope t
@@ -161,29 +167,35 @@ instance HasVars Term where
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
   scope ECast{} = error "scope: ETyEqu"
-
+  scope (EInfix s) = EInfix <$> scope s
 instance HasVars Decl where
-  scope (TmDecl x Nothing m) =
-    TmDecl x <$> pure Nothing <*> withError (ErrContextTerm m) (scope m)
-  scope (TmDecl x (Just t) m) =
+  scope (TmDecl x Nothing m fx) =
+    (TmDecl x Nothing <$> withError (ErrContextTerm m) (scope m)) <*> pure fx
+  scope (TmDecl x (Just t) m fx) =
     TmDecl x <$>
       withError (ErrContextType t) (Just <$> implicitQuantifiers t) <*>
-      withError (ErrContextTerm m) (scope m)
+      withError (ErrContextTerm m) (scope m) <*> pure fx
   scope (TyDecl x k t) =
     TyDecl x k <$>
       withError (ErrContextType t) (implicitQuantifiers t)
 
-declName (TmDecl x _ _) = x
-declName (TyDecl x _ _) = x
+instance HasVars EInfixToken where
+  scope (Operand e) = Operand <$> scope e
+  scope explicitApp@(Operator (Op _ ["__Apply"] _)) = return explicitApp
+  scope (Operator (Op _ qn _)) = do ~(EVar i qn', fx) <- var qn
+                                    return $ Operator (Op i qn' fx)
+
+instance HasVars AppTerm where
+  scope :: AppTerm -> ScopeM AppTerm
+  scope (ATerm tm) = ATerm <$> scope tm
+  scope (AType ty) = AType <$> scope ty
 
 scopeProg :: [Decl] -> ScopeM [Decl]
-scopeProg []                      = return []
-scopeProg (d@(TmDecl x _ _) : ds) = (:) <$> scope d <*> bindGVar x (scopeProg ds)
-scopeProg (d@(TyDecl x _ _) : ds) = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)
+scopeProg []                        = return []
+scopeProg (d@(TmDecl x _ _ f) : ds) = (:) <$> scope d <*> bindGVar x f (scopeProg ds)
+scopeProg (d@(TyDecl x _ _) : ds)   = (:) <$> scope d <*> bindGTyVar x (scopeProg ds)
 
--- Testing code
-deriving instance Show Error
 
 test1 =
   runScopeM $ scope $
-  TmDecl ["id"] (Just (TApp (TApp TFun (TVar (-1) ["a"])) (TVar (-1) ["a"]))) (ELam "x" Nothing (EVar (-1) ["x"]))
+  TmDecl ["id"] (Just (TApp (TApp TFun (TVar (-1) ["a"])) (TVar (-1) ["a"]))) (ELam "x" Nothing (EVar (-1) ["x"])) Nothing

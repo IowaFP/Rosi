@@ -3,7 +3,7 @@ module Syntax (module Syntax) where
 
 import Control.Monad.IO.Class
 import Data.Bifunctor         (first)
-import Data.Generics          hiding (GT, TyCon (..))
+import Data.Generics          hiding (Fixity (..), GT, TyCon)
 import Data.IORef
 import GHC.Stack
 
@@ -16,10 +16,37 @@ import GHC.Stack
 type Name = String
 type QName = [Name]
 
+data FixityKind = InfixL | InfixR | Infix | Prefix | Postfix
+  deriving (Data, Eq, Show)
+
+data Fixity = Fixity FixityKind Int
+  deriving (Data, Eq, Show)
+
+instance Ord Fixity where
+  -- associativity applies when infix level is equal
+  compare (Fixity InfixL l0) (Fixity InfixL l1) | l0 == l1 = GT
+  compare (Fixity InfixR l0) (Fixity InfixR l1) | l0 == l1 = LT
+
+  -- prefix on the right binds tight
+  -- thus adjacent prefixes associate right, regardless of precedence level
+  -- consider that in (P \/ ! Q), the ! must apply to  Q, even if \/ has higher precedence
+  compare (Fixity _ _) (Fixity Prefix _)  = LT
+
+  -- similarly, postfix on the left binds tight
+  -- thus adjacent postfixes associate left, regardless of precedence level
+  compare (Fixity Postfix _) (Fixity _ _) = GT
+
+  -- otherwise, we use the precedence level
+  -- (equal precedence is ambiguous)
+  compare (Fixity _ l0) (Fixity _ l1) = compare l0 l1
+
+
+defaultFixity = Fixity InfixL 9
+
 data Program = Prog ([String], [Decl])
   deriving (Eq, Show)
 
-data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term
+data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term (Maybe Fixity)
   deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
@@ -355,7 +382,7 @@ shiftTNV vs _ _ t@(TLab s) = t
 shiftTNV vs j n (TConApp k t) = TConApp k (shiftTNV vs j n t)
 shiftTNV vs j n (TMap t) = TMap (shiftTNV vs j n t)
 shiftTNV vs j n (TMapApp t) = TMapApp (shiftTNV vs j n t)
-shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t) where
+shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t)
 shiftTNV vs j n (TCompl r0 r1) = TCompl (shiftTNV vs j n r0) (shiftTNV vs j n r1)
 shiftTNV _ _ _  t@TString = t
 shiftTNV vs _ _ t = error $ "shiftTN: unhandled: " ++ show t
@@ -389,14 +416,32 @@ data Const =
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?
 
+
 data Term =
     EVar Int QName | ELam String (Maybe Ty) Term | EApp Term Term
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
-  | EConst Const
+  | EConst Const | EInfix [EInfixToken]
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
   | EStringLit String | EHole String
   deriving (Data, Eq, Show, Typeable)
+
+data EInfixToken = Operator EOp | Operand AppTerm
+  deriving (Data, Eq, Show)
+
+instance Ord EOp where
+  compare (Op _ _ (Just f1)) (Op _ _ (Just f2)) = compare f1 f2
+  compare l r                                                   = error $ "internal: tried to compare EInfixTokens which are not operators" ++ show l ++ ", " ++ show r
+
+explicitApp :: EInfixToken
+explicitApp = Operator $ Op (-1) ["__Apply"] (Just (Fixity InfixL 10))
+
+data EOp = Op Int QName (Maybe Fixity)
+  deriving (Data, Eq, Show)
+
+
+data AppTerm = AType Ty | ATerm Term
+  deriving (Data, Eq, Show)
 
 shiftENV :: [UVar] -> Int -> Int -> Term -> Term
 shiftENV _ _ _ e@(EVar {})       = e
@@ -412,8 +457,12 @@ shiftENV _ _ _ e@(EConst {})     = e
 shiftENV vs j n (ELet x e f)     = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
 shiftENV vs j n (ECast e q)      = ECast (shiftENV vs j n e) q
 shiftENV vs j n (ETyped e t)     = ETyped e (shiftTNV vs j n t)
+shiftENV vs j n (EInfix ops)     = EInfix $ map (shiftENVfix vs j n) ops
 shiftENV _ _ _ e@(EStringLit {}) = e
 shiftENV _ _ _ e@(EHole {})      = e
+
+-- shiftENVfix vs j n (Operand tm) = Operand $ shiftENV vs j n tm
+shiftENVfix vs j n e            = error "should have desugared Einfix before now"
 
 shiftEN :: Int -> Int -> Term -> Term
 shiftEN = shiftENV []
@@ -577,16 +626,3 @@ flattenV v = return v
   -- Covers: VVar, VRefl, VLeqSimple, VPlusSimple, VEqBeta, VEqMap, VEqCompl, VEqDefn,
   -- VEqLiftTyCon, VEqTyConSing, VEqMapId, VEqMapCompose, VFold
 
---------------------------------------------------------------------------------
--- Type errors
---
--- Probably ought to live somewhere else
---------------------------------------------------------------------------------
-
-data Error = ErrContextDefn QName Error | ErrContextType Ty Error | ErrContextTerm Term Error | ErrContextPred Pred Error | ErrContextOther String Error
-           | ErrContextTyEq Ty Ty Error
-           | ErrTypeMismatch Ty Ty Ty Ty | ErrTypeMismatchFD Pred | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Kind Kind
-           | ErrNotEntailed [(Pred, [Pred])]
-           | ErrTypeDesugaring Ty
-           | ErrUnboundVar QName | ErrUnboundTyVar QName | ErrDuplicateDefinition QName
-           | ErrOther String
