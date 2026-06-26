@@ -331,26 +331,20 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrUnboundVar v) = "Unbound variable" <+> ppr v
         pprErr (ErrDuplicateDefinition v) = "Duplicate definition o" <+> ppr v
         pprErr (ErrTypeDesugaring t) = "Error in desugaring" <+> ppr t
-        pprErr (ErrInfixDesugaring e) = ppr e
+        pprErr (ErrInfixDesugaring e exp) = vsep ["Infix resolution error", ppr e, "Error occured while desugaring expression " <+> hsep (map ppr exp)]
         pprErr (ErrOther s) = ppre s
 
 instance Printable InfixDesugaringError where
   ppr :: InfixDesugaringError -> RDoc ann
-  ppr (AmbiguousPrecedenceError op1@(Operator _ _ fix1) op2@(Operator _ _ fix2) exp)
+  ppr (AmbiguousPrecedenceError (Operator _ qn1 Nothing) _) = "internal: Missing fixity for operator" <+> ppre (stringFromQName qn1)
+  ppr (AmbiguousPrecedenceError  _ (Operator _ qn2 Nothing)) = "internal: Missing fixity for operator" <+> ppre (stringFromQName qn2)
+  ppr (AmbiguousPrecedenceError op1@(Operator _ _ fix1) op2@(Operator _ _ fix2))
                                                 = vsep ["Could not resolve precedence between"
-                                                                  , " (" <> ppr op1 <> ") [" <> ppre (show fix1) <> "]",
-                                                                  "and", " (" <> ppr op2 <> ") [" <> ppre (show fix2) <> "]"
-                                                                  , " in ", hsep $ map ppr exp]
-  ppr (AmbiguousPrecedenceError (Operand e1) (Operand e2) exp)
-                                        = vsep ["Resolving infix operators resulted in adjacent expressions"
-                                                          , " (" <> ppr e1 <> ") and (" <> ppr e2 <> ")"
-                                                          , "in the context of the expression " , hsep $ map ppr exp
-                                                          , ". Use parentheses around adjacent expressions to avoid ambiguity."]
-  ppr  (AmbiguousPrecedenceError op1 op2 exp) = vsep ["resolveFixities tried to compare precedence between "
-                                                        , ppr op1 , " and ", ppr op2
-                                                        , "in the context of the expression "
-                                                        , vsep $ map ppr exp
-                                                        ]
+                                                                  , ppr op1 <+> "[" <> ppre (show fix1) <> "]",
+                                                                  "and",
+                                                                  ppr op2 <+> "[" <> ppre (show fix2) <> "]"]
+  ppr (AmbiguousPrecedenceError e1 e2) = "internal: AmbiguousPrecedence error created with invalid Operands " <+> ppre (show e1) <+> ppre (show e2)
+  ppr (OtherInfixResolutionError s) = ppre s
 
 renderString :: RDoc ann -> String
 renderString doc =

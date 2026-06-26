@@ -60,9 +60,9 @@ instance DesugarInfix Term where
                                         pure
                                         (resolveFixities [] [] exp)
                                         where
-                                          report (l, r) = Left $ ErrInfixDesugaring (AmbiguousPrecedenceError l r exp)
+                                          report err = Left $ ErrInfixDesugaring err exp
 
-      resolveFixities :: [EInfixToken] -> [AppTerm] -> [EInfixToken] -> Either (EInfixToken, EInfixToken) Term
+      resolveFixities :: [EInfixToken] -> [AppTerm] -> [EInfixToken] -> Either InfixDesugaringError Term
 
       -- Based on Garrett's algorithm from habit/alb and Djikstra's shunting yard algorithm,
       -- The presence of prefix and postfix operators means we can't assume that the expression consists of alternating operators and subterms.
@@ -74,14 +74,10 @@ instance DesugarInfix Term where
 
       -- resolveFixities a b c | T.trace (dumpStacks a b c) False = undefined
       -- error cases. Should be unreachable.
-      resolveFixities [] [] [] = error "internal: resolveFixities fixities called with all empty stacks"
-      resolveFixities (op0@(Operator _ _ Nothing):ops) tms tail = error $ concat [
-        "internal: resolveFixities fixities called with missing Fixity on an operator: " , show op0 , ". inputs = " , dumpStacks (op0:ops) tms tail]
-      resolveFixities ops tms (op1@(Operator _ _ Nothing):tail) = error $ concat [
-        "internal: resolveFixities fixities called with missing Fixity on an operator: " , show op1 , ". inputs = " , dumpStacks ops tms (op1:tail)]
+      resolveFixities [] [] [] = error "internal: resolveFixities fixitieserror called with all empty stacks"
 
-      -- error case: if we end up with adjacent expressions on the term stack, fail.
-      resolveFixities [] (e0:e1:es) [] = Left (Operand e1, Operand e0)
+    -- error case: if we end up with adjacent expressions on the term stack, fail.
+      resolveFixities [] (e0:e1:es) [] = Left $ AmbiguousPrecedenceError (Operand e1) (Operand e0)
 
       -- Base case: we've successfully reduced to a term.
       resolveFixities [] [ATerm tm] [] = Right tm
@@ -104,10 +100,10 @@ instance DesugarInfix Term where
           GT -> resolveFixities ops (applyOp op0 tmStack) (op1:tail)
           -- if head of tail takes precedence push it onto opStack.
           LT -> resolveFixities (op1:op0:ops) tmStack tail
-          EQ -> Left (op0, op1)
+          EQ -> Left $ AmbiguousPrecedenceError op0 op1
 
-      app1 (Operator i qn _) (AType ty) = error $ "tried to illegally apply term-level operator to type " ++ show ty
       app1 (Operator i qn _) (ATerm tm) = ATerm $ EApp (EVar i qn) tm
+      app1 (Operator i qn _) (AType ty) = error $ "tried to illegally apply term-level operator to type " ++ show ty
       app1 e tm                         = error $ "internal: tried to illegally apply expression " ++ show e ++ " to expression " ++ show e
       -- eliminate explicit application
       app2 (Operator _ ["__Apply"] _) (ATerm t) (AType u)     = ATerm (EInst t (Known [TyArg u]))

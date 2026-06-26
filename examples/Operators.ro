@@ -26,7 +26,7 @@ infixl 5 -
 
 
 
-(::) = Data.List.(::)
+-- (::) = Data.List.(::)
 -- declaring :: as left-associating breaks uses without parentheses
 -- infixl 5 ::
 -- declaring :: as Non-Associative causes ambiguous precedence error
@@ -204,3 +204,5 @@ op_made_of_reserved_symbols1 : String
 op_made_of_reserved_symbols1 = 'l:=^.^"sssss"
 
 op_made_of_reserved_symbols2 = "hello" ^.^ "world"
+
+type_applied_to_term @ty tm = @ty tm

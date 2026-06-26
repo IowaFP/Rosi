@@ -429,10 +429,9 @@ data Term =
 data EInfixToken = Operator Int QName (Maybe Fixity) | Operand AppTerm
   deriving (Data, Eq, Show)
 
-
 instance Ord EInfixToken where
   compare l@(Operator _ _ (Just f1)) r@(Operator _ _ (Just f2)) = compare f1 f2
-  compare l r                                                   = error $ "internal: tried to compare invalid arguments " ++ show l ++ ", " ++ show r
+  compare l r                                                   = error $ "internal: tried to compare EInfixTokens which are not operators" ++ show l ++ ", " ++ show r
 
 explicitApp :: EInfixToken
 explicitApp = Operator (-1) ["__Apply"] (Just (Fixity InfixL 10))

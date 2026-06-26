@@ -10,9 +10,11 @@ data Error = ErrContextDefn QName Error | ErrContextType Ty Error | ErrContextTe
            | ErrContextTyEq Ty Ty Error
            | ErrTypeMismatch Ty Ty Ty Ty | ErrTypeMismatchFD Pred | ErrTypeMismatchPred Pred Ty Ty | ErrKindMismatch Kind Kind
            | ErrNotEntailed [(Pred, [Pred])]
-           | ErrTypeDesugaring Ty | ErrInfixDesugaring InfixDesugaringError
+           | ErrTypeDesugaring Ty 
+             -- Error which occurred during Infix Resolution, plus the EInfix expression where it occured.
+           | ErrInfixDesugaring InfixDesugaringError [EInfixToken]
            | ErrUnboundVar QName | ErrUnboundTyVar QName | ErrDuplicateDefinition QName
            | ErrOther String
 
 data InfixDesugaringError =
-  AmbiguousPrecedenceError EInfixToken EInfixToken [EInfixToken]
+  AmbiguousPrecedenceError EInfixToken EInfixToken | OtherInfixResolutionError String
