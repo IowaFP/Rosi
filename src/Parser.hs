@@ -186,7 +186,6 @@ isOperatorChar = (`elem` operatorChars)
 operatorChar :: Parser Char
 operatorChar = satisfy isOperatorChar
 
--- TODO(mctano) centralize source of truth for reserved syntaxKeywords and operators
 customOperator :: Parser String
 customOperator =
   do
@@ -616,12 +615,9 @@ defns moduleNames tls
                                  | otherwise -> fail $ "too many fixity declarations for " ++ x ++ " in " ++ moduleName
              case (lookups x termDefs, lookups x typeSigs, lookups x typeDefs, lookups x kindSigs, fx) of
                   (tm : tms, [], [], [], fx)
-                    -- TODO(mctano) If fixity declaration and type both exist, check that they match
-                    -- i.e. unary op is `A -> B`, binary op is `A -> B -> C`
                     | null tms -> return (TmDecl (x : moduleNames) Nothing tm fx)
                     | otherwise -> fail $ "too many definitions for " ++ x
                   (tm : tms, ty : tys, [], [], fx)
-                    -- TODO(mctano) If fixity declaration and type both exist, check that they match
                     | null tms, null tys -> return (TmDecl (x : moduleNames) (Just ty) tm fx)
                     | not (null tms) -> fail $ "too many definitions for " ++ x
                     | otherwise -> fail $ "too many type signatures for " ++ x
