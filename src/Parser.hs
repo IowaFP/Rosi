@@ -117,7 +117,9 @@ whitespace = P.space space1 (P.skipLineComment "--") (P.skipBlockCommentNested "
 lexeme p    = guardIndent p <* whitespace
 
 symbol      = lexeme . string
-reserved s  = lexeme (try (string s <* notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
+
+reserved :: String -> Parser ()
+reserved s  = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
 
 constants = [("prj", CPrj),
              ("inj", CInj),
@@ -131,7 +133,11 @@ constants = [("prj", CPrj),
              ("(~)", CStringEq)
             ]
 
+constant :: Parser Const
+constant =  fromKeyMap constants
 
+
+fixityKeywords :: [(String, FixityKind)]
 fixityKeywords = [("infixl",   InfixL),
                   ("infixr",   InfixR),
                   ("infix",     Infix),
@@ -139,16 +145,20 @@ fixityKeywords = [("infixl",   InfixL),
                   ("postfix", Postfix)
                  ]
 
-
 fixityKeyword :: Parser FixityKind
-fixityKeyword = choice [ kind <$ reserved word | (word, kind) <- fixityKeywords]
+fixityKeyword = fromKeyMap fixityKeywords
 
-syntaxKeywords = ["let", "in", "forall"]
+fromKeyMap :: [(String, a)] -> Parser a
+fromKeyMap keyMap = choice [k <$ reserved s | (s, k) <- keyMap]
+
+syntaxKeywords = ["let", "in", "forall", "import"]
 
 reservedWords = syntaxKeywords ++ map fst fixityKeywords ++ map fst constants
 
 reservedOps = [":", "++", "|", "^", "~", "@", "/", "\\", ":=", "=", "->", "#", "."]
 
+namespace :: Parser String
+namespace = ((:) <$> upperChar) <*> many alphaNumChar <* char '.'
 
 identifier :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 identifier  =
@@ -161,26 +171,26 @@ lidentifier :: Parser String
 lidentifier =
   char '\'' >> some (alphaNumChar <|> char '\'' <|> char '_')
 
-qidentifier  = do xs <- many (try (identifier <* string "." <* notFollowedBy (string "\'" <|> string "#")))
+qidentifier  = do xs <- many (try namespace)
                   x <- termIdentifier
                   return (x:reverse xs)
 
-operatorSymbols = ":+-*\\/=?|&><!$%^~#@"
-
--- we support all operator symbols supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" )
+-- we support all operator chars supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" )
 -- See (https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#data-types)
-isOperatorSymbol = (`elem` operatorSymbols)
--- alternate operator symbol predicate based on the `isSymbol` class. May be more trouble than it's worth.
--- isOperatorSymbol c = isSymbol c || c `elem` "-*\\/?&!%") && c /= '`'
+operatorChars = ":+-*\\/=.?|&><!@$%^~#"
 
-operatorSymbol :: Parser Char
-operatorSymbol = satisfy isOperatorSymbol
+isOperatorChar = (`elem` operatorChars)
+-- alternate operator char predicate based on the `isSymbol` class. May be more trouble than it's worth.
+-- isOperatorChar c = isSymbol c || c `elem` "-*\\/?&!%") && c /= '`'
+
+operatorChar :: Parser Char
+operatorChar = satisfy isOperatorChar
 
 -- TODO(mctano) centralize source of truth for reserved syntaxKeywords and operators
 customOperator :: Parser String
 customOperator =
   do
-    s <- takeWhile1P (Just "operator symbol") isOperatorSymbol
+    s <- takeWhile1P (Just "operator char") isOperatorChar
 
     if s `elem` reservedOps
       then unexpected $ Label (fromList "reserved operator")
@@ -208,6 +218,7 @@ stringLit   = lexeme (char '"' >> manyTill P.charLiteral (char '"'))
 surroundedOp          = immediateParens customOperator
 
 surroundedQIdentifier = immediateBackticks qidentifier
+surroundedIdentifier :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 surroundedIdentifier  = immediateBackticks identifier
 
 termIdentifier = try surroundedOp <|> identifier
@@ -460,7 +471,7 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   ctor = do x <- choice [ ESing . TLab <$> lidentifier
                         , EVar (-1) <$> qidentifier ]
             char ':'
-            notFollowedBy operatorSymbol
+            notFollowedBy operatorChar
             return (EApp (EVar (-1) (reverse ["Ro", "Base", "con"])) x)
 
   sing x = [x]
@@ -512,9 +523,6 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   buildNumber :: Int -> Term
   buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
   buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
-
-  constant :: Parser Const
-  constant =  choice [reserved s >> return k | (s, k) <-constants]
 
 
 data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixityDecl Fixity

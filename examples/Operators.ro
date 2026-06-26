@@ -185,3 +185,20 @@ fold' : (Nat -> Nat -> Nat) -> Nat -> List Nat -> Nat
 fold' = (fix (\fold' (+++) z.
   'Nil: u -> z
   |'Cons: p -> p.'1 +++ fold' (+++) z p.'2))
+
+
+(:=>) : {l := t} < r => #l -> Pi r -> t 
+(:=>) l x = x.l
+infix 5 :=>
+
+(^.^) a b = b ^ a
+
+
+someRec = ('l := 1)
+
+(:=^.^) l a = "good"
+
+op_made_of_reserved_symbols1 : String
+op_made_of_reserved_symbols1 = 'l:=^.^"sssss"
+
+op_made_of_reserved_symbols2 = "hello" ^.^ "world"
