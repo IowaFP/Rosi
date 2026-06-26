@@ -1,5 +1,5 @@
 sel : forall l : L, t : *, z : R[*]. {l := t} < z => Pi z -> #l -> t
-sel = \ r l. prj r / l
+sel = \ r l. prj r :/ l
 
 -- Why would we want syntactic sugar for pairs?!
 

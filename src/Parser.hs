@@ -155,7 +155,7 @@ syntaxKeywords = ["let", "in", "forall", "import"]
 
 reservedWords = syntaxKeywords ++ map fst fixityKeywords ++ map fst constants
 
-reservedOps = [":", "++", "|", "^", "~", "@", "/", "\\", ":=", "=", "->", "#", "."]
+reservedOps = [":", "++", "|", "^", "~", "@", "\\", ":=", "=", "->", "#", ".", ":/"]
 
 namespace :: Parser String
 namespace = ((:) <$> upperChar) <*> many alphaNumChar <* char '.'
@@ -447,7 +447,7 @@ term = prefixes typedTerm where
        choice
          [ do symbol ":="
               ELabel Nothing t <$> term
-         , do symbol "/"
+         , do symbol ":/"
               EUnlabel Nothing t <$> stringEqTerm
          , return t ]
 

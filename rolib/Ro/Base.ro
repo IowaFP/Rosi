@@ -42,7 +42,7 @@ any = \@l. #l
 
 -- sel : {l := t} < z => Pi z -> #l -> t
 sel : Pi> {l := t} -> #l -> t
-sel = \ r l. prj r / l
+sel = \ r l. prj r :/ l
 
 con : #l -> t -> Sigma> {l := t}
 con = \l x. inj (l := x)
@@ -51,7 +51,7 @@ match : a -> (a -> b) -> b
 match = \x f. f x
 
 case : #l -> (t -> u) -> Sigma { l := t } -> u
-case = \ l f x. f (x / l)
+case = \ l f x. f (x :/ l)
 
 otherwise : a -> b -> a
 otherwise = const

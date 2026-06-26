@@ -14,7 +14,7 @@ m2 : Pi { 'x := Pi {}, 'y := Pi {} }
 m2 = syn #(\t. Pi {}) (\l. tt)
 
 n3 : Pi {}
-n3 = prj m2 / #'x
+n3 = prj m2 :/ #'x
 
 v1 : Sigma { 'x := Pi {}, 'y := Pi {}}
 v1 = inj (#'x := tt)
