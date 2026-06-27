@@ -11,3 +11,39 @@
 -- polymorphism. This should not apply to Rosi, which permits higher rank polymorphism.
 -- Let's confirm this suspicion.
 -- --------------------------------------------------------------------------------
+
+import Data.Nat
+
+
+(+) = add
+
+(-) = monus
+
+(*) = mult
+
+(//) = div
+
+infixl 5 +
+
+infixl 7 //
+
+infixl 7 *
+
+infixl 5 -
+
+getNameP : {'age := t} < r => Pi r -> t
+getNameP x = prj x :/ 'age
+
+getAge = \x. ('Age: y -> y
+             |'Year: y -> 2023 - y)
+
+age : Sigma {'Age: Int}
+age = 'Age: 9
+
+year = Sigma {'Year: Int}
+year = 'Year: 1984
+
+raw = \x. -> 'Raw: x
+
+data = (raw year)
+
