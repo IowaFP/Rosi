@@ -83,8 +83,10 @@ instance Show Value where
     | Just n <- fromPeano (VVariant k w l) = show n
     -- label present and mapped to Unit. e.g. Bool, Nothing. Check after previous cases so it won't match Zero or Nil
     | (VRecord [] [], Just s) <- (w, l) = s
+    -- TODO(mctano) revert change
     | otherwise = "[" ++ fromMaybe (show k) l ++ ": " ++ show w ++ "]"
   show (VRecord vs names) | isTuple names = showTuple vs
+  -- TODO(mctano) revert change
   show (VRecord vs names) = "<" ++ intercalate "; " (zipWith3 showRecordEntry names vs [0..]) ++ ">"
   show (VSyn t) = "<<syn>>"
   show (VString s) = "\"" ++ s ++ "\""

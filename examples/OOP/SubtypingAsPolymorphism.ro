@@ -26,32 +26,23 @@ infixl 7 //
 infixl 7 *
 infixl 5 -
 
--- alternate case syntax
-case' x f = f x
-
-
-
-
 -- Variant Examples
 age : Sigma {'Age := Nat}
 age = 'Age: 9
 
--- Setting my examples in the Year 50, to mitigate slow nat operations.
 year : Sigma {'Year := Nat}
 year = 'Year: 11
 
-raw = \x. 'Raw: x
 
 -- Record Examples
 alice = ('Name := "Alice", 'Age := 9)
 bob = ('Name := "Bob", 'Year := 11)
-data = (raw year)
 
 
 -- Simple Variant Subtyping
-
+-- Setting my examples in the Year 50, to mitigate slow nat operations.
 getAge : Sigma {'Age := Nat, 'Year := Nat} -> Nat
-getAge = \x. (case' x ('Age: y -> y
+getAge = \x. (match x ('Age: y -> y
                       |'Year: y -> 50 - y))
 
 -- our version of `upcast` is `inj`. I think this can be considered a "local, type-only" translation.
@@ -61,7 +52,7 @@ ex_2 = getAge (inj age)
 -- row-polymorphic version of getAge, moving the `inj` inside the function.
 -- NOTE: I don't really understand the way that Tan defines the type of the `x` arg for `getAge'`.
 getAge' : forall r: R[*]. r < {'Age := Nat, 'Year := Nat} => Sigma r -> Nat
-getAge' = \x. (case' (inj x) ('Age: y -> y
+getAge' = \x. (match (inj x) ('Age: y -> y
                              |'Year: y -> 50 - y))
 
 -- Q: does getAge' rely on higher rank polymorphism?
@@ -86,8 +77,9 @@ ex_3 = getName (prj alice) ^ getName (prj bob)
 -- Our row-polymorphic version applies `prj` inside the function.
 -- We'd usually write it as `x.'name`, but that would hide the implicit projection.
 -- Not sure whether `prj` can be considered "type-only" or "local"
+-- I think the fact that we're changing the types of all the functions that take records makes it non-local
 getName' : forall r. Pi ({'Name := String} + r) -> String
-getName' x = (prj x) :/ 'Name
+getName' x = x.'Name
 
 -- with explicit row argument, but it's not necessary.
 -- Not sure whether explicit row version corresponds to what the type checker infers when applying getName' directly to alice
@@ -136,7 +128,149 @@ ex_8 = (\ (f : Pi {'Name := String} -> String). (f (prj alice)) ^ (f (prj bob)))
 -- as does the type erased version, because we do have higher rank polymorphism.
 ex_9 = (\f . f (prj alice) ^ f (prj bob)) getName
 
--- what about using the polymorphic version of getName
-ex_10 = (\ (f : Pi {'Name := String} -> String). (f (prj alice)) ^ (f (prj bob))) getName'
-ex_11 : String
-ex_11 = (\f . f (prj alice) ^ f (prj bob)) getName'
+-- what about using the polymorphic version of getName?
+-- OK
+ex_10 = (\ (f : forall r. Pi ({'Name := String} + r) -> String).
+ f alice ^ f bob) getName'
+-- OOPS If we instead use the signature based on containment, the evaluator hangs for some reason.
+-- ex_11 = (\ (f : forall r. {'Name := String} < r => Pi (r) -> String). f alice ^ f bob) getName'
+-- OK The monomorphic version with prj works without type annotation.
+-- OOPS The polymorphic version doesn't work without the type annotation.
+-- ex_12 = (\f . f alice ^ f bob) getName'
+
+
+---------------------------------------------------------------------------------------------------
+-- Strictly Covariant Record Subtyping
+---------------------------------------------------------------------------------------------------
+
+carol = ('Name := "Carol", 'Child := alice)
+
+-- Either signature works.
+-- NOTE: prj should be a no-op/identity when the expected type is identical to the record type, but adding an unnecessary prj often breaks the predicate solver. Something to think about when developing my predicate solver project.
+-- getChild : Pi ({'Child := t} + r) -> t
+getChild_poly : {'Child := t} < r => Pi r -> t
+getChild_poly x = x.'Child
+-- Adding an unnecessary "prj" on x breaks it
+  -- The predicate {'Child := t} < y#
+  -- is not entailed by {'Child := t} < r
+  -- The predicate y# < r
+  -- is not entailed by {'Child := t} < r
+-- getChild_poly x = (prj (prj x)) :/ 'Child
+-- this is equivalent to adding an unnecessary projection
+-- getChild_poly x = prj (x.'Child)
+
+ex_13 : Pi {'Age := Nat, 'Name := String}
+ex_13 = getChild_poly carol
+
+-- getChild can be defined with monomorphic signature using prj
+getChild_mono : Pi {'Child := Pi {'Name := String}} -> Pi {'Name := String}
+getChild_mono x = prj (x :/ 'Child)
+
+
+-- however, the monomorphic getChild cannot be applied to carol, because her child has an extra field.
+-- ex_13_mono_fails = getChild_mono carol
+
+
+-- The strictly monomorphic version doesn't work, because the subrecord needs to be polymorphic in its type.
+-- (We can define it but not apply it to something that doesn't have exactly {'Name := String in its child})
+-- getChildName_mono : Pi {'Child := Pi {'Name := String}} -> String
+-- getChildName_mono = \ x. getName (prj ((prj x) :/ 'Child))
+
+
+-- getChildName_mono2 : Pi {'Child := Pi {'Name := String}} -> String
+-- getChildName_mono2 x = (getChild_mono (prj x))
+
+-- -- OK
+-- ex_13 : String
+-- ex_13 = getChildName_mono2 (prj carol)
+
+
+-- 
+getChildName_poly : Pi ({'Child := Pi ({'Name := String} + r)} + r') -> String
+getChildName_poly = \x. getName' (x.'Child)
+
+-- we can either use the polymorphic getName' or use the monomorphic getName with an additional `prj`.
+-- getChildName_poly = \x. getName' ((prj x) :/ 'Child)
+-- getChildName_poly = \x. getName (prj ((prj x) :/ 'Child))
+-- but `getName' (prj ...)` breaks.
+ 
+-- It would seem that the fact that redundant `prj` breaks solving most of the time may hurt our ability to give a compositional translation.
+-- our translation should probably be to add `prj` everywhere a record is used,
+-- but if `f x = prj x` then `f (prj x)` will probably break, so we can't add `prj` in both places.
+
+-- ACTUALLY, I think it works to just add `prj` everywhere that a field of a record is accessed, so just using the `x.'field` syntax should work,
+-- adding implicit prj everywhere it is needed, instead of explicit prj.
+
+ex_15 = getChildName_poly carol
+
+
+---------------------------------------------------------------------------------------------------
+-- No Type-Only Encoding of Strictly Covariant Variant Subtyping as Polymorphism
+---------------------------------------------------------------------------------------------------
+
+
+raw = \x. 'Raw: x
+
+data : Sigma {'Raw := Sigma {'Year := Nat}}
+data = (raw year)
+
+-- we can do a term-involved translation where we destruct 'Raw, inject its contents, then re-apply the raw constructor.
+data_upcast : Sigma {'Raw := Sigma {'Year := Nat, 'Age := Nat}}
+data_upcast = raw (inj (data :/ 'Raw))
+
+ex_16 = data_upcast
+
+-- however, we can also give a type-only polymorphic encoding, starting with the data.
+year' : forall r. {'Year := Nat} < r => Sigma r
+year' = 'Year: 11
+
+-- as we will see, this doesn't really accomplish anything.
+data' : forall r. {'Year := Nat} < r => Sigma {'Raw := Sigma r}
+data' = (raw year')
+
+ex_17 : Sigma {'Raw := Sigma {'Year := Nat, 'Age := Nat}}
+ex_17 = data'
+
+--  monomorphic parseAge with inj standing in for upcast
+-- this reflects the definition in the paper, where the function accepts `data` as-is, but then must upcast it to use it with the getAge function.
+-- this one is quite easy to accomodate, since the upcast is only required in the non-nested position.
+parseAge_tang : Sigma {'Raw := Sigma {'Year := Nat}} -> Nat
+parseAge_tang = \x. match x ('Raw: y -> getAge (inj y))
+
+-- This one will instead fail on the `data` input, but doesn't use a cast inside.
+parseAge_alt : Sigma {'Raw := Sigma {'Year := Nat, 'Age := Nat}} -> Nat
+parseAge_alt = \x. match x ('Raw: y -> getAge y)
+
+-- polymorphic parseAge
+-- inferred type without the signature is identical to this explicit type:
+parseAge' : forall a : R[*]. a < {'Age := Nat, 'Year := Nat} => Sigma {'Raw := Sigma a} -> Nat
+parseAge' = \x. match x ('Raw: y -> getAge' y)
+
+
+-- parseAge as defined by Tang actually works fine on data as-is (modulo use of inj for upcast)
+ex_18 = parseAge_tang data
+-- The monomorphic parseAge_alt cannot be coaxed to accept `data`, but accepts the polymorphic `data'`. This suggests the potential for local type-only translation of nested variants, at least in some cases.
+-- ex_19_fails = parseAge_alt (inj data)
+ex_19 = parseAge_alt data'
+ex_20 = parseAge' data
+ex_21 = parseAge' data'
+-- but only the polymorphic one accepts the explicitly destructed and reconstructed upcast data
+-- ex_22_fail = parseAge data_upcast
+ex_22 = parseAge' data_upcast
+
+-- so why does this work for us but not for Tang et al?
+-- They say:
+-- "The difficulty with encoding parseAge with row polymorphism is that the abstraction of the row variable for the inner record of data✗ is hoisted up to the top-level, but case split requires a monomorphic value. Thus, we must instantiate 𝜌2 with Age : Int before performing the case split." - Tang et al, p. 10
+-- Our case split is not restricted to monomorphic types.
+-- But I think the main thing here is that our system of qualified rows and types is more expressive than the row abstraction used in the paper, which requires the local transformation to know what rows need to be passed to x and to getAge'.
+-- I'm not sure if my last statement is quite right. I'm having trouble separating what information is not needed in our system from info that our system does need but which can be inferred by type inference.
+-- After giving their flawed attempt at a translation, they say:
+-- "However, this would not yield a compositional type-only translation, as the translation of the case construct only has access to the types of x and the whole case clause, which provide no information about Age : Int."
+-- I think the key point there might be that the type of x, in our system, is `Sigma {'Raw := Sigma a}`, and `a` is constrained with `a < {'Age := Nat, 'Year := Nat}`. So the type of x, along with the constraint context, actually tells us everything we need to know to know that we can apply `getAge'` to x.
+-- They use `getAge`rather than `getAge'`, I guess because they've already instantiated `x: r -> Sigma ({'Year := Int} + r)` with `{Age := Int}` by that point, so they don't want the polymorphic function.
+-- "Moreover, even if the translation could somehow access this type information, the translation would still fail if there were multiple incompatible upcasts of y in the case clause."
+-- This isn't a problem for us because we can apply `inj` independently where needed.
+
+---------------------------------------------------------------------------------------------------
+-- No Type-Only Encoding of Full Record Subtyping as Polymorphism as Polymorphism
+---------------------------------------------------------------------------------------------------
