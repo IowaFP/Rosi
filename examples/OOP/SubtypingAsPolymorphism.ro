@@ -100,6 +100,12 @@ ex_7 = getName' bob
 -- The problem is that the translation is supposed to be able to figure out the type from just the type of `getName`, and the subtyping assertion `alice ▷ ⟨Name : String⟩`, the latter only says that alice can be treated as `('Name := String)` without saying what other fields the subtyping relation has "forgotten".
 
 -- Is there something weird about the requirement that translated terms have the same type? After all, the benefit of row polymorphism is supposed to be that it lets us do something like subtyping without forgetting about additional fields of a type.
+-- A: Tristan writing again later says: The point is that the cast `alice as Pi {Name := String}` should be typed as `Pi {'Name := String}`. Our equivalent, `prj alice`, does typecheck as `Pi {Name := String}`.
+-- Also, in section 4.5, the Tang-gang say this:
+-- "The above proof relies on the assumption that translations should always satisfy the type preservation theorem. Sometimes this assumption can be too strong." - Tang et al., p. 19
+-- So they acknowledge that type preservation is not always desirable.
+
+
 
 -- e.g. consider the restricted identity function:
 -- the forgetful version mimics the information loss necessitated by subtyping.
@@ -270,6 +276,32 @@ ex_22 = parseAge' data_upcast
 -- They use `getAge`rather than `getAge'`, I guess because they've already instantiated `x: r -> Sigma ({'Year := Int} + r)` with `{Age := Int}` by that point, so they don't want the polymorphic function.
 -- "Moreover, even if the translation could somehow access this type information, the translation would still fail if there were multiple incompatible upcasts of y in the case clause."
 -- This isn't a problem for us because we can apply `inj` independently where needed.
+
+---------------------------------------------------------------------------------------------------
+-- No Type-Only Encoding of Full Record Subtyping as Polymorphism as Polymorphism
+---------------------------------------------------------------------------------------------------
+-- The discussion of the problems with the presence-polymorphic getName' don't apply to our qualified row-polymorphic version.
+
+-- getUnit does an upcast of `x` to the empty record.
+-- our translation actually projects the empty record out of x, which makes it not exactly type-only.
+getUnit : Pi {'Name := String} -> Unit
+getUnit = \x. prj x
+
+-- we want to upcast getUnit to a function type with more labels on the input record.
+-- since the function argument is in a contravariant position, this is a legal upcast.
+-- for a local translation of an upcast of getUnit, we can compose it with prj
+-- We'll see if this works in all cases.
+getUnit_upcast : Pi {'Name := String, 'Age := Int} -> Unit
+getUnit_upcast = getUnit . (\x. prj x)
+
+ex_23 = getUnit_upcast alice
+
+-- The other thing we could do is make the type of getUnit polymorphic, so that it never requires an upcast.
+getUnit' : {'Name := String} < r => Pi r -> Unit
+getUnit' = \x. prj x
+
+-- we seem to have been able to handle the specific examples just fine.
+-- it remains to actually give a translation from the fully subtyped language in the Tang paper to Rosi
 
 ---------------------------------------------------------------------------------------------------
 -- No Type-Only Encoding of Full Record Subtyping as Polymorphism as Polymorphism
