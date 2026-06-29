@@ -26,20 +26,117 @@ infixl 7 //
 infixl 7 *
 infixl 5 -
 
-getNameP : {'age := t} < r => Pi r -> t
-getNameP x = prj x :/ 'age
+-- alternate case syntax
+case' x f = f x
 
 
-getAge = \x. ('Age: y -> y
-             |'Year: y -> 2023 - y)
 
+
+-- Variant Examples
 age : Sigma {'Age := Nat}
 age = 'Age: 9
 
+-- Setting my examples in the Year 50, to mitigate slow nat operations.
 year : Sigma {'Year := Nat}
-year = 'Year: 1984
+year = 'Year: 11
 
 raw = \x. 'Raw: x
 
+-- Record Examples
+alice = ('Name := "Alice", 'Age := 9)
+bob = ('Name := "Bob", 'Year := 11)
 data = (raw year)
 
+
+-- Simple Variant Subtyping
+
+getAge : Sigma {'Age := Nat, 'Year := Nat} -> Nat
+getAge = \x. (case' x ('Age: y -> y
+                      |'Year: y -> 50 - y))
+
+-- our version of `upcast` is `inj`. I think this can be considered a "local, type-only" translation.
+ex_1 = getAge (inj year)
+ex_2 = getAge (inj age)
+
+-- row-polymorphic version of getAge, moving the `inj` inside the function.
+-- NOTE: I don't really understand the way that Tan defines the type of the `x` arg for `getAge'`.
+getAge' : forall r: R[*]. r < {'Age := Nat, 'Year := Nat} => Sigma r -> Nat
+getAge' = \x. (case' (inj x) ('Age: y -> y
+                             |'Year: y -> 50 - y))
+
+-- Q: does getAge' rely on higher rank polymorphism?
+
+---------------------------------------------------------------------------------------------------
+-- Simple Record Subtyping
+---------------------------------------------------------------------------------------------------
+
+-- Q: Does the use of `prj` mean that this is a "term-involved" rather than "type-only" translation?
+-- `x.'name` desugars to `sel 'name (inj x)`, so there is still a hidden computation.
+-- phrased in terms of row inclusion
+-- kind of looks like the presence-polymorphic version, but we can't pass `absent` to say that name should be absent/ignored.
+
+-- monomorphic version of `getName`
+getName : Pi {'Name := String} -> String
+getName x = x :/ 'Name
+
+-- With Rosi, explicit prj stands in for upcast.
+ex_3 = getName (prj alice) ^ getName (prj bob)
+
+-- we don't have presence polymorphism, per se, so let's skip right to the row-polymorphic encoding of getName attempted in 2.3
+-- Our row-polymorphic version applies `prj` inside the function.
+-- We'd usually write it as `x.'name`, but that would hide the implicit projection.
+-- Not sure whether `prj` can be considered "type-only" or "local"
+getName' : forall r. Pi ({'Name := String} + r) -> String
+getName' x = (prj x) :/ 'Name
+
+-- with explicit row argument, but it's not necessary.
+-- Not sure whether explicit row version corresponds to what the type checker infers when applying getName' directly to alice
+-- after applying the getName function to the row argument, we get
+-- ex_4 : Pi {'Age := Nat, 'Name := String} -> String
+ex_4 = getName' @({'Age := Nat})
+ex_5 = getName' @({'Age := Nat}) alice
+-- explicit row argument not required.
+ex_6 = getName' alice
+ex_7 = getName' bob
+
+--  "Intuitively, the main problem is that in general we cannot know which type should be used for instantiation (Age : Int). In this case) in a compositional type-only translation, which is only allowed to use the type of getName and alice ▷ ⟨Name : String⟩. These tell us nothing about Age : Int." - Tang et al, 7
+-- They also say, in 4.5:
+-- "First, the type information Age : Int is not accessible to a compositional type-only translation of the function application here. Moreover, the type preservation property is also broken:
+-- `[|alice ▷ ⟨Name : String⟩|] should have type [|⟨Name : String⟩|]`, but here it is just translated to `alice` itself, which has an extra label `Age` in its record type." - ibid, 18
+-- I don't really understand what they mean by that. Is the problem that the "type-only" translation isn't doing a projection out of `alice`? If it did, it wouldn't match the function type, since (after receiving) `{Age: Int}`, `getName` now expects a record of the full alice row.
+-- I think I'm starting to understand what they're getting at.
+-- The problem is that the translation is supposed to be able to figure out the type from just the type of `getName`, and the subtyping assertion `alice ▷ ⟨Name : String⟩`, the latter only says that alice can be treated as `('Name := String)` without saying what other fields the subtyping relation has "forgotten".
+
+-- Is there something weird about the requirement that translated terms have the same type? After all, the benefit of row polymorphism is supposed to be that it lets us do something like subtyping without forgetting about additional fields of a type.
+
+-- e.g. consider the restricted identity function:
+-- the forgetful version mimics the information loss necessitated by subtyping.
+id_forget : Pi ({'Name := String} + r) -> Pi {'Name := String}
+id_forget x = prj x
+
+-- the row typed version preserves the extra fields in `r`.
+id_remember : {'Name := String} < r => Pi r -> Pi r
+id_remember x = x
+
+-- of course, rosi is more expressive than the systems targeted in the first non-existence proof.
+-- also, remembering additional information in the returned types would make this non-compositional.
+-- The use of `prj` probably makes it term-involved, or makes it equivalent to a more powerful system than the simple row polymorphism first discussed.
+
+-- Section 2.4 points out that a rank-1 polymorphic system with type inference handles the getName example.
+
+---------------------------------------------------------------------------------------------------
+-- Full Subtyping
+---------------------------------------------------------------------------------------------------
+
+
+-- Full subtyping lifts the width subtyping of rows to any type by propagating the subtyping relation to the components of type constructors
+
+-- the example from p.7 succeeds if we add explicit prj
+ex_8 = (\ (f : Pi {'Name := String} -> String). (f (prj alice)) ^ (f (prj bob))) getName
+-- as does the type erased version, because we do have higher rank polymorphism.
+ex_9 = (\f . f (prj alice) ^ f (prj bob)) getName
+
+-- what about using the polymorphic version of getName
+ex_10 = (\ (f : Pi {'Name := String} -> String). (f (prj alice)) ^ (f (prj bob))) getName'
+ex_11 : String
+ex_11 = (\f . f (prj alice) ^ f (prj bob)) getName'
