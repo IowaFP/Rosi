@@ -384,6 +384,7 @@ shiftTNV vs j n (TMap t) = TMap (shiftTNV vs j n t)
 shiftTNV vs j n (TMapApp t) = TMapApp (shiftTNV vs j n t)
 shiftTNV vs j n (TInst is t) = TInst (shiftIsV vs j n is) (shiftTNV vs j n t)
 shiftTNV vs j n (TCompl r0 r1) = TCompl (shiftTNV vs j n r0) (shiftTNV vs j n r1)
+shiftTNV vs j n (TPlus t0 t1) = TPlus (shiftTNV vs j n t0) (shiftTNV vs j n t1)
 shiftTNV _ _ _  t@TString = t
 shiftTNV vs _ _ t = error $ "shiftTN: unhandled: " ++ show t
 
@@ -431,7 +432,7 @@ data EInfixToken = Operator EOp | Operand AppTerm
 
 instance Ord EOp where
   compare (Op _ _ (Just f1)) (Op _ _ (Just f2)) = compare f1 f2
-  compare l r                                                   = error $ "internal: tried to compare EInfixTokens which are not operators" ++ show l ++ ", " ++ show r
+  compare l r                                   = error $ "internal: tried to compare EInfixTokens which are not operators" ++ show l ++ ", " ++ show r
 
 explicitApp :: EInfixToken
 explicitApp = Operator $ Op (-1) ["__Apply"] (Just (Fixity InfixL 10))
