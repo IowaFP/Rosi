@@ -156,6 +156,7 @@ carol = ('Name := "Carol", 'Child := alice)
 -- getChild : Pi ({'Child := t} + r) -> t
 getChild_poly : {'Child := t} < r => Pi r -> t
 getChild_poly x = x.'Child
+
 -- Adding an unnecessary "prj" on x breaks it
   -- The predicate {'Child := t} < y#
   -- is not entailed by {'Child := t} < r
@@ -191,7 +192,7 @@ getChild_mono x = prj (x :/ 'Child)
 -- ex_13 = getChildName_mono2 (prj carol)
 
 
--- 
+-- -- 
 getChildName_poly : Pi ({'Child := Pi ({'Name := String} + r)} + r') -> String
 getChildName_poly = \x. getName' (x.'Child)
 
@@ -277,8 +278,30 @@ ex_22 = parseAge' data_upcast
 -- "Moreover, even if the translation could somehow access this type information, the translation would still fail if there were multiple incompatible upcasts of y in the case clause."
 -- This isn't a problem for us because we can apply `inj` independently where needed.
 
+-- Theorem 4.9 - No global type-only encoding of simple record subtyping with row or presence polymorphism.
+
+-- example in 4.5: a and b must have the same types after translating the upcast in expr_b to the target language. In our system they do have the same type.
+expr_a : Unit
+expr_a = tt
+
+expr_b : Unit
+expr_b = (prj ('l := 1))
+
+-- non-existence proof from 5.3
+-- TODO(mctano) confusing notation? is l a row, a constructor, or a label?
+
+-- l : y -> Sigma ('l := y)
+-- l = sorry
+
+-- nested variant 
+-- M : Sigma ('ll := (Sigma ll))
+-- M = (l (l y))
+
+-- M1 : Sigma (l : [l;l'])
+-- M1 = 
+
 ---------------------------------------------------------------------------------------------------
--- No Type-Only Encoding of Full Record Subtyping as Polymorphism as Polymorphism
+-- No Type-Only Encoding of Full Record Subtyping as Polymorphism
 ---------------------------------------------------------------------------------------------------
 -- The discussion of the problems with the presence-polymorphic getName' don't apply to our qualified row-polymorphic version.
 
@@ -298,11 +321,49 @@ ex_23 = getUnit_upcast alice
 
 -- The other thing we could do is make the type of getUnit polymorphic, so that it never requires an upcast.
 getUnit' : {'Name := String} < r => Pi r -> Unit
-getUnit' = \x. prj x
+getUnit' = prj
+
+-- try some examples with records and variants in variant and covariant positions.
+-- show that this composes.
+
+-- Theorem 5.4 - no global type-only encoding of full subtyping to target calculus with row and presence polymorphism
+
+-- counterexample from 5.4
+
+f1 = \ (x: Pi {}). x
+
+f2 = \ (x : Pi {}). tt
+
+f1_upcast : {} < r => Pi r -> Unit
+f1_upcast = f1 . prj
+
+-- "any type-only translation of these functions must yield terms of the following forms: where * indicates 0 or more type abstractions/applications."
+-- [|f1|] = \ @a1* . \ (x : A1). \ @b1* . x @(B1)*
+-- [|f2|] = \ @a2* . \ (x: A2). \ @b2* . (\@y*. tt) @(B2)*
+
+-- "By type preservation, they should have the same type, which means (x @B1*) and ((\@y. tt) @B2*) should also have the same type."
+
+-- "As a result, the type A1 of x cannot contain any type variables bound inside a1 unless ..." [It doesn't contain any type variables. It's fine.]
+
+-- "Then it is problematic when we want to upcast the parameter of f1 to be a wider
+-- record, e.g. f1 |> Pi {'l := Unit} -> Unit."
+-- [we would just do that by composing with proj or by making the type of f1 accept any `r` s.t. `{} < r1`.
+
+-- "Intuitively, because A1 cannot be an open record type with the row variable bound in @a1*, we actually have no way to expand A1, which leads to a contradiction."
+-- [None of this has any bearing on our system.]
+
+
+---------------------------------------------------------------------------------------------------
+-- Encoding of Full Record Subtyping as Polymorphism
+---------------------------------------------------------------------------------------------------
+
 
 -- we seem to have been able to handle the specific examples just fine.
--- it remains to actually give a translation from the fully subtyped language in the Tang paper to Rosi
+-- it remains to actually 
 
----------------------------------------------------------------------------------------------------
--- No Type-Only Encoding of Full Record Subtyping as Polymorphism as Polymorphism
----------------------------------------------------------------------------------------------------
+-- TODO(mctano)
+-- give a translation from the language with full subtyping to Rosi
+-- Show how each of the subtyping rules of `≤full[]<>` are transformed when a program is translated to rosi.
+-- make an informal argument that the translations compose.
+-- characterise the translation as  type-only vs. term-involved, local vs. global.
+-- examine type preservation and operational correspondence.
