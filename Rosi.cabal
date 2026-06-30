@@ -58,7 +58,7 @@ executable Rosi
     other-modules: Checker, Checker.Monad, Checker.Normalize, Checker.Preds, Checker.Promote, Checker.Terms, Checker.Types, Checker.Utils, Checker.Unify, DesugarInfix, Errors, Interp.Erased, Parser, Printer, Scope, Syntax
 
     -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
+    other-extensions: PatternGuards
 
     -- Other library packages from which modules are imported.
     build-depends:    base >=4.18, filepath >= 1.5, megaparsec >= 9.6, mtl >= 2.3, syb >= 0.7, containers, prettyprinter, split, directory
