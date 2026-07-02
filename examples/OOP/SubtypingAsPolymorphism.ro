@@ -231,7 +231,7 @@ ex_16 = data_upcast
 year' : forall r. {'Year := Nat} < r => Sigma r
 year' = 'Year: 11
 
--- as we will see, this doesn't really accomplish anything.
+
 data' : forall r. {'Year := Nat} < r => Sigma {'Raw := Sigma r}
 data' = (raw year')
 
