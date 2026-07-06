@@ -10,6 +10,22 @@
 -- Tang et al show that full record and variant subtyping cannot embed into rank-1 row
 -- polymorphism. This should not apply to Rosi, which permits higher rank polymorphism.
 -- Let's confirm this suspicion.
+-- Actually, what Tang et al show is that there is no "type-only" encodiing of full record and variant subtyping into a target calculus with row and presence polymorphism,
+-- however, they are able to achieve a translation from a source calculus with rank 2 records and full subtyping (lambda full <=,records-2) into a target calculus with records and rank-1 row polymorphism (lambda rho-1, records),
+-- and  a translation from a source calculus with rank 1-variants and full subtyping (lambda full <=, variants-1) to the same target calculus (lambda rho-1, records),
+-- and from its extension with rank 2 variants(lambda full <=, variants-2) to a tc with rank 1 presence polymorphism (lambda theta-1, variants)
+-- These are achieved by erasing type instantiations and relying on rank-1 row polymorphism's decidable type inference.
+
+-- However, this approach will not work for higher rank polymorphism, as type inference is no longer decidable.
+
+-- The main questions we want to answer are:
+-- 0. Preliminary: Can we handle all the examples in the Tang paper that doom the proposed translations of subtyping.
+-- 1. What kind of translation (local/global, type-only/term-involved) can we give from the sc with full subtyping to Rosi.
+-- 2. Does this always result in legal types?
+-- 3. If 2=yes, then what level of annotations do we require in Rosi (e.g. to remain decidable)?
+-- 4. What features of Rosi allow us to reach better results than the Tang paper?
+-- 5. Can we specify a minimal target calculus (as an augmentation of (lambda rho, records + variants) with just enough expressive power to achieve the subtyping translation?
+-- 6. What can we prove about such a calculus?
 -- --------------------------------------------------------------------------------
 
 import Data.Nat
@@ -95,17 +111,15 @@ ex_7 = getName' bob
 -- They also say, in 4.5:
 -- "First, the type information Age : Int is not accessible to a compositional type-only translation of the function application here. Moreover, the type preservation property is also broken:
 -- `[|alice ▷ ⟨Name : String⟩|] should have type [|⟨Name : String⟩|]`, but here it is just translated to `alice` itself, which has an extra label `Age` in its record type." - ibid, 18
--- I don't really understand what they mean by that. Is the problem that the "type-only" translation isn't doing a projection out of `alice`? If it did, it wouldn't match the function type, since (after receiving) `{Age: Int}`, `getName` now expects a record of the full alice row.
--- I think I'm starting to understand what they're getting at.
+
 -- The problem is that the translation is supposed to be able to figure out the type from just the type of `getName`, and the subtyping assertion `alice ▷ ⟨Name : String⟩`, the latter only says that alice can be treated as `('Name := String)` without saying what other fields the subtyping relation has "forgotten".
+-- The point is that the cast `alice ▷ Pi {Name := String}` should be typed as `Pi {'Name := String}`. Our equivalent, `prj alice`, does typecheck as `Pi {Name := String}`.
+
 
 -- Is there something weird about the requirement that translated terms have the same type? After all, the benefit of row polymorphism is supposed to be that it lets us do something like subtyping without forgetting about additional fields of a type.
--- A: Tristan writing again later says: The point is that the cast `alice as Pi {Name := String}` should be typed as `Pi {'Name := String}`. Our equivalent, `prj alice`, does typecheck as `Pi {Name := String}`.
--- Also, in section 4.5, the Tang-gang say this:
+-- In section 4.5, the Tang-gang say this:
 -- "The above proof relies on the assumption that translations should always satisfy the type preservation theorem. Sometimes this assumption can be too strong." - Tang et al., p. 19
--- So they acknowledge that type preservation is not always desirable.
-
-
+-- So they acknowledge that type preservation is not always desirable. They later make a proof where the encoded expressions are allowed to typecheck as a subtype of the original type.
 
 -- e.g. consider the restricted identity function:
 -- the forgetful version mimics the information loss necessitated by subtyping.
@@ -116,22 +130,24 @@ id_forget x = prj x
 id_remember : {'Name := String} < r => Pi r -> Pi r
 id_remember x = x
 
--- of course, rosi is more expressive than the systems targeted in the first non-existence proof.
--- also, remembering additional information in the returned types would make this non-compositional.
--- The use of `prj` probably makes it term-involved, or makes it equivalent to a more powerful system than the simple row polymorphism first discussed.
+-- Replacing upcasts with `prj` probably does not qualify as "type-only", since `prj` has important computational content.
+-- This computational content is also why we have to be careful not to double-project, since `prj (prj x)` says that two projections should be performed.
+-- However, it is undefined which `prj` should be the trivial identity projection, and which one the actual projection from `x` to the required record.
+-- It would also be valid to project to any arbitrary record in between the source and target records.
+-- Rosi currently lacks a way to choose what to do in this situation.
 
--- Section 2.4 points out that a rank-1 polymorphic system with type inference handles the getName example.
+-- Section 2.4 points out that a rank-1 polymorphic system handles the getName example by erasing upcasts and relying on type inference.
 
 ---------------------------------------------------------------------------------------------------
 -- Full Subtyping
 ---------------------------------------------------------------------------------------------------
 
 
--- Full subtyping lifts the width subtyping of rows to any type by propagating the subtyping relation to the components of type constructors
+-- "Full subtyping lifts the width subtyping of rows to any type by propagating the subtyping relation to the components of type constructors." - Tang et al.
 
 -- the example from p.7 succeeds if we add explicit prj
 ex_8 = (\ (f : Pi {'Name := String} -> String). (f (prj alice)) ^ (f (prj bob))) getName
--- as does the type erased version, because we do have higher rank polymorphism.
+-- as does the type erased version, because we do have higher rank polymorphism, allowing f to have different types.
 ex_9 = (\f . f (prj alice) ^ f (prj bob)) getName
 
 -- what about using the polymorphic version of getName?
@@ -255,10 +271,14 @@ parseAge' = \x. match x ('Raw: y -> getAge' y)
 
 
 -- parseAge as defined by Tang actually works fine on data as-is (modulo use of inj for upcast)
+-- "The difficulty with encoding parseAge with row polymorphism is that the abstraction of the row variable for the inner record of data✗ is hoisted up to the top-level, but case split requires a monomorphic value. Thus, we must instantiate 𝜌2 with Age : Int before performing the case split." - Tang et al, p. 10
+-- However, this is not a problem for us, because our case split does not require a monomorphic value.
 ex_18 = parseAge_tang data
+
 -- The monomorphic parseAge_alt cannot be coaxed to accept `data`, but accepts the polymorphic `data'`. This suggests the potential for local type-only translation of nested variants, at least in some cases.
 -- ex_19_fails = parseAge_alt (inj data)
 ex_19 = parseAge_alt data'
+
 ex_20 = parseAge' data
 ex_21 = parseAge' data'
 -- but only the polymorphic one accepts the explicitly destructed and reconstructed upcast data
@@ -266,17 +286,27 @@ ex_21 = parseAge' data'
 ex_22 = parseAge' data_upcast
 
 -- so why does this work for us but not for Tang et al?
+
 -- They say:
--- "The difficulty with encoding parseAge with row polymorphism is that the abstraction of the row variable for the inner record of data✗ is hoisted up to the top-level, but case split requires a monomorphic value. Thus, we must instantiate 𝜌2 with Age : Int before performing the case split." - Tang et al, p. 10
--- Our case split is not restricted to monomorphic types.
--- But I think the main thing here is that our system of qualified rows and types is more expressive than the row abstraction used in the paper, which requires the local transformation to know what rows need to be passed to x and to getAge'.
--- I'm not sure if my last statement is quite right. I'm having trouble separating what information is not needed in our system from info that our system does need but which can be inferred by type inference.
--- After giving their flawed attempt at a translation, they say:
--- "However, this would not yield a compositional type-only translation, as the translation of the case construct only has access to the types of x and the whole case clause, which provide no information about Age : Int."
+
+-- So, firstly, our case split is not restricted to monomorphic types.
+
+-- In addition, our surface syntax does not require us to explicitly pass in the presence parameter to  system of qualified rows and types is more expressive than the row abstraction used in the paper, which requires the local transformation to know what row parameters need to be passed to x when it is used. We can just replace the explicit upcast with `inj` at the point of use and let the compiler sort it out from the type needed at the application `Sigma {Year := Nat, Age := Nat}`, the the evidence for the constraint `{'Year := Nat} < r` carried by `y : {'Year := Nat} < r => r`
+-- Caveat: What the compiler does at this point may correspond roughly to inferring the same information which is passed in explicitly in the attempted translation.
+-- Tang et al also say
+-- "...this would not yield a compositional type-only translation, as the translation of the case construct only has access to the types of x and the whole case clause, which provide no information about Age : Int."
 -- I think the key point there might be that the type of x, in our system, is `Sigma {'Raw := Sigma a}`, and `a` is constrained with `a < {'Age := Nat, 'Year := Nat}`. So the type of x, along with the constraint context, actually tells us everything we need to know to know that we can apply `getAge'` to x.
--- They use `getAge`rather than `getAge'`, I guess because they've already instantiated `x: r -> Sigma ({'Year := Int} + r)` with `{Age := Int}` by that point, so they don't want the polymorphic function.
+
 -- "Moreover, even if the translation could somehow access this type information, the translation would still fail if there were multiple incompatible upcasts of y in the case clause."
--- This isn't a problem for us because we can apply `inj` independently where needed.
+-- This isn't a problem for us because, as previously stated, we can apply `inj` independently where needed, and can inject it to different, incompatible variants, even in the same expression.
+
+getStringAge : Sigma {'Year := Nat, 'Age := String} -> String
+getStringAge = ('Year: n -> showNat n
+               |'Age: s -> s)
+
+-- Why is this Unit?
+ex_23 : String
+ex_23 = match data ('Raw: y -> showNat (getAge (inj y)) ^ (getStringAge (inj y)))
 
 -- Theorem 4.9 - No global type-only encoding of simple record subtyping with row or presence polymorphism.
 
@@ -317,7 +347,7 @@ getUnit = \x. prj x
 getUnit_upcast : Pi {'Name := String, 'Age := Int} -> Unit
 getUnit_upcast = getUnit . (\x. prj x)
 
-ex_23 = getUnit_upcast alice
+ex_24 = getUnit_upcast alice
 
 -- The other thing we could do is make the type of getUnit polymorphic, so that it never requires an upcast.
 getUnit' : {'Name := String} < r => Pi r -> Unit
@@ -352,6 +382,34 @@ f1_upcast = f1 . prj
 -- "Intuitively, because A1 cannot be an open record type with the row variable bound in @a1*, we actually have no way to expand A1, which leads to a contradiction."
 -- [None of this has any bearing on our system.]
 
+-- We can try the trick that worked with variants (see data'), of making the type of the record polymorphic.
+
+-- Unlike with variants and `inj`, if we omit the `prj`, we get the following error:
+-- While comparing the types 
+-- forall x : R[*]. forall y : R[*]. forall z : R[*]. x + y ~ z => Pi x -> Pi y -> Pi z
+-- and
+-- Pi {'Name := String} -> Pi {'Age := Nat} -> Pi r
+--   Type mismatch in functional dependencies for {'Name := String} + {'Age := Nat} ~ r
+
+alice' : forall r. r < {'Name := String, 'Age := Nat} => Pi r
+alice' = prj ('Name := "Alice", 'Age := 9)
+
+
+
+
+showAge : Pi {'Age := Nat} -> String
+showAge x = showNat (x :/ 'Age)
+
+-- Using the polymorphic 'alice value, we can use the monomorphic getName
+ex_25 = getName alice'
+ex_26 = getName alice' ^ getName alice'
+ex_27 : String
+ex_27 = (showAge alice')
+
+-- We can even perform incompatible prjs in the same expression,
+-- treating alice' as Pi {'Name := String} on the left, and as Pi {'Age := Nat} on the right.
+-- (as long as we are careful not to double project.)
+ex_28 = (getName alice') ^ (showAge alice') --> "3811"
 
 ---------------------------------------------------------------------------------------------------
 -- Encoding of Full Record Subtyping as Polymorphism
