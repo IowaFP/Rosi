@@ -20,12 +20,38 @@
 
 -- The main questions we want to answer are:
 -- 0. Preliminary: Can we handle all the examples in the Tang paper that doom the proposed translations of subtyping.
--- 1. What kind of translation (local/global, type-only/term-involved) can we give from the sc with full subtyping to Rosi.
+
+  -- We seem to be able to handle all of them one way or another, but ideally we could specify a unified approach that handles all examples.
+  
+
+-- 1. What kind of translation (local/global, type-only/term-involved, composable) can we give from the sc with full subtyping to Rosi.\
+  -- Possible approaches:
+    -- A: rewrite upcasts using `inj` and `prj`.
+    -- For simple subtyping, this is 1-to-1. For deep subtyping, we'll need some rules.
+    -- For upcasting a function with a record argument, we just compose with `prj`.
+    -- In some cases, it works to do this with record and variant values.
+    -- In some cases, rewriting functions that operate on record and variants works.
+    -- It remains to be seen what the best way to combine these is.
+    -- TODO: explore more nested examples.
+
+    -- B: type erasing translation:
+    -- NEGATIVE RESULT
+    -- We can't do this because
+      -- i. we can't successfully infer all the necessary types, and
+      -- ii. we need explicit `prj` and `inj`
+
 -- 2. Does this always result in legal types?
 -- 3. If 2=yes, then what level of annotations do we require in Rosi (e.g. to remain decidable)?
+  -- One example where the type is not inferrable without annotation is the polymorphic lambda binding in `ex_10`
+  
 -- 4. What features of Rosi allow us to reach better results than the Tang paper?
+  -- TBD, but I think the secret sauce will be qualified types and the automatic `inj` and `prj` operators which can replace explicit upcasts or type applications.
+
 -- 5. Can we specify a minimal target calculus (as an augmentation of (lambda rho, records + variants) with just enough expressive power to achieve the subtyping translation?
+  -- TBD
+
 -- 6. What can we prove about such a calculus?
+  -- TBD
 -- --------------------------------------------------------------------------------
 
 import Data.Nat
@@ -51,6 +77,7 @@ year = 'Year: 11
 
 
 -- Record Examples
+-- The inferred type of these unannotated records is monomorphic.
 alice = ('Name := "Alice", 'Age := 9)
 bob = ('Name := "Bob", 'Year := 11)
 
@@ -66,12 +93,9 @@ ex_1 = getAge (inj year)
 ex_2 = getAge (inj age)
 
 -- row-polymorphic version of getAge, moving the `inj` inside the function.
--- NOTE: I don't really understand the way that Tan defines the type of the `x` arg for `getAge'`.
 getAge' : forall r: R[*]. r < {'Age := Nat, 'Year := Nat} => Sigma r -> Nat
 getAge' = \x. (match (inj x) ('Age: y -> y
                              |'Year: y -> 50 - y))
-
--- Q: does getAge' rely on higher rank polymorphism?
 
 ---------------------------------------------------------------------------------------------------
 -- Simple Record Subtyping
@@ -136,7 +160,7 @@ id_remember x = x
 -- It would also be valid to project to any arbitrary record in between the source and target records.
 -- Rosi currently lacks a way to choose what to do in this situation.
 
--- Section 2.4 points out that a rank-1 polymorphic system handles the getName example by erasing upcasts and relying on type inference.
+-- Section 2.4 points out that a rank-1 polymorphic system can handle the getName example by erasing upcasts and relying on type inference.
 
 ---------------------------------------------------------------------------------------------------
 -- Full Subtyping
@@ -145,20 +169,39 @@ id_remember x = x
 
 -- "Full subtyping lifts the width subtyping of rows to any type by propagating the subtyping relation to the components of type constructors." - Tang et al.
 
--- the example from p.7 succeeds if we add explicit prj
-ex_8 = (\ (f : Pi {'Name := String} -> String). (f (prj alice)) ^ (f (prj bob))) getName
--- as does the type erased version, because we do have higher rank polymorphism, allowing f to have different types.
-ex_9 = (\f . f (prj alice) ^ f (prj bob)) getName
+-- In other words, we want to be able to upcast things like functions, with types in parameter position being contravariant wrt subtyping.
+-- So, if `a < b` and `f : b -> c`, then we can upcast `f |> (a -> c)`
 
--- what about using the polymorphic version of getName?
--- OK
-ex_10 = (\ (f : forall r. Pi ({'Name := String} + r) -> String).
- f alice ^ f bob) getName'
--- OOPS If we instead use the signature based on containment, the evaluator hangs for some reason.
--- ex_11 = (\ (f : forall r. {'Name := String} < r => Pi (r) -> String). f alice ^ f bob) getName'
--- OK The monomorphic version with prj works without type annotation.
--- OOPS The polymorphic version doesn't work without the type annotation.
--- ex_12 = (\f . f alice ^ f bob) getName'
+
+-- The following example is supposed to illustrate that a type-erasing translation succeeds when limited to
+-- rank-2 records in the source calculus and rank-1 polymorphism in the target calculus.
+
+-- (omitting the type annotation)
+-- getName_rank_1 : forall r. Pi ({'Name := String} + r) -> String
+getName_rank1 = \ x. x.'Name
+
+ex_8 = getName_rank1 alice
+
+-- ^ This actually works for us because `x.'Name` hides a prj.
+
+-- We translate `f |> some_function_type` by composing `f` with `prj` at its call site.
+
+-- The following negative example illustrates a usage which cannot be achieved with rank-1 polymorphism,
+-- because it requires a polymorphic lambda binding
+
+-- With a type annotation, we can bind f to the necessary type because we have higher rank polymorphism
+ex_9 = (\ (f : forall r. Pi ({'Name := String} + r) -> String). f alice ^ f bob) getName_rank1
+-- ex_9 = (\ (f : forall r. {'Name := String} < r => Pi r -> String). f alice ^ f bob) getName_rank1
+
+-- However, Rosi can't figure out the type of the type-erased version, whichever version of `getName` we use.
+-- PROBLEM: This is important because it shows that a type-erased translation won't work for us.
+-- ex_10_fail : Strings
+-- ex_10_fail = (\f . f alice ^ f bob) getName_rank1
+-- ex_10_fail = (\f . f alice ^ f bob) getName
+-- ex_10_fail = (\f . f alice ^ f bob) getName'
+
+-- But the monomorphic version of `getName` works if we replace the `explicit upcasts` with explicit `prj`
+ex_11 = (\f . f (prj alice) ^ f (prj bob)) getName
 
 
 ---------------------------------------------------------------------------------------------------
@@ -244,11 +287,10 @@ data_upcast = raw (inj (data :/ 'Raw))
 ex_16 = data_upcast
 
 -- however, we can also give a type-only polymorphic encoding, starting with the data.
-year' : forall r. {'Year := Nat} < r => Sigma r
+year' : forall d. {'Year := Nat} < d => Sigma d
 year' = 'Year: 11
 
-
-data' : forall r. {'Year := Nat} < r => Sigma {'Raw := Sigma r}
+data' : forall d. {'Year := Nat} < d => Sigma {'Raw := Sigma d}
 data' = (raw year')
 
 ex_17 : Sigma {'Raw := Sigma {'Year := Nat, 'Age := Nat}}
@@ -280,8 +322,41 @@ ex_18 = parseAge_tang data
 ex_19 = parseAge_alt data'
 
 ex_20 = parseAge' data
-ex_21 = parseAge' data'
--- but only the polymorphic one accepts the explicitly destructed and reconstructed upcast data
+-- 
+-- 
+-- The polymorphic `parseAge'` does not accept the polymorphic `data'`.
+-- Nor does `getAge'` accept `year`.
+
+-- Using `year'` and `getAge'` as the example, for simplicity.
+-- The solver knows, from type of `year'` that:
+-- `{Year:_} < d`
+-- and wants to show that (to satisfy constraints on argument to `getAge'`)
+-- `d < {Age:_, Year:_}`
+-- but all it knows about `d` is that it has the lower bound `{Year:_}`
+-- so the solver can't show that `d` is not some other variant,
+-- with the wrong type for `'Age`, or extra constructors,
+-- either of which would make it an invalid input to `getAge'`.
+-- 
+-- So we get this error:
+-------------------------------------------------------
+
+--   The predicate %d#28@0 < {'Age := Nat, 'Year := Nat}
+--   is not entailed by
+--   The predicate {'Year := Nat} < %d#28@0
+--   is not entailed by
+-- exit 1
+
+-- I think this is the correct behavior, because the `forall` in `year' : forall d...` means that `year` has that type **for every choice of d**,
+-- and since types exist where `d < {Age:_,Year:_}` does not hold, we cannot choose whatever `d` we like when deciding whether
+-- the constraints for an argument to `getAge'` are satisfied.
+
+-- The misconception I was laboring under was that `forall d` means that we can choose whatever `d` we like when we try to pass `year'` to a function,
+-- and expect it to work as if `d` was that row. However, some choices of `d` make `year'` invalid as an argument to `getAge'`, and `year'` also has those types.
+
+-- ex_21_fail : Nat -- need type signature to force this to try to be a value.
+-- ex_21_fail = getAge' year'
+
+-- Only the polymorphic one accepts the explicitly destructed and reconstructed upcast data
 -- ex_22_fail = parseAge data_upcast
 ex_22 = parseAge' data_upcast
 
@@ -379,9 +454,6 @@ f1_upcast = f1 . prj
 -- record, e.g. f1 |> Pi {'l := Unit} -> Unit."
 -- [we would just do that by composing with proj or by making the type of f1 accept any `r` s.t. `{} < r1`.
 
--- "Intuitively, because A1 cannot be an open record type with the row variable bound in @a1*, we actually have no way to expand A1, which leads to a contradiction."
--- [None of this has any bearing on our system.]
-
 -- We can try the trick that worked with variants (see data'), of making the type of the record polymorphic.
 
 -- Unlike with variants and `inj`, if we omit the `prj`, we get the following error:
@@ -395,19 +467,17 @@ alice' : forall r. r < {'Name := String, 'Age := Nat} => Pi r
 alice' = prj ('Name := "Alice", 'Age := 9)
 
 
-
-
 showAge : Pi {'Age := Nat} -> String
 showAge x = showNat (x :/ 'Age)
 
--- Using the polymorphic 'alice value, we can use the monomorphic getName
+-- Using the polymorphic `'alice` value, we can use the monomorphic getName
 ex_25 = getName alice'
 ex_26 = getName alice' ^ getName alice'
 ex_27 : String
 ex_27 = (showAge alice')
 
 -- We can even perform incompatible prjs in the same expression,
--- treating alice' as Pi {'Name := String} on the left, and as Pi {'Age := Nat} on the right.
+-- treating `alice'` as Pi {'Name := String} on the left, and as Pi {'Age := Nat} on the right.
 -- (as long as we are careful not to double project.)
 ex_28 = (getName alice') ^ (showAge alice') --> "3811"
 
