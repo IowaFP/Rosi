@@ -319,15 +319,15 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         contexts (ErrContextType ty te)  = ("Whilst checking the type" <+> ppr ty) <:> contexts te
         contexts (ErrContextPred pr te)  = ("Whilst checking the predicate" <+> ppr pr) <:> contexts te
         contexts (ErrContextTerm t te)   = ("While checking the term" <+> ppr t) <:> contexts te
-        contexts (ErrContextTyEq t u te) = ("While comparing the types" <+> ppr t <+> "and" <+> ppr u) <:> contexts te
+        contexts (ErrContextTyEq t u te) = vsep ["While comparing the types" , ppr t, "and" , ppr u] <:> contexts te
         contexts (ErrContextOther s te)  = ppre s <:> contexts te
         contexts te                      = ([], te)
 
         (ctxts, te') = contexts te
 
-        pprErr (ErrTypeMismatch actual expected actual' expected') = vsep ["Actual type" <+> ppr actual, "was expected to be" <+> ppr expected, "specifically: " <+> ppr actual' <+> "~/~" <+> ppr expected']
+        pprErr (ErrTypeMismatch actual expected actual' expected') = vsep ["Actual type", ppr actual, "was expected to be", ppr expected, "specifically: ", ppr actual' <+> "~/~" <+> ppr expected']
         pprErr (ErrTypeMismatchFD p) = "Type mismatch in functional dependencies for" <+> ppr p
-        pprErr (ErrTypeMismatchPred p t u) = vsep ["Type mismatch in functional dependencies for" <+> ppr p, "type" <+> ppr t, "was expected to be" <+> ppr u]
+        pprErr (ErrTypeMismatchPred p t u) = vsep ["Type mismatch in functional dependencies for", ppr p, ppr t, "was expected to be", ppr u]
         pprErr (ErrKindMismatch k k') = vsep ["Actual kind" <+> ppr k, "was expected to be" <+> ppr k']
         pprErr (ErrNotEntailed errs) = vsep (map pprOne errs)
           where pprOne (p, qs) = vsep ["The predicate" <+> ppr p, hang 2 ("is not entailed by" <+> fillSep (punctuate "," (map ppr qs)))]
