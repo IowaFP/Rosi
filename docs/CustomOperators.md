@@ -81,3 +81,7 @@ In this example, assume that `$`, `$$`, and `$$$` are `prefix`, while `%`, `%%`,
   -- then finally the remaining prefix operator.
   ($$$ ($ (x %%)))
 ```
+
+- Unlike Haskell and Idris, operators are allowed to have a higher precedence than regular function application (of adjacent expressions). Application gets desugared to an infix operator with precedence level `10`. Therefore, it is possible to define operators with a higher precedence than application. For example, if the operator `*` is defined as `(*) = map` with declared fixity `postfix 11 *`, then you can write `map f g` as `f* g`, and this will get desugared to ```f * `_Apply` g```, and resolved to `(_Apply ((*) f) g)`.
+
+- Because, in Haskell and Idris, all operators bind less tightly than (implicit) application, and precedence levels range from `0` to `9`, this means this means that in theory we can port operator definitions directly from those languages, keeping the same precedence level.

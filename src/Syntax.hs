@@ -1,4 +1,3 @@
-{-# LANGUAGE PatternGuards #-}
 module Syntax (module Syntax) where
 
 import Control.Monad.IO.Class
