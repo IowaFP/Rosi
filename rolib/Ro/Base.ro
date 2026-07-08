@@ -130,7 +130,7 @@ every : a -> Pi ((Const a)* z)
 every = \@a x. syn #(\X. a) (\l. x)
 
 type Eq : * -> *
-type Eq = \t. t -> t -> Bool
+type Eq t = t -> t -> Bool
 
 eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
 eqS = \ d v. ana #(\X. X)

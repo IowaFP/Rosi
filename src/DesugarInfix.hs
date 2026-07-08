@@ -16,26 +16,27 @@ class DesugarInfix a where
 instance DesugarInfix Term where
 
   desugarInfix :: Term -> Either Error Term
-  desugarInfix (EVar n qname)      = return $ EVar n qname
-  desugarInfix (ELam x ty tm)      = ELam x ty <$> desugarInfix tm
-  desugarInfix (EApp ft xt)        = EApp <$> desugarInfix ft <*> desugarInfix xt
+  desugarInfix (EVar n qname)       = return $ EVar n qname
+  desugarInfix (ELam x ty tm)       = ELam x ty <$> desugarInfix tm
+  desugarInfix (EApp ft xt)         = EApp <$> desugarInfix ft <*> desugarInfix xt
 
-  desugarInfix (ETyLam s k tm )    = ETyLam s k <$> desugarInfix tm
-  desugarInfix (EPrLam p tm)       = EPrLam p <$> desugarInfix tm
-  desugarInfix (EInst tm insts)    = (`EInst` insts) <$> desugarInfix tm
+  desugarInfix (ETyLam s k tm )     = ETyLam s k <$> desugarInfix tm
+  desugarInfix (EExLam xs ps y t m) = EExLam xs ps y t <$> desugarInfix m
+  desugarInfix (EPrLam p tm)        = EPrLam p <$> desugarInfix tm
+  desugarInfix (EInst tm insts)     = (`EInst` insts) <$> desugarInfix tm
 
-  desugarInfix (ESing ty)          = return $ ESing ty
-  desugarInfix (ELabel tc lt xt)   = ELabel tc <$> desugarInfix lt <*> desugarInfix xt
-  desugarInfix (EUnlabel tc xt lt) = EUnlabel tc <$> desugarInfix xt <*> desugarInfix lt
+  desugarInfix (ESing ty)           = return $ ESing ty
+  desugarInfix (ELabel tc lt xt)    = ELabel tc <$> desugarInfix lt <*> desugarInfix xt
+  desugarInfix (EUnlabel tc xt lt)  = EUnlabel tc <$> desugarInfix xt <*> desugarInfix lt
 
-  desugarInfix (EConst c)          = return $ EConst c
+  desugarInfix (EConst c)           = return $ EConst c
 
-  desugarInfix (ELet x vt et)      = ELet x <$> desugarInfix vt <*> desugarInfix et
-  desugarInfix (ECast tm evid)     = (`ECast` evid) <$> desugarInfix tm
-  desugarInfix (ETyped tm ty)      = (`ETyped` ty) <$> desugarInfix tm
+  desugarInfix (ELet x vt et)       = ELet x <$> desugarInfix vt <*> desugarInfix et
+  desugarInfix (ECast tm evid)      = (`ECast` evid) <$> desugarInfix tm
+  desugarInfix (ETyped tm ty)       = (`ETyped` ty) <$> desugarInfix tm
 
-  desugarInfix (EStringLit s)      = return $ EStringLit s
-  desugarInfix (EHole s)           = return $ EHole s
+  desugarInfix (EStringLit s)       = return $ EStringLit s
+  desugarInfix (EHole s)            = return $ EHole s
 
                                           -- we make the recursive call to desugar subterms before collecting and resolving fixities
   desugarInfix (EInfix _ops)        = do ops' <- desugarInfix _ops

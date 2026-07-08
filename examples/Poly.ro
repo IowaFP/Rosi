@@ -391,3 +391,24 @@ e2b2 = \ (h : Nat -> (forall a. a -> a)) (k : forall a. a -> List a -> a) (lst :
 
 e3b = \ (k : forall a. List a -> a -> Nat) (xs : List (IdTy -> Pair Nat Bool)).
   k xs (\f. pair (f zero) (f true))
+
+--------------------------------------------------------------------------------
+-- F: simulating records?
+
+-- The goal is the following:
+--
+-- f1 = (\p. fst p zero) (pair id id)
+--
+-- But this fails quickly. The fun thing is that even
+--
+-- f0 p = fst p
+--
+-- Fails to type check, as .. we need to infer a polymorphic type for `p`??
+
+
+f1 = \ (@Pair : * -> * -> *) (pair : IdTy -> IdTy -> Pair IdTy IdTy) (fst : forall a b. Pair a b -> a).
+       (\p. fst p zero) (pair id id)
+
+f1a = \ (@Pair : * -> * -> *) (fst : forall a b. Pair a b -> a) (idPair : Pair IdTy IdTy).
+        (\p. fst p zero) idPair
+
