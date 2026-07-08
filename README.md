@@ -49,7 +49,7 @@ By default, Rosi searches for modules in the current directory. Its search list 
 
 # Rose by Example
 
-This section gives a brief overview of the Rose language, via a series of (hopefully illustrative) examples. These examples are drawn from the papers listed above.
+This section gives a brief overview of the Rose language, via a series of (hopefully illustrative) examples. These examples are drawn from the papers listed above. Following this, we give an (admittedly terse) summary of the formal syntax of the langauge.
 
 ## Wand's problem
 
@@ -61,7 +61,7 @@ Wand's solution to this is to use intersection types to combine the two possible
 
 ```
 wand5 : forall x y z t. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
-wand5 = \ m n. prj (m ++ n) / 'l
+wand5 = \ m n. prj (m ++ n) :/ 'l
 ```
 
 We start with the type. The conclusion of the type, `Pi x -> Pi y -> t` indicates that this is a function from two records, built from rows `x` and `y`, to a result type `t`. The predicates of the type restrict `x` and `y`. First, we require that `x` and `y` must be able to be combined, giving a combined row `z`. This predicate might fail, for example, if `x` and `y` share a label. Then, we require that the label `'l` appear in the combined row `z`, associated with type `t`. This predicate might fail if neither `x` nor `y` contains row `l'`.
@@ -77,25 +77,26 @@ We move on to the term. Rose's primitive record operations are *concatenation* o
 
 * Concatenation `_ ++ _`: we begin by concatenating records `m` and `n`.
 * Projection `prj _`: we then project an *arbitrary* subrecord of the concatenation. The particular subrecord projected will be determined by the context.
-* Unlabeling `_ / _`: finally, we "unlabel" the projected record. The unlabeling operation `_ / #'l` is (almost) only well typed for the singleton record with field `'l`; this is the context that determines the projected subrecord.
+* Unlabeling `_ :/ _`: finally, we "unlabel" the projected record. The unlabeling operation `_ / #'l` is (almost) only well typed for the singleton record with field `'l`; this is the context that determines the projected subrecord.
 
 Several additional notes about Rosi:
 
-* Rosi's parser is not clever about left-hand sides of definitions: functions must be written using λs (syntactically `\`s) on the right-hand sides of equations.
+* Rosi's parser is not clever about left-hand sides of definitions: the left-hand side of a function definition can contain arguments, but not patterns.
 * `'l` is a *singleton* value "carrying" the type `'l`. Our guiding principle for Rosi is that type arguments ought to be implicit, so we capture cases where type arguments are necessary using singletons. We do not always manage to follow this principle, sometimes because type inference is hard, and sometimes simply through oversights in the language.
 
 Rosi can generally infer the presence of type abstractions and type applications, but they can be given explicitly if necessary. Here is the fully explicit version of the preceding example (inhabiting the same type:)
 ```
-wand0 = /\ x y z : R[*], t : *. \ m : Pi x, n : Pi y.
-        prj [{'l := t}] [z] ((++) [x] [y] [z] m n) / #'l
+wand0 : forall x y z : R[*], t : *. x + y ~ z, {'l := t} < z => Pi x -> Pi y -> t
+wand0 = \(@x @y @z : R[*]) (@t : *) (m : Pi x) (n : Pi y).
+          prj @{'l := t} @z ((++) @x @y @z m n) :/ 'l
 ```
-`R[k]` is syntax for rows of kind `k`; `*` is the kind of types. Rosi does not support general infix operators; the use of `++` as infix and `(++)` as the corresponding prefix operator is hard-wired into the parser.
+`R[k]` is syntax for rows of kind `k`; `*` is the kind of types. In terms, type arguments and type abstractions are preceded by the `@` character.
 
 
 We can abstract over the particular label being projected:
 ```
-wand7 : forall x y z l t. x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
-wand7 = \l m n. prj (m ++ n) / l
+wand7 : x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
+wand7 = \l m n. prj (m ++ n) :/ l
 ```
 
 The projection-and-unlabeling step of this example is commonplace. The [base library](rolib/Ro/Base.ro) defines an operator to do this:
@@ -105,8 +106,8 @@ sel = \ r l. prj r / l
 ```
 and Rosi has syntax for selection:
 ```
-wand8 : forall x y z l t. x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
-wand8 = \l m n. .l (m ++ n)
+wand8 : x + y ~ z, {l := t} < z => #l -> Pi x -> Pi y -> t
+wand8 = \l m n. (m ++ n).l
 ```
 Here `.l` is the name of the `l` selection function. Rosi also allows you to write `m.l` or `n.l` for selection from a variable.
 
@@ -116,22 +117,20 @@ Here `.l` is the name of the `l` selection function. Rosi also allows you to wri
 Variants are dual to records. We can imagine a (less intuitive) dual to Wand's problem, with a type like:
 
 ```
-dnaw : forall x y z t u. x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y -> u) -> t -> u
+dnaw : x + y ~ z, {'l := t} < z => (Sigma x -> u) -> (Sigma y -> u) -> t -> u
 ```
 
 The claim is that, if we know that `{'l := t}` is somewhere in the combination of `x` and `y`, then given an *eliminator* for variants built from row `x` to type `u` and eliminator for variants built from row `y` to type `u`, we can get from a `t` to a `u`.  The term inhabiting this type is:
 
 ```
-dnaw = \r s x. (r | s) (inj ('l := x))
+dnaw = \ r s x. (r | s) ('l: x)
+
 ```
 
 This term also demonstrates three operators:
 
 * Branching `_ | _`: we combine the eliminators for `Sigma x` and `Sigma y` to get an eliminator for `Sigma z`
-* Injection `inj _`: dual to projection, injects arbitrary subvariants into a variant type.
-* Labeling `_ := _`: in this case, we construct an element of the singleton variant type to inject.
-
-Note that overload the labeling and unlabeling operators for construction and elimination of singleton records and variants.
+* Construction `'l:`, which builds a new value of variant type labeled with `'l`. As with selection, `'l:` is syntactic sugar for a combination of primitive operations, `:=` to construct a singleton variant and `inj` to inject smaller variant types into larger variant types.
 
 As with selecting individual record fields, the base library defines an operator `con` that combines labeling and injection, and syntax for construction:
 ```
@@ -289,6 +288,167 @@ More discussion of these examples, including the dual account for records, is in
 
 Finally, we have some otherwise unorganized notes on the language as implemented (or not) by Rosi.
 
+## Grammar
+
+A Rose file consists of ordered collections of imports definitions. Definitions are in terms of those that precede them in the file; Rosi does not attempt a clever treatment of mixed definitions. All imports are processed before all definitions. The order of imports is not guaranteed.
+
+An individual definition can be either:
+* A type definition, including a kind signature
+* A term definition, with optional kind signature and fixity declarations
+
+### Imports
+
+An import consists of
+
+```
+import module1, module2, module3, ...
+```
+
+where each `modulek` may itself be a qualified name, like `Ro.Base` or `EE.Types`.
+
+Rosi searches for imports in the current directory, and in the directories listed with `-i` options on its command line. When searching for import `A.B.C`, Rosi looks for a file `A/B/C.ro`.
+
+The `Ro.Base` module must be explicitly imported. Note that various bits of syntactic sugar, such as `x.'l` for record selection, rely on definitions in `Ro.Base`.
+
+### Type definitions
+
+A type definition consists of:
+
+* A kind signature line
+
+```
+type Eq : * -> *
+```
+
+* A type definition line
+
+```
+type Eq = \t. t -> t -> Bool
+```
+
+Parameters can equivalently listed on the left-hand side of the equals sign.
+
+```
+type Eq t = t -> t -> Bool
+```
+
+Parameters can be given kind signatures---although, as Rosi does not yet support type definition without kind signatures, this is superfluous.
+
+```
+type Eq (t : *) = t -> t -> Bool
+```
+
+The grammar of kinds is given by:
+
+    k ::= *             Types
+       |  k -> k        Type constructors
+       |  R[k]          Rows of kind k
+       |  L             Labels
+
+The grammar of types is given by
+
+    t ::= x             Type variables and constants
+       |  t -> t        Functions
+       |  'l            Label constants (l is any alphanumeric string)
+       |  {l1 := t1 ... ln := tn}
+                        Rows
+       |  Pi t          Record types
+       |  Sigma t       Variant types
+       |  \x. t         Type functions
+       |  t u           Type application
+       |  Mu t          Fixed point of type operators
+       |  forall x. t   Universally quantified types
+       |  p1, ..., pn => t
+                        Qualified types
+       |  t - t         Row difference
+       |  t + t         Row combination
+
+Row combination `t + t` in types is desugared to row combination predicates, as below.
+
+The Ro.Base module includes many useful type definitions, such as
+
+```
+type Unit : *
+type Unit = Pi {}
+```
+
+and
+
+```
+type Bool : *
+type Bool = Sigma {'True := Unit, 'False := Unit}
+```
+
+The grammar of predicates is given by
+
+    p ::= t < t         Row containment
+       |  t + t ~ t     Row combination
+       |  Fold t        Row enumeration
+       |  t ~ t         Type equality
+
+Assuming type equalities is poorly supported.
+
+### Term definitions
+
+A term definition consists of
+
+* An optional type signature line
+
+```
+eqP : Fold z => Pi (Eq z) -> Eq (Pi z)
+```
+
+* A term definition
+
+```
+eqP = \ d r. fold #(\t. t) (\l x. d.l r.l x) and True
+```
+
+* An optional fixity declaration
+
+```
+infixl 5 `eqP`
+```
+
+Types are as defined above. Type variables that are not explicitly mentioned will be implicitly quantified.
+
+Fixities can be declared prefix, infixl, infix, infixr, or postfix. Application (by juxtaposition) groups left with precedence 10.
+
+The left-hand side of a term definition can mention parameters, but not patterns.
+
+```
+eqP d r = fold #(\t. t) (\l x. d.l r.l x) and True
+```
+
+The grammar of terms is given by
+
+    m ::= x             Term variables
+       |  \ b1 ... bn. m
+                        Abstraction
+       |  m m           Application
+       |  m @t          Type application
+       |  op m  |  m op m  |  m op
+                        Pre/in/postfix application
+       |  #t            Type singletons
+       |  k             Term constants
+       |  l := m        Singleton record/variant construction
+       |  m :/ l        Singleton record/variant elimination
+       |  let x = m in m  |  let x : t = m in m
+                        Local definition
+       |  m : t         Type ascription
+       |  "string"      String constants
+
+Term constants are:
+
+    k ::= inj           Variant injection
+       |  prj           Record projection
+       |  |             Variant branching
+       |  ++            Record concatenation
+       |  ana           Variant analysis
+       |  syn           Record synthesis
+       |  fold          Record folding
+       |  ^             String concatenation
+
 ## Other language features
 
 Rosi supports an arbitrary fixed point operator `fix : forall a. (a -> a) -> a`
@@ -296,6 +456,8 @@ Rosi supports an arbitrary fixed point operator `fix : forall a. (a -> a) -> a`
 Rosi's type inference mechanism attempts to support first-class polymorphism. Initial results are promising (such as the instantiations in the functor example), although some gaps remain. See [examples/Poly.ro](examples/Poly.ro) for the current state.
 
 Conditional expressions are written with `if`, which is just a function defined in `Ro.Base` with type `Bool -> t -> t -> t`. The usual boolean operators (`and`, `not`, `or`, `xor`) are also defined there.
+
+Rosi supports holes. A term `?` cause Rosi to print out the expected type and the bindings in context. Different holes can be identified with alphanumeric labels `?xxx`.
 
 ## Rosi's type errors
 
