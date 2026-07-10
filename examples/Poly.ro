@@ -221,7 +221,7 @@ a7 = choose id auto
 
 -- a8 = choose id auto2
 
-a8 = choose id ((\x. auto2 x) : IdTy -> IdTy )
+a8b = choose id ((\x. auto2 x) : IdTy -> IdTy)
 
 -- let A9 : ({A} → (A → A) → List A → A) → IdTy
 --     = λ f. f (choose id) ids;
@@ -229,11 +229,8 @@ a8 = choose id ((\x. auto2 x) : IdTy -> IdTy )
 -- a9 : () -> IdTy
 a9 (f : forall a. (a -> a) -> List a -> a) = f (choose id) ids
 
-idsp : forall a. List (a -> a)
-idsp = single id
-
 a9a : (forall a. (a -> a) -> List a -> a) -> IdTy
-a9a f = f (choose id) idsp
+a9a f = f (choose id) ids
 
 -- let A10 = poly id;
 
