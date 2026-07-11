@@ -37,8 +37,7 @@
     -- B: type erasing translation:
     -- NEGATIVE RESULT
     -- We can't do this because
-      -- i. we can't successfully infer all the necessary types, and
-      -- ii. we need explicit `prj` and `inj`
+      -- i. we can't successfully infer all the necessary types, even if we add explicit `prj` and `inj` everywhere
 
 -- 2. Does this always result in legal types?
 -- 3. If 2=yes, then what level of annotations do we require in Rosi (e.g. to remain decidable)?
@@ -231,7 +230,6 @@ ex_13 = getChild_poly carol
 -- getChild can be defined with monomorphic signature using prj
 getChild_mono : Pi {'Child := Pi {'Name := String}} -> Pi {'Name := String}
 getChild_mono x = prj (x :/ 'Child)
-
 
 -- however, the monomorphic getChild cannot be applied to carol, because her child has an extra field.
 -- ex_13_mono_fails = getChild_mono carol
@@ -482,16 +480,184 @@ ex_27 = (showAge alice')
 ex_28 = (getName alice') ^ (showAge alice') --> "3811"
 
 ---------------------------------------------------------------------------------------------------
--- Encoding of Full Record Subtyping as Polymorphism
+-- Type-only Translation of Simple Record and Variant Subtyping as Row Polymorphism
 ---------------------------------------------------------------------------------------------------
 
 
--- we seem to have been able to handle the specific examples just fine.
--- it remains to actually 
-
 -- TODO(mctano)
--- give a translation from the language with full subtyping to Rosi
+-- Add examples for deep subtyping of records and see if we can handle those.
 -- Show how each of the subtyping rules of `≤full[]<>` are transformed when a program is translated to rosi.
 -- make an informal argument that the translations compose.
 -- characterise the translation as  type-only vs. term-involved, local vs. global.
 -- examine type preservation and operational correspondence.
+
+
+-- We give some translation rules for subtyping on functions:
+-- Essentially, we left or right compose with `prj` or `inj` depending whether the relevant type is in
+-- argument or return position and whether it is a record or a variant
+-- We can do both at once.
+
+-- It remains to be shown that these rules compose with each other and with the translations for records
+-- and variants. Possibly there will be some issues with multiple sequential _-jection operations
+-- e.g. `prj . prj`, `inj . inj`, `prj . inj` , `inj . prj`
+
+-- Upcast function translation rules:
+
+-- (_ -> _) |> (_ -> _)
+
+-- Alphabetical Relation Assumptions:
+  -- Subtyping (A, B, C are types)
+    -- A <~ B <~ C
+  -- Row containment : (X, Y, Z are rows)
+    -- X < Y < Z
+
+type x : R[*]
+type x = {'1 := Unit}
+
+type y : R[*]
+type y = {'1 := Unit, '2 := Unit}
+
+type z : R[*]
+type z = {'1 := Unit, '2 := Unit, '3 := Unit}
+
+
+-- In Return Position: (Covariant subtyping)
+-- Return : Variant
+-- (_ -> var : B) |> (_ -> var : A)
+-- (_ -> Sigma Y) |> (_ -> Sigma Z)
+-- inj . f
+
+sRet : Unit -> Sigma y
+-- We need this `inj` here because we don't have syntax to distinguish variants from singleton rows.
+sRet = const (inj ('2 := tt))
+
+sRet_upcast : Unit -> Sigma z
+sRet_upcast = inj . sRet
+
+-- Return : Record
+-- (_ -> rec : B) |> (_ -> rec : A)
+-- (_ ->    Pi Y) |> (_ ->    Pi X)
+-- prj . f
+
+pRet : Unit -> Pi y
+pRet = const ('1 := tt, '2 := tt)
+
+pRet_upcast : Unit -> Pi x
+pRet_upcast =  prj . pRet
+
+-- In Argument Position: (Contravariant subtyping)
+
+-- Arg : Variant
+-- (var: B     -> _) |> (var: C  -> _)
+-- (Sigma Y    -> _) |> (Sigma X -> _)
+-- f . inj
+
+
+sArg : Sigma y -> Unit
+sArg  = const tt
+
+sArg_upcast : Sigma x -> Unit
+sArg_upcast = sArg . inj
+
+-- Arg : Record
+-- (rec : B -> _) |> (rec : C -> _)
+-- (Pi Y    -> _) |> (Pi X    -> _)
+-- f . prj
+
+pArg : Pi y -> Unit
+pArg = const tt
+
+pArg_upcast : Pi z -> Unit
+pArg_upcast = pArg . prj
+
+-- Upcasts based on both argument and return type
+
+pArgSRet : Pi y -> Sigma y
+pArgSRet = \y. inj ('2 := y.'2)
+
+pArgSRet_upcast : Pi z -> Sigma z
+pArgSRet_upcast = inj . pArgSRet . prj
+
+sArgPRet : Sigma y -> Pi y
+sArgPRet = const ('1 := tt, '2 := tt)
+
+sArgPRet_upcast : Sigma x -> Pi x
+sArgPRet_upcast = prj . sArgPRet . inj
+
+sArgSRet : Sigma y -> Sigma y
+sArgSRet = id
+
+sArgSRet_upcast : Sigma x -> Sigma z
+sArgSRet_upcast = inj . sArgSRet . inj
+
+pArgPRet : Pi y -> Pi y
+pArgPRet = id
+
+pArgPRet_upcast : Pi z -> Pi x
+pArgPRet_upcast = prj . pArgPRet . prj
+
+
+
+---------------------------------------------------------------------------------------------------
+-- Encoding of Full Record Subtyping as Polymorphism
+---------------------------------------------------------------------------------------------------
+-- Can we manage this type of translation?
+
+-- Full subtyping examples
+
+-- Nested Record Upcast
+
+-- Let us examine the monomorphic function`getChildName`
+
+getChildName : Pi {'Child := Pi {'Name := String}} -> String
+getChildName = \ x. (x :/ 'Child) :/ 'Name
+
+-- Can we simulate a nested upcast on an argument passed to this function?
+
+tristan = ('Name := "Tristan")
+
+david = ('Name := "David", 'Child := tristan, 'job := "Lawyer")
+
+kala = ('Name := "Kala", 'Child := david, 'job := "Teacher")
+
+-- We want to pass `kala` to `getChildName`, ignoring the extra fields 'Name and 'job in `kala`,
+--  and the extra fields 'Child and 'job in `david`
+
+-- our source term with an explicit upcast:
+-- getChildName (kala |> Pi {'Child := Pi {'Name := String}})
+
+-- simply upcasting with `prj` doesn't work
+-- ex_29_fail = getChildName (prj kala)
+
+-- we could perform the term-involved translation, but this is not an impressive result,
+--  as Tang et al. show (in 5.1) that this can be accomplished even in a target language with no polymorphism
+-- (unfolding the `.` access operator for clarity)
+ex_29 = getChildName ('Child := (prj ((prj kala) :/ 'Child)))
+
+-- What we would like to have is some kind of `deepPrj` operator that can perform nested projections at the type level without explicitly deconstructing any terms
+
+-- ex_30_fail = getChildName (deepPrj kala)
+
+-- deepPrj1 : forall a a' ar b b' br : R[*]. a' < b', {l := Pi a'} + ar ~ a, {l := Pi b'} + br ~ b, ar < br => Pi b -> Pi ({l := Pi a'} + ar)
+-- deepPrj1 = \x. (\@(t : *). prj t) (prj x)
+-- deepPrj1 = \x. syn #Id (\l. prj x.l)
+
+-- This is the best I've managed to do, which is just taking the term-involved deconstruction and reconstruction and hiding it behind a variable.
+-- Could we build something like this into the compiler?
+deepPrj1 : forall a a' : R[*]. {'Child := Pi a'} < a, {'Name := String} < a' => Pi a -> Pi {'Child := Pi {'Name := String}}
+deepPrj1 = \x. ('Child := prj ((prj x) :/ 'Child))
+
+ex_30 = getChildName (deepPrj1 kala)
+
+-- So, we don't seem to have any hope of a local translation using prj/inj on the arguments to functions, unless we can somehow implement a general deepPrj operator
+
+-- Approaching the problem from the other direction, we can maybe make a global prj/inj translation work by transforming all function types with record parameters like so:
+
+getChildName_deepPoly : {'Name := String} < r, {'Child := Pi r} < r' => Pi r' -> String
+getChildName_deepPoly = \x. x.'Child.'Name
+
+ex_31 = getChildName_deepPoly kala
+
+-- It remains to be shown that this translation can be generalized, but I am hopeful.
+-- Q: If phrased with record concatenation/extension to avoid explicit predicate constraints, could this be done in a system without qualified types?
+  -- I think making `prj` and `inj` work without giving explicit subrows relies on the constraints carried by the types
