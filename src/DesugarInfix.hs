@@ -116,7 +116,7 @@ instance DesugarInfix Term where
 
       app2 :: EOp -> AppTerm -> AppTerm -> Either InfixDesugaringError AppTerm
       -- apply a term to a type
-      app2 (Op _ ["__Apply"] _) (ATerm t) (AType u)     = Right $ ATerm (EInst t (Known [TyArg u]))
+      app2 (Op _ ["__Apply"] _) (ATerm t) (AType u)     = Right $ ATerm (EInst t [TyArg u])
       -- apply a term to a term
       app2 (Op _ ["__Apply"] _) (ATerm tm1) (ATerm tm2) = Right $ ATerm $ EApp tm1 tm2
       -- apply an op to a term

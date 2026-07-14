@@ -190,7 +190,7 @@ eval' h (EApp f e) = app (eval h f) (eval h e)
 eval' h (ELet x e f) = eval h (EApp (ELam x Nothing f) e)
 eval' h (ETyLam _ _ e) = eval h e
 eval' h (EPrLam _ e) = VPrLam h (Term e)
-eval' h (EInst t (Known is)) = inst (eval h t) is
+eval' h (EInst t is) = inst (eval h t) is
   where
     inst v []              = v
     inst v (TyArg _ : is)  = inst v is

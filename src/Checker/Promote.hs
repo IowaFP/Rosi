@@ -2,6 +2,7 @@ module Checker.Promote where
 
 import Control.Monad
 import Control.Monad.Reader
+import Data.List
 
 import Checker.Monad
 import Checker.Types        hiding (trace)
@@ -82,21 +83,23 @@ promoteN v n (TMap t) = liftM TMap <$> promoteN v n t
 promoteN v n (TCompl y z) = liftM2 TCompl <$> promoteN v n y <*> promoteN v n z
 promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promoteN v m t
   where promoteIs :: MonadCheck m => Insts -> m (Maybe Insts)
-        promoteIs is@(Unknown n' g@(Goal (s, r))) =
+        promoteIs is = liftM concat . sequence <$> mapM promoteI is
+        promoteI :: MonadCheck m => Inst -> m (Maybe Insts)
+        promoteI (TyArg t)    = liftM (singleton . TyArg) <$> promoteN v n t
+        promoteI i@(PrArg v)  = return (Just [i])
+        promoteI (TyPack t)   =liftM (singleton . TyPack) <$> promoteN v n t
+        promoteI i@(PrPack v) = return (Just [i])
+        promoteI i@(Unknown n' g@(Goal (s, r))) =
           do mis <- readRef r
              case mis of
                Just is -> promoteIs (shiftIsV [] 0 n' is)
                Nothing
-                 | n' >= n   -> return (Just $ Unknown (n' - n) g)
+                 | n' >= n   -> return (Just [Unknown (n' - n) g])
                  | otherwise -> do r' <- newRef Nothing
                                    s' <- fresh s
                                    let newIs n = Unknown n (Goal (s', r'))
-                                   writeRef r (Just (newIs (n - n')))
-                                   return (Just (newIs 0))
-        promoteIs (Known is) = liftM Known . sequence <$> mapM promoteI is
-        promoteI :: MonadCheck m => Inst -> m (Maybe Inst)
-        promoteI (TyArg t)   = liftM TyArg <$> promoteN v n t
-        promoteI i@(PrArg v) = return (Just i)
+                                   writeRef r (Just [newIs (n - n')])
+                                   return (Just [newIs 0])
 promoteN v n (TMapApp f) = liftM TMapApp <$> promoteN v n f
 promoteN v n t = error $ "promote: missing " ++ show t
 

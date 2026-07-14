@@ -189,23 +189,20 @@ instance Printable Ty where
     do b <- asks printMaps
        if b then "map_arg" <+> ppr t else ppr t
   ppr TString = "String"
-  ppr (TInst (Unknown n (Goal (s, r))) t) =
+  ppr (TInst is t) =
     do b <- asks printInstantiations
        if b
-       then do minst <- liftIO $ readIORef r
-               case minst of
-                 Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
-                 Just is -> ppr (TInst is t)
-       else ppr t
-  ppr (TInst (Known is) t) =
-    do b <- asks printInstantiations
-       if b
-       then do with 3 $ fillSep (map pprI is ++ [ppr t])
+       then do with 3 $ fillSep (brackets (sep (punctuate "," (map pprI is))) : [ppr t])
        else ppr t
     where pprI (TyArg t)  = "@" <> parens (ppr t)
           pprI (PrArg _)  = mempty
           pprI (TyPack t) = "@!" <> parens (ppr t)
           pprI (PrPack _) = mempty
+          pprI (Unknown n (Goal (s, r))) =
+            do minst <- liftIO $ readIORef r
+               case minst of
+                 Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
+                 Just is -> ppr (TInst is t)
 
   ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr (TPlus y z) = fillSep [parens (ppr y) <+> "+", parens (ppr z)] -- oops, need a precedence table...
@@ -283,16 +280,16 @@ instance Printable Term where
     with 1 $ fillSep [at 2 (ppr e1), "~", ppr e2]
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
   ppr m@(ETyLam {}) = with 0 $ collectBinders m
-  ppr (EInst m (Known is)) = with 4 $ fillSep (ppr m : map pprI is) where
+  ppr (EInst m is) = with 4 $ ppr m <+> brackets (sep (punctuate "," (map pprI is))) where
     pprI (TyArg t)  = "@" <> parens (ppr t)
     pprI (PrArg _)  = mempty
     pprI (TyPack t) = "@!" <> parens (ppr t)
     pprI (PrPack _) = mempty
-  ppr (EInst m (Unknown n (Goal (s, r)))) =
-    do minst <- liftIO $ readIORef r
-       case minst of
-         Nothing -> with 4 (fillSep [ppr m, brackets (ppre s)])
-         Just is -> ppr (EInst m is)
+    pprI (Unknown n (Goal (s, r))) =
+      do minst <- liftIO $ readIORef r
+         case minst of
+           Nothing -> ppre s
+          --  Just is -> commaSep (map pprI is)
   ppr (ESing t) = "#" <> at 4 (ppr t)
   ppr (ELabel Nothing l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)])
   ppr (ELabel (Just k) l m) = with 3 (fillSep [ppr l <+> ":=" <> ppr k, at 3 (ppr m)])

@@ -7,6 +7,8 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Bifunctor       (first)
+import Data.Sequence        (Seq (Empty, (:<|), (:|>)))
+import Data.Sequence        qualified as S
 
 import Checker.Monad
 import Checker.Normalize
@@ -114,6 +116,16 @@ requireEq t u =
             require (PEq t u) v
             return (VGoal (Goal ("q", v)))
 
+data InstantiationStep = Progress Ty (Seq Inst) Ty | Defer | Inapplicable
+  deriving Show
+
+instance Semigroup (UnifyM InstantiationStep) where
+  m <> n =
+    do result <- m
+       case result of
+         Inapplicable -> n
+         _            -> return result
+
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify' actual expected =
   do trace ("4 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
@@ -140,14 +152,12 @@ unifyInstantiating t u unify =
          (uis, u'') = insts u'
          nuqs       = length (fst (forallQuants u''))
      case (t', u') of
-       (TInst (Unknown _ g) t'', TInst (Unknown _ g') u'')
+       (TInst [Unknown _ g] t'', TInst [Unknown _ g'] u'')
          | goalRef g == goalRef g' -> unify t'' u''
-       (TForall {}, TInst (Unknown {}) (TUnif {})) ->
-         unificationFails t u
-       (TExists {}, TInst (Unknown {}) (TUnif {})) ->
+       (TForall {}, TInst [Unknown {}] (TUnif {})) ->
          unificationFails t u
        _
-         | Just matches <- match uis (take (length tqs - nuqs) tqs) ->
+         | Just matches <- match (uis) (take (length tqs - nuqs) tqs) ->
              do trace $ unlines ["unifyInstantiating:", "    " ++ show (forallQuants t'), "    " ++ show (insts u'), "    " ++ show matches]
                 t'' <- instantiates matches t'
                 unify t'' u''
@@ -155,15 +165,15 @@ unifyInstantiating t u unify =
              do trace $ "7 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u
                 unificationFails t u
   where
-    match :: [Insts] -> [Quant] -> Maybe [Either Inst (Int, Goal Insts, [Quant])]
+    match :: Seq Inst -> [Quant] -> Maybe [Either Inst (Int, Goal Insts, [Quant])]
 
-    match [] [] =
+    match Empty [] =
       return []
 
-    match [Unknown n g] qs =
+    match (Unknown n g :<| Empty) qs =
       return [Right (n, g, qs)]
 
-    match (Unknown n g : is@(Known (TyArg _ : _) : _)) qs =
+    match (Unknown n g :<| is@(TyArg _ :<| _)) qs =
       (Right (n, g, here) :) <$> match is there
       where
         untilForall qs@(QuForall {} : _) = ([], qs)
@@ -172,18 +182,12 @@ unifyInstantiating t u unify =
 
         (here, there) = untilForall qs
 
-    match (Unknown n g : is@(Unknown {} : _)) qs
+    match (Unknown n g :<| is@(Unknown {} :<| _)) qs
       | QuForall {} : _ <- qs = Nothing
       | otherwise             = (Right (n, g, []) :) <$> match is qs
 
-    match (Known ks : is) qs =
-      do (ms, qs') <- matchKnown ks qs
-         (ms ++) <$> match is qs'
-      where
-        matchKnown [] qs                              = Just ([], qs)
-        matchKnown (TyArg t : is) (QuForall _ k : qs) = first (Left (TyArg t) :) <$> matchKnown is qs
-        matchKnown (PrArg v : is) (QuThen _ : qs)     = first (Left (PrArg v) :) <$> matchKnown is qs
-        matchKnown _ _                                = Nothing
+    match (TyArg t :<| is) (QuForall _ k : qs) = (Left (TyArg t) :) <$> match is qs
+    match (PrArg v :<| is) (QuThen _ : qs)     = (Left (PrArg v) :) <$> match is qs
 
     match _ _ = Nothing
 
@@ -207,7 +211,7 @@ unifyInstantiating t u unify =
     instantiates (Right (n, Goal (ivar, r), qs) : is) t =
       do (is', t') <- instantiate (length qs) n t
          trace $ "instantiating " ++ ivar ++ " to " ++ show is'
-         writeRef r (Just (Known is'))
+         writeRef r (Just is')
          instantiates is t'
       where
         instantiate :: Int -> Int -> Ty -> UnifyM ([Inst], Ty)
@@ -227,17 +231,34 @@ unifyInstantiating t u unify =
     instantiates is t =
       error $ "4 ruh-roh: (" ++ show is ++ ") (" ++ show t ++ ")"
 
+    ---------------------------------------------------------------------------
+    -- Universals
+    ---------------------------------------------------------------------------
+    --
+    -- Returns `Nothing` if `universals` isn't applicable here. Unifications
+    -- failures are reported in the `UnifyM` monad directly.
+
+    universals :: Ty -> Seq Inst -> Ty -> UnifyM (Maybe (Ty, Seq Inst, Ty))
+    universals (TForall _ Nothing _) _ _ =
+      error "Unannoted forall in instantiation!"
+    universals (TForall _ (Just k) t) (TyArg s :<| is) u =
+      do u' <- liftToUnifyM . toCheckM $ checkTy s k
+         t' <- subst 0 (shiftTN 0 1 u') t
+         return (Just (t', is, u))
+    -- universals (TForall {}) (Unknonw)
+
+
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify0 (TVar i _) (TVar j _)
   | i == j = return VEqRefl
 unify0 (TUnif v) (TUnif w)
   | uvShift v == uvShift w, goalRef (uvGoal v) == goalRef (uvGoal w) = return VEqRefl
 -- These next cases are totally not ad hoc nonsense
-unify0 (TUnif v) (TInst (Unknown 0 (Goal (_, r))) (TUnif w))
-  | v == w = do writeRef r (Just (Known []))
+unify0 (TUnif v) (TInst [Unknown 0 (Goal (_, r))] (TUnif w))
+  | v == w = do writeRef r (Just [])
                 return VEqRefl
-unify0 (TInst (Unknown 0 (Goal (_, r))) (TUnif w)) (TUnif v)
-  | v == w = do writeRef r (Just (Known []))
+unify0 (TInst [Unknown 0 (Goal (_, r))] (TUnif w)) (TUnif v)
+  | v == w = do writeRef r (Just [])
                 return VEqRefl
 unify0 actual t@(TUnif v@(UV n lref (Goal (uvar, r)) k)) =
   do mt <- readRef r
@@ -263,7 +284,7 @@ unify0 actual@(TUnif v@(UV n lref (Goal (uvar, r)) k)) expected =
                       Nothing -> unificationFails actual expected
                       Just q  -> return q
             else unificationFails actual expected
-unify0 (TInst (Unknown n i1) t) (TInst (Unknown n' i2) u)
+unify0 (TInst [Unknown n i1] t) (TInst [Unknown n' i2] u)
   | n == n' && i1 == i2 = unify' t u
 unify0 t u@(TInst {}) =
   do mq <- try $ unifyInstantiating t u unify'

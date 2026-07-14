@@ -160,12 +160,12 @@ instance HasVars Term where
   scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l
   scope (ELet x m n) = ELet x <$> scope m <*> bindVar x Nothing (scope n)
   scope (ETyped m t) = ETyped <$> scope m <*> scope t
-  scope (EInst m (Known is)) = EInst <$> scope m <*> (Known <$> mapM scopeI is) where
-    scopeI (TyArg t)  = TyArg <$> scope t
-    scopeI (PrArg v)  = return (PrArg v)
-    scopeI (TyPack t) = TyPack <$> scope t
-    scopeI (PrPack v) = return (PrPack v)
-  scope (EInst m (Unknown n g)) = EInst <$> scope m <*> return (Unknown n g) -- how is this case actually possible?
+  scope (EInst m is) = EInst <$> scope m <*> (mapM scopeI is) where
+    scopeI (TyArg t)     = TyArg <$> scope t
+    scopeI (PrArg v)     = return (PrArg v)
+    scopeI (TyPack t)    = TyPack <$> scope t
+    scopeI (PrPack v)    = return (PrPack v)
+    scopeI (Unknown n g) = return (Unknown n g)
   scope e@(EStringLit {}) = return e
   scope e@(EHole {}) = return e
   -- These shouldn't have been created yet

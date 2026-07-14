@@ -4,6 +4,8 @@ import Control.Monad.IO.Class
 import Data.Bifunctor         (first)
 import Data.Generics          hiding (Fixity (..), GT, TyCon)
 import Data.IORef
+import Data.List              (singleton)
+import Data.Sequence          hiding (singleton)
 import GHC.Stack
 
 --------------------------------------------------------------------------------
@@ -163,11 +165,13 @@ unitTy = TConApp Pi (TRow [])
 boolTy :: Ty
 boolTy = TConApp Sigma (TRow [TLabeled (TLab "False") unitTy, TLabeled (TLab "True") unitTy])
 
-data Inst = TyArg Ty | PrArg Evid | TyPack Ty | PrPack Evid
+data Inst = TyArg Ty | PrArg Evid | TyPack Ty | PrPack Evid | Unknown Int (Goal Insts)
   deriving (Data, Eq, Show, Typeable)
 
-data Insts = Known [Inst] | Unknown Int (Goal Insts)
-  deriving (Data, Eq, Show, Typeable)
+type Insts = [Inst]
+
+-- data Insts = Known [Inst] | Unknown Int (Goal Insts)
+--   deriving (Data, Eq, Show, Typeable)
 
 infixr 4 `TThen`
 
@@ -196,12 +200,12 @@ tvFreeIn ns (TMap t)        = tvFreeIn ns t
 tvFreeIn ns (TCompl t u)    = tvFreeIn ns t || tvFreeIn ns u
 tvFreeIn ns TString         = False
 tvFreeIn ns (TInst is t)    = tvFreeInIs is || tvFreeIn ns t where
-  tvFreeInIs (Unknown {}) = False
-  tvFreeInIs (Known is)   = any tvFreeInI is
-  tvFreeInI (TyArg t)   = tvFreeIn ns t
-  tvFreeInI (PrArg {})  = False
-  tvFreeInI (TyPack t)  = tvFreeIn ns t
-  tvFreeInI (PrPack {}) = False
+  tvFreeInIs             = any tvFreeInI
+  tvFreeInI (TyArg t)    = tvFreeIn ns t
+  tvFreeInI (PrArg {})   = False
+  tvFreeInI (TyPack t)   = tvFreeIn ns t
+  tvFreeInI (PrPack {})  = False
+  tvFreeInI (Unknown {}) = False
 tvFreeIn ns (TMapApp t)     = tvFreeIn ns t
 tvFreeIn ns (TPlus y z)     = tvFreeIn ns y || tvFreeIn ns z
 tvFreeIn ns (TConOrd _ _ t) = tvFreeIn ns t
@@ -297,9 +301,9 @@ quantify (QuThen p : qus) t     = TThen p (quantify qus t)
 quantify (QuExists x k : qus) t = TExists x (Just k) (quantify qus t)
 quantify (QuExistsP p : qus) t  = TExistsP p (quantify qus t)
 
-insts :: Ty -> ([Insts], Ty)
-insts (TInst is t) = first (is :) (insts t)
-insts t            = ([], t)
+insts :: Ty -> (Seq Inst, Ty)
+insts (TInst is t) = first (fromList is ><) (insts t)
+insts t            = (Empty, t)
 
 spine :: Ty -> (Ty, [Ty])
 spine (TApp f t) = (f', ts ++ [t])
@@ -371,16 +375,16 @@ flattenP (PFold z) =
   PFold <$> flattenT z
 
 flattenIs :: MonadIO m => Insts -> m Insts
-flattenIs is@(Unknown n (Goal (s, r))) =
-  do mis <- liftIO $ readIORef r
-     case mis of
-       Nothing -> return is
-       Just is -> flattenIs (shiftIsV [] 0 n is)
-flattenIs (Known is) = Known <$> mapM flattenI is
-  where flattenI (TyArg t)  = TyArg <$> flattenT t
-        flattenI (PrArg v)  = PrArg <$> flattenV v
-        flattenI (TyPack t) = TyPack <$> flattenT t
-        flattenI (PrPack v) = PrPack <$> flattenV v
+flattenIs is = concat <$> mapM flattenI is where
+  flattenI (TyArg t)  = singleton . TyArg <$> flattenT t
+  flattenI (PrArg v)  = singleton . PrArg <$> flattenV v
+  flattenI (TyPack t) = singleton . TyPack <$> flattenT t
+  flattenI (PrPack v) = singleton . PrPack <$> flattenV v
+  flattenI (Unknown n (Goal (s, r))) =
+    do mis <- liftIO $ readIORef r
+       case mis of
+         Nothing -> return is
+         Just is -> flattenIs (shiftIsV [] 0 n is)
 
 -- shiftTNV vs j n t shifts variables, but *not uvars in `vs`*, at or above `j`
 -- up by `n`
@@ -420,12 +424,12 @@ shiftTN :: HasCallStack => Int -> Int -> Ty -> Ty
 shiftTN = shiftTNV []
 
 shiftIsV :: [UVar] -> Int -> Int -> Insts -> Insts
-shiftIsV vs j n (Unknown n' ig) = Unknown (n + n') ig
-shiftIsV vs j n (Known is) = Known (map shiftI is) where
-  shiftI (TyArg t)  = TyArg (shiftTNV vs j n t)
-  shiftI (PrArg v)  = PrArg v
-  shiftI (TyPack t) = TyPack (shiftTNV vs j n t)
-  shiftI (PrPack v) = PrPack v
+shiftIsV vs j n = map shiftI where
+  shiftI (TyArg t)       = TyArg (shiftTNV vs j n t)
+  shiftI (PrArg v)       = PrArg v
+  shiftI (TyPack t)      = TyPack (shiftTNV vs j n t)
+  shiftI (PrPack v)      = PrPack v
+  shiftI (Unknown n' ig) = Unknown (n + n') ig
 
 shiftPNV :: [UVar] -> Int -> Int -> Pred -> Pred
 shiftPNV vs j n (PEq t u)     = PEq (shiftTNV vs j n t) (shiftTNV vs j n u)
@@ -506,8 +510,8 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
   flattenInsts (EInst m is) =
     do is' <- flattenIs is
        case is' of
-         Known [] -> return m
-         _        -> return (EInst m is')
+         [] -> return m
+         _  -> return (EInst m is')
   flattenInsts m            = return m
 
 hasHoles :: Term -> Bool

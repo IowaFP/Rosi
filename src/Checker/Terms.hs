@@ -56,7 +56,7 @@ elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
 elimForm expected k =
   do iv <- newRef Nothing
      name <- fresh "i"
-     flip EInst (Unknown 0 (Goal (name, iv))) <$> k (TInst (Unknown 0 (Goal (name, iv))) expected)
+     flip EInst [Unknown 0 (Goal (name, iv))] <$> k (TInst [Unknown 0 (Goal (name, iv))] expected)
 
 checkTerm0 :: Term -> Ty -> CheckM Term
 checkTerm0 (ETyLam v Nothing e) expected =
@@ -81,11 +81,11 @@ checkTerm0 _ (TExists _ Nothing _) =
 checkTerm0 e (TExists v (Just k) t) =
   do x <- typeGoalWithLevel' "x" k Top
      t' <- subst 0 x t
-     flip EInst (Known [TyPack x]) <$> checkTerm e (shiftTN 0 (-1) t')
+     flip EInst [TyPack x] <$> checkTerm e (shiftTN 0 (-1) t')
 checkTerm0 e (TExistsP p t) =
   do v <- newRef Nothing
      require p v
-     flip EInst (Known [PrPack (VGoal (Goal ("v", v)))]) <$> checkTerm e t
+     flip EInst [PrPack (VGoal (Goal ("v", v)))] <$> checkTerm e t
 checkTerm0 e0@(EPrLam p e) expected =
   do tcod <- expectedGoal "cod"
      q <- expectT e0 (TThen p tcod) expected
@@ -158,17 +158,12 @@ checkTerm0 e0@(EApp f e) expected =
        EApp <$>
          checkTerm f (funTy tdom expected) <*>
          checkTerm' e tdom
-checkTerm0 e0@(EInst e (Unknown _ ig)) expected =
-  -- Unknown instantiations should be *introduced* during type checking, so how
-  -- are we trying to type check one...?
-  fail $ "in " ++ show e0 ++ ": unexpected instantiation hole in type checking"
 checkTerm0 e0@(EInst e is) expected =
   do is' <- checkInsts is
      elimForm expected $ \expected ->
        EInst <$> checkTerm e (TInst is' expected) <*> pure is'
   where checkInsts :: Insts -> CheckM Insts
-        checkInsts (Unknown _ _) = error "internal: why am I type checking an unknown instantiation?"
-        checkInsts (Known is)    = Known <$> mapM checkInst is
+        checkInsts is    = mapM checkInst is
         checkInst :: Inst -> CheckM Inst
         checkInst (TyArg t) =
           do k <- kindGoal "k"
@@ -176,6 +171,14 @@ checkTerm0 e0@(EInst e is) expected =
              return (TyArg t')
         checkInst (PrArg _) =
           error "internal: why am I type checking a predicate instantiation?"
+        checkInst (TyPack t) =
+          do k <- kindGoal "k"
+             (t', q) <- normalize [] =<< toCheckM (checkTy' e0 t k)
+             return (TyPack t')
+        checkInst (PrPack _) =
+          error "internal: why am I type checking a predicate pack?"
+        checkInst (Unknown {}) =
+          error "internal: why am I type checking an unknown instantiation?"
 checkTerm0 e0@(ESing t) expected =
   do t' <- toCheckM . checkTy' e0 t =<< kindGoal "k"
      q <- expectT e0 (TSing t') expected
@@ -198,8 +201,8 @@ checkTerm0 e@(EConst c) expected =
   do ir <- newRef Nothing
      t <- constType c
      name <- fresh "i"
-     q <- expectT e t (TInst (Unknown 0 (Goal (name, ir))) expected)
-     return (wrap q $ EInst e (Unknown 0 (Goal (name, ir))))
+     q <- expectT e t (TInst [Unknown 0 (Goal (name, ir))] expected)
+     return (wrap q $ EInst e [Unknown 0 (Goal (name, ir))])
   where -- This is necessary because I don't yet support kind polymorphism, so I can't express the
         -- types of the constants directly
         constType CPrj =
@@ -365,10 +368,12 @@ generalize topLevel e =
         uvars level (TConApp k t) = uvars level t
         uvars level (TMap t) = uvars level t
         uvars level (TInst is t) = cat <$> isuvars is <*> uvars level t where
-          isuvars (Unknown {}) = return []
-          isuvars (Known is)   = foldl cat [] <$> mapM iuvars is
-          iuvars (TyArg t)  = uvars level t
-          iuvars (PrArg {}) = return []
+          isuvars is           = foldl cat [] <$> mapM iuvars is
+          iuvars (TyArg t)    = uvars level t
+          iuvars (PrArg {})   = return []
+          iuvars (TyPack t)   = uvars level t
+          iuvars (PrPack {})  = return []
+          iuvars (Unknown {}) = return []
         uvars level (TMapApp t) = uvars level t
         uvars _ TString = return []
         uvars level (TCompl t1 t2) = cat <$> uvars level t1 <*> uvars level t2
@@ -425,10 +430,10 @@ generalize topLevel e =
                case mu of
                  Just u  -> fixInsts u >> return t
                  Nothing -> return t
-          fixInst t@(TInst (Unknown _ (Goal (_, iref))) _) =
+          fixInst t@(TInst [Unknown _ (Goal (_, iref))] _) =
             do mi <- readRef iref
                case mi of
-                 Nothing -> do writeRef iref (Just (Known []))
+                 Nothing -> do writeRef iref (Just [])
                                return t
                  _       -> return t
           fixInst t = return t

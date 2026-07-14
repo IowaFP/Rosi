@@ -40,14 +40,16 @@ instance HasTyVars Ty where
   subst v t (TRow us) = TRow <$> mapM (subst v t) us
   subst v t (TConApp k u) = TConApp k <$> subst v t u
   subst v t (TCompl y x) = TCompl <$> subst v t y <*> subst v t x
-  subst v t (TInst (Known is) u) = TInst <$> (Known <$> mapM substI is) <*> subst v t u where
-    substI (TyArg u) = TyArg <$> subst v t u
-    substI (PrArg v) = return (PrArg v)
-  subst v t (TInst i@(Unknown n (Goal (_, r))) u) =
-    do minst <- readRef r
-       case minst of
-         Nothing -> TInst i <$> subst v t u
-         Just is -> subst v t (TInst (shiftIsV [] 0 n is) u)
+  subst v t (TInst is u) = TInst <$> (concat <$> mapM substI is) <*> subst v t u where
+    substI (TyArg u) = singleton . TyArg <$> subst v t u
+    substI (PrArg v) = return [PrArg v]
+    substI (TyPack u) = singleton . TyPack <$> subst v t u
+    substI (PrPack v) = return [PrPack v]
+    substI i@(Unknown n (Goal (_, r))) =
+      do minst <- readRef r
+         case minst of
+           Nothing -> return [i]
+           Just is -> concat <$> mapM substI is
   subst v t (TMap f) = TMap <$> subst v t f
   subst v t (TMapApp f) = TMapApp <$> subst v t f
   subst v t TString = return TString
@@ -189,19 +191,20 @@ normalize eqns (TCompl x y) =
          , Just yls <- mapM label ys
          , all (`elem` xls) yls -> return (TRow [TLabeled l t | TLabeled l t <- xs, l `notElem` yls], VEqTrans (VEqComplCong q q') VEqCompl)
        _ -> return (TCompl x' y', VEqComplCong q q')
-normalize eqns (TInst ig@(Unknown n (Goal (s, r))) t) =
-  do minsts <- readRef r
-     case minsts of
-       Nothing -> first (TInst ig) <$> normalize eqns t
-       Just is -> normalize eqns (TInst is t)
-normalize eqns (TInst (Known []) t) =
+normalize eqns (TInst [] t) =
   normalize eqns t
-normalize eqns (TInst (Known is) t) =
-  do is' <- mapM normI is
-     first (TInst (Known (map fst is'))) <$> normalize eqns t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
-  where normI (TyArg t) = first TyArg <$> normalize eqns t
-        normI (PrArg v) =
-          return (PrArg v, VEqRefl)
+normalize eqns (TInst is t) =
+  do is' <- concat <$> mapM normI is
+     first (TInst (map fst is')) <$> normalize eqns t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
+  where normI (TyArg t)  = singleton . first TyArg <$> normalize eqns t
+        normI (PrArg v)  = return [(PrArg v, VEqRefl)]
+        normI (TyPack t) = singleton . first TyPack <$> normalize eqns t
+        normI (PrPack v) = return [(PrPack v, VEqRefl)]
+        normI i@(Unknown n (Goal (s, r))) =
+          do minsts <- readRef r
+             case minsts of
+               Nothing -> return [(i, VEqRefl)]
+               Just is -> concat <$> mapM normI is
 normalize eqns (TThen p t) =
   do p' <- normalizeP eqns p
      (t', q) <- normalize eqns t
