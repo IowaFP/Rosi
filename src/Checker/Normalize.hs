@@ -7,6 +7,7 @@ import Data.Maybe
 
 import Checker.Monad
 import Checker.Utils
+import Printer
 import Syntax
 
 import GHC.Stack
@@ -67,7 +68,7 @@ normalize' eqns t =
      theKCtxt <- asks kctxt
      case q of
        VEqRefl -> return (u, q)
-       _       -> do trace $ "normalize (" ++ show t ++ ") -->* (" ++ show u ++ ") in " ++ show theKCtxt
+       _       -> do trace $ "normalize (" ++ renderString (ppr t) ++ ") -->* (" ++ renderString (ppr u) ++ ")"
                      return (u, q)
 
 etaContract :: Ty -> (Ty, Evid)
@@ -193,11 +194,10 @@ normalize eqns (TCompl x y) =
        _ -> return (TCompl x' y', VEqComplCong q q')
 normalize eqns (TInst [] t) =
   normalize eqns t
--- normalize eqns t@(TInst {}) =
-normalize eqns (TInst is t') =
+normalize eqns t@(TInst {}) =
   do is' <- concat <$> mapM normI is
      first (TInst (map fst is')) <$> normalize eqns t'  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
-  where -- (is, t') = insts t
+  where (is, t') = insts t
         normI (TyArg t)  = singleton . first TyArg <$> normalize eqns t
         normI (PrArg v)  = return [(PrArg v, VEqRefl)]
         normI (TyPack t) = singleton . first TyPack <$> normalize eqns t

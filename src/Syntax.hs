@@ -282,17 +282,17 @@ rebindExists = flip (foldr (uncurry TExists))
 data Quant = QuForall String Kind | QuThen Pred | QuExists String Kind | QuExistsP Pred
   deriving (Data, Eq, Show, Typeable)
 
-forallQuants :: Ty -> ([Quant], Ty)
-forallQuants (TForall x (Just k) t) = first (QuForall x k :) (forallQuants t)
-forallQuants (TForall x Nothing t)  = error "quants: forall without kind"
-forallQuants (TThen p t)            = first (QuThen p :) (forallQuants t)
-forallQuants t                      = ([], t)
+univQuants :: Ty -> ([Quant], Ty)
+univQuants (TForall x (Just k) t) = first (QuForall x k :) (univQuants t)
+univQuants (TForall x Nothing t)  = error "quants: forall without kind"
+univQuants (TThen p t)            = first (QuThen p :) (univQuants t)
+univQuants t                      = ([], t)
 
-existsQuants :: Ty -> ([Quant], Ty)
-existsQuants (TExists x (Just k) t) = first (QuExists x k :) (existsQuants t)
-existsQuants (TExists x Nothing t)  = error "quants: exists without kind"
-existsQuants (TExistsP p t)         = first (QuExistsP p :) (existsQuants t)
-existsQuants t                      = ([], t)
+existQuants :: Ty -> ([Quant], Ty)
+existQuants (TExists x (Just k) t) = first (QuExists x k :) (existQuants t)
+existQuants (TExists x Nothing t)  = error "quants: exists without kind"
+existQuants (TExistsP p t)         = first (QuExistsP p :) (existQuants t)
+existQuants t                      = ([], t)
 
 quantify :: [Quant] -> Ty -> Ty
 quantify [] t                   = t
@@ -380,10 +380,10 @@ flattenIs is = concat <$> mapM flattenI is where
   flattenI (PrArg v)  = singleton . PrArg <$> flattenV v
   flattenI (TyPack t) = singleton . TyPack <$> flattenT t
   flattenI (PrPack v) = singleton . PrPack <$> flattenV v
-  flattenI (Unknown n (Goal (s, r))) =
+  flattenI i@(Unknown n (Goal (s, r))) =
     do mis <- liftIO $ readIORef r
        case mis of
-         Nothing -> return is
+         Nothing -> return [i]
          Just is -> flattenIs (shiftIsV [] 0 n is)
 
 -- shiftTNV vs j n t shifts variables, but *not uvars in `vs`*, at or above `j`
