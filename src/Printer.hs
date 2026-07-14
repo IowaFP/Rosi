@@ -202,7 +202,7 @@ instance Printable Ty where
             do minst <- liftIO $ readIORef r
                case minst of
                  Nothing -> "^" <> ppre n <> "%" <> ppre s
-                 Just is -> sep (punctuate "," (map pprI is))
+                 Just is -> sep (punctuate "," (map pprI $ shiftIsV [] 0 n is))
 
   ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr (TPlus y z) = fillSep [parens (ppr y) <+> "+", parens (ppr z)] -- oops, need a precedence table...

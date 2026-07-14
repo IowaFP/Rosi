@@ -219,10 +219,7 @@ unifyInstantiating t u unify =
         instantiate 0 _ t = return ([], t)
         instantiate n m (TForall x (Just k) t) =
           do u <- typeGoal' x k
-             t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) (shiftTN 0 m t)
-             t'' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
-             when (m /= 0) . trace $ "!!! instantiate: " ++ show n ++ " " ++ show m ++ " " ++ renderString (ppr (TForall x (Just k) t))
-             when (m /= 0) . trace $ "!!! " ++ renderString (ppr t') ++ " vs " ++ renderString (ppr t'')
+             t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 (1 + m) u) t
              (is', t'') <- instantiate (n - 1) m t'
              return (TyArg u : is', t'')
         instantiate n m (TThen p t) =
