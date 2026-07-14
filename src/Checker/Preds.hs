@@ -407,16 +407,16 @@ guesses prs =
     where (tcin, p, v) = prs !! i
 
   guessers :: [Guesser]
-  guessers = [{- guessInstInst, -} guessInst, guessAppApp, guessApp, guessMapLeq]
+  guessers = [guessInstInst, guessInst, guessAppApp, guessApp, guessMapLeq]
 
   guessInstInst, guessInst, guessAppApp, guessApp :: Guesser
 
-  guessInstInst pr@(tcin, PEq (TInst [Unknown {}] (TInst [Unknown _ (Goal (s, r))] _)) _, _) =
+  guessInstInst pr@(tcin, PEq (TInst [Unknown {}, Unknown _ (Goal (s, r))] _) _, _) =
     Just $
     do trace $ unwords ["guessing", s, ":= {}"]
        writeRef r (Just [])
        return [pr]
-  guessInstInst pr@(tcin, PEq _ (TInst [Unknown {}] (TInst [Unknown _ (Goal (s, r))] _)), v) =
+  guessInstInst pr@(tcin, PEq _ (TInst [Unknown {}, Unknown _ (Goal (s, r))] _), v) =
     Just $
     do trace $ unwords ["guessing", s, ":= {}"]
        writeRef r (Just [])

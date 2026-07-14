@@ -193,10 +193,12 @@ normalize eqns (TCompl x y) =
        _ -> return (TCompl x' y', VEqComplCong q q')
 normalize eqns (TInst [] t) =
   normalize eqns t
-normalize eqns (TInst is t) =
+-- normalize eqns t@(TInst {}) =
+normalize eqns (TInst is t') =
   do is' <- concat <$> mapM normI is
-     first (TInst (map fst is')) <$> normalize eqns t  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
-  where normI (TyArg t)  = singleton . first TyArg <$> normalize eqns t
+     first (TInst (map fst is')) <$> normalize eqns t'  -- TODO: should probably do something with the evidence here, but what. Not sure this case should even really be possible...
+  where -- (is, t') = insts t
+        normI (TyArg t)  = singleton . first TyArg <$> normalize eqns t
         normI (PrArg v)  = return [(PrArg v, VEqRefl)]
         normI (TyPack t) = singleton . first TyPack <$> normalize eqns t
         normI (PrPack v) = return [(PrPack v, VEqRefl)]
