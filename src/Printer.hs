@@ -142,7 +142,7 @@ getTupleContents _ _ = Nothing
 instance Printable Ty where
   ppr (TVar n x) = do pi <- asks printIndices
                       if pi
-                        then ppr x <> "@" <> ppre n
+                        then ppr x <> "_" <> ppre n
                         else ppr x
   ppr (TUnif v) = ppr v
   ppr TFun = "(->)"
@@ -201,8 +201,8 @@ instance Printable Ty where
           pprI (Unknown n (Goal (s, r))) =
             do minst <- liftIO $ readIORef r
                case minst of
-                 Nothing -> brackets ("^" <> ppre n <> "%" <> ppre s) <+> parens (ppr t)
-                 Just is -> ppr (TInst is t)
+                 Nothing -> "^" <> ppre n <> "%" <> ppre s
+                 Just is -> sep (punctuate "," (map pprI is))
 
   ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr (TPlus y z) = fillSep [parens (ppr y) <+> "+", parens (ppr z)] -- oops, need a precedence table...

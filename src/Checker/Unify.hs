@@ -7,6 +7,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Bifunctor       (first)
+import Data.Foldable
 import Data.Sequence        (Seq (Empty, (:<|), (:|>)))
 import Data.Sequence        qualified as S
 
@@ -116,7 +117,7 @@ requireEq t u =
             require (PEq t u) v
             return (VGoal (Goal ("q", v)))
 
-data InstantiationStep = Progress Ty (Seq Inst) Ty | Defer | Inapplicable
+data InstantiationStep = Progress Ty (Seq Inst) Ty | Defer | Inapplicable | Done Ty Ty
   deriving Show
 
 instance Semigroup (UnifyM InstantiationStep) where
@@ -148,9 +149,9 @@ unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM Evid) -> UnifyM Evid
 unifyInstantiating t u unify =
   do t' <- flattenT t
      u' <- flattenT u
-     let (tqs, _)   = forallQuants t'
+     let (tqs, _)   = univQuants t'
          (uis, u'') = insts u'
-         nuqs       = length (fst (forallQuants u''))
+         nuqs       = length (fst (univQuants u''))
      case (t', u') of
        (TInst [Unknown _ g] t'', TInst [Unknown _ g'] u'')
          | goalRef g == goalRef g' -> unify t'' u''
@@ -158,7 +159,7 @@ unifyInstantiating t u unify =
          unificationFails t u
        _
          | Just matches <- match (uis) (take (length tqs - nuqs) tqs) ->
-             do trace $ unlines ["unifyInstantiating:", "    " ++ show (forallQuants t'), "    " ++ show (insts u'), "    " ++ show matches]
+             do trace $ unlines ["unifyInstantiating:", "    " ++ show (univQuants t'), "    " ++ show (insts u'), "    " ++ show matches]
                 t'' <- instantiates matches t'
                 unify t'' u''
          | otherwise ->
@@ -219,6 +220,9 @@ unifyInstantiating t u unify =
         instantiate n m (TForall x (Just k) t) =
           do u <- typeGoal' x k
              t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) (shiftTN 0 m t)
+             t'' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
+             when (m /= 0) . trace $ "!!! instantiate: " ++ show n ++ " " ++ show m ++ " " ++ renderString (ppr (TForall x (Just k) t))
+             when (m /= 0) . trace $ "!!! " ++ renderString (ppr t') ++ " vs " ++ renderString (ppr t'')
              (is', t'') <- instantiate (n - 1) m t'
              return (TyArg u : is', t'')
         instantiate n m (TThen p t) =
@@ -234,18 +238,59 @@ unifyInstantiating t u unify =
     ---------------------------------------------------------------------------
     -- Universals
     ---------------------------------------------------------------------------
-    --
-    -- Returns `Nothing` if `universals` isn't applicable here. Unifications
-    -- failures are reported in the `UnifyM` monad directly.
 
-    universals :: Ty -> Seq Inst -> Ty -> UnifyM (Maybe (Ty, Seq Inst, Ty))
+    universals :: Ty -> Seq Inst -> Ty -> UnifyM InstantiationStep
     universals (TForall _ Nothing _) _ _ =
       error "Unannoted forall in instantiation!"
+    -- Match a forall against an explicit type argument and instantiate
     universals (TForall _ (Just k) t) (TyArg s :<| is) u =
       do u' <- liftToUnifyM . toCheckM $ checkTy s k
          t' <- subst 0 (shiftTN 0 1 u') t
-         return (Just (t', is, u))
-    -- universals (TForall {}) (Unknonw)
+         return (Progress t' is u)
+    -- An explicit type argument without an initial forall is a unification
+    -- failure.
+    universals t is@(TyArg _ :<| _) u =
+      unificationFails t (TInst (toList is) u)
+    -- Defer ambiguous instantiations
+    universals (TForall {}) (Unknown {} :<| Unknown {} :<| is) u =
+      return Defer
+    -- Defer instantiations of metavariables
+    universals (TUnif {}) _ u =
+      return Defer
+    -- If there's an instantiation before a type argument, and there are
+    -- predicates to be solved, solve them. This is weird corner case, but could
+    -- arise with a type like `forall x. P x => forall y. ...`
+    universals t (Unknown n g :<| is@(TyArg _ :<| _)) u =
+      do writeRef (goalRef g) . Just =<< mapM instantiate ps
+         return (Progress t' is u)
+      where (ps, t') = thens t
+            thens :: Ty -> ([Pred], Ty)
+            thens (TThen p t) = first (p :) (thens t)
+            thens t           = ([], t)
+            instantiate p =
+              do vr <- newRef Nothing
+                 require p vr
+                 return (PrArg (VGoal (Goal ("v", vr))))
+    universals t is u
+      -- Fewer forall-like quantifiers on the left than on the right. In this
+      -- case, we fall back on trying to unify the left and right-hand side
+      -- directly, after solving any remaining unification variables to the
+      -- empty sequence.
+      | length qts <= length qus =
+        do mapM_ solveEmpty is
+           return (Done t u)
+      | Unknown n g :<| is' <- is =
+        undefined
+
+      where (qts, t') = univQuants t
+            (qus, u') = univQuants u
+
+            solveEmpty (Unknown n g) =
+              writeRef (goalRef g) (Just [])
+            solveEmpty _ =
+              unificationFails t (TInst (toList is) u)
+
+
 
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid

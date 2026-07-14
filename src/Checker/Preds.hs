@@ -24,15 +24,15 @@ import GHC.Stack
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
-  do trace $ "Solving: " ++ show p ++ "\nin " ++ show (kctxt cin)
+  do trace $ "Solving: " ++ renderString (ppr p) ++ "\nin " ++ show (kctxt cin)
      as' <- mapM (normalizeP [] <=< flattenP) (pctxt cin)
-     when (not (null as')) $ trace ("Expanding " ++ show as')
+     unless (null as') $ trace ("Expanding " ++ show as')
      let as'' = expandAll (zip as' [VVar i | i <- [0..]])
      let eqns = pickEqns as''
-     when (not (null as'')) $ trace ("Expanded " ++ show as' ++ " to " ++ show as'')
-     when (not (null eqns)) $ trace ("Found equations " ++ show eqns)
+     unless (null as'') $ trace ("Expanded " ++ show as' ++ " to " ++ show as'')
+     unless (null eqns) $ trace ("Found equations " ++ show eqns)
      p' <- normalizeP eqns =<< flattenP p
-     trace ("Normalized goal to " ++ show p')
+     trace ("Normalized goal to " ++ renderString (ppr p'))
      mv <- everything as'' p'
      case mv of
        Just v  -> writeRef r (Just v) >> return True
@@ -59,9 +59,8 @@ solve (cin, p, r) =
     go (_ : ps)                       = go ps
 
   everything as p =
-    do trace ("Solving " ++ show p)
-       v <- byAssump as p <|> prim p <|> refl p <|> mapFunApp as p
-       trace ("Solved " ++ show p ++ " by " ++ show v)
+    do v <- byAssump as p <|> prim p <|> refl p <|> mapFunApp as p
+       trace ("Solved " ++ renderString (ppr p) ++ " by " ++ show v)
        return v
 
   -- TODO: this shouldn't be necessary any longer, as labels are stored in sorted order??
@@ -439,7 +438,7 @@ guesses prs =
                                , unwords ["refined goal to", show (PEq t''' u)] ]
                return [(tcin, PEq t''' u, v)]  -- TODO: is `v` here actually a solution to the original problem?
 
-            where (qus, t') = forallQuants t
+            where (qus, t') = univQuants t
                   foralls = takeWhile isForall qus
                   (xs, ks) = unzip [(x, k) | QuForall x k <- foralls]
                   t'' = quantify (drop (length foralls) qus) t'
