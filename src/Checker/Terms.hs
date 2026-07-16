@@ -351,6 +351,7 @@ generalize topLevel e =
                  | otherwise    -> return []
         uvars _ TFun = return []
         uvars level (TThen p t) = cat <$> puvars level p <*> uvars level t
+        uvars level (TExistsP p t) = cat <$> puvars level p <*> uvars level t
         uvars level (TForall _ _ t) = uvars level t
         uvars level (TExists _ _ t) = uvars level t
         uvars level (TLam _ _ t) = uvars level t

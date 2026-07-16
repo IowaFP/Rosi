@@ -63,3 +63,23 @@ updated = updateS ('1 := 2) ('1 := 1, '2 := 2)
 
 -- compare' : forall t. Comparer t -> Compare t
 compare' @t (@!v p : Comparer t) (x y : t) = p.'2 (p.'1 x : v) (p.'1 y : v)
+
+-- Okay this is dumb
+
+type Object : R[*] -> *
+type Object y = exists z. y < z => Pi z
+
+fullName : Object {'first := String, 'last := String} -> String
+fullName p = p.'first ^ " " ^ p.'last
+
+formalName : Object {'title := String, 'first := String, 'last := String} -> String
+formalName p = p.'title ^ " " ^ fullName p
+
+name = formalName ('title := "Dr", 'first := "Garrett", 'last := "Morris", 'office := "1E Jessup Hall")
+
+-- But this won't work.
+
+-- prof : Object {'title := String, 'first := String, 'last := String, 'office := String}
+-- prof = ('title := "Dr", 'first := "Garrett", 'last := "Morris", 'office := "1E Jessup Hall")
+
+-- name' = formalName prof
