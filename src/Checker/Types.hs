@@ -1,3 +1,4 @@
+{- HLINT ignore "Move brackets to avoid $" -}
 module Checker.Types where
 
 import Control.Monad
@@ -147,7 +148,10 @@ implicitConstraints topLevel t expected =
      tell there
      mapM_ (uncurry writeRef) insts
      return t4
-  where (bs, t') = tybinders t
+  where (binders, rebind)
+          | TExists {} <- t = (existsBinders, rebindExists)
+          | otherwise       = (forallBinders, rebindForall)
+        (bs, t') = binders t
         (xs, ks) = unzip bs
 
 --
@@ -164,7 +168,13 @@ checkTy0 (TThen pi t) expected =
   TThen <$>
     checkPred pi <*>
     (assume pi $ checkTy t expected)
+checkTy0 (TExistsP pi t) expected =
+  TExistsP <$>
+    checkPred pi <*>
+    (assume pi $ checkTy t expected)
 checkTy0 t@(TForall {}) expected =
+  implicitConstraints False t expected
+checkTy0 t@(TExists {}) expected =
   implicitConstraints False t expected
 checkTy0 t@(TLam x Nothing u) expected =
   do k <- kindGoal "d"
@@ -269,6 +279,8 @@ checkTy0 t@(TConOrd k rel u) expected =
               Leq -> PLeq z u'
               Geq -> PLeq u' z, v)]
      return (TConApp k z)
+checkTy0 t _ =
+  error $ "checkTy0: missing case " ++ show t
 
 checkPred :: Pred -> KindM Pred
 checkPred p@(PLeq y z) =

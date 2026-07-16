@@ -1,9 +1,10 @@
 {- HLINT ignore "Move brackets to avoid $" -}
-module Checker.Terms where
+module Checker.Terms (module Checker.Terms) where
 
 import Control.Monad
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
+import Data.Bifunctor
 import Data.Generics              (everywhereM, mkM)
 import Data.IORef
 import Data.List                  (intercalate)
@@ -51,11 +52,11 @@ checkTerm m t =
        return $ "checkTerm@" ++ show l ++ " (" ++ renderString (ppr m) ++ ") (" ++ renderString (ppr t') ++ ")"-- ") in (" ++ intercalate "," (map (renderString . ppr) g) ++ ")"
      typeErrorContext (ErrContextTerm m) $ checkTerm0 m t
 
-elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
-elimForm expected k =
+wrapInst :: Ty -> (Ty -> CheckM Term) -> CheckM Term
+wrapInst expected k =
   do iv <- newRef Nothing
      name <- fresh "i"
-     flip EInst (Unknown 0 (Goal (name, iv))) <$> k (TInst (Unknown 0 (Goal (name, iv))) expected)
+     flip EInst [Unknown 0 (Goal (name, iv))] <$> k (TInst [Unknown 0 (Goal (name, iv))] expected)
 
 checkTerm0 :: Term -> Ty -> CheckM Term
 checkTerm0 (ETyLam v Nothing e) expected =
@@ -66,8 +67,8 @@ checkTerm0 e0@(ETyLam v (Just k) e) expected =
      q <- expectT e0 (TForall v (Just k) tcod) expected
      wrap q . ETyLam v (Just k) <$>
        (upLevel $
-        bindTy k $
-          checkTerm' e tcod)
+       bindTy k $
+         checkTerm' e tcod)
 checkTerm0 _ (TForall v Nothing t) =
   error "checkTerm: forall without kind"
 checkTerm0 e (TForall v (Just k) t) =
@@ -77,15 +78,16 @@ checkTerm0 e (TForall v (Just k) t) =
        checkTerm (shiftEN 0 1 e) t)
 checkTerm0 e0@(EPrLam p e) expected =
   do tcod <- expectedGoal "cod"
-     q <- expectT e0 (TThen p tcod) expected
-     wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
+     wrapInst expected $ \expected ->
+       do q <- expectT e0 (TThen p tcod) expected
+          wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
 checkTerm0 e (TThen p t) =
   EPrLam p <$> assume p (checkTerm e t)
 checkTerm0 (EVar (-1) x) expected =
   typeError (ErrOther $ "scoping error: variable " ++ head x ++ " not resolved")
 checkTerm0 e@(EVar i v) expected =
   do t <- lookupVar i
-     elimForm expected $ \ expected ->
+     wrapInst expected $ \ expected ->
        do q <- expectT e t expected
           return (wrap q (EVar i v))
 checkTerm0 (ELam v Nothing e) expected =
@@ -94,24 +96,66 @@ checkTerm0 (ELam v Nothing e) expected =
 checkTerm0 e0@(ELam v (Just t) e) expected =
   do tcod <- expectedGoal "cod"
      t' <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
-     q <- expectT e0 (funTy t' tcod) expected
-     wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
+     wrapInst expected $ \expected ->
+       do q <- expectT e0 (funTy t' tcod) expected
+          tdom <- flattenT t'
+          case tdom of
+            TExists {} -> checkTerm (EExLam [] [] v (Just tdom) e) expected
+            _          -> do
+                              wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
+checkTerm0 e0@(EExLam xs _ y mt m) expected
+  | Nothing <- mt =
+    do tdom <- expectedGoal "dom"
+       tcod <- expectedGoal "cod"
+       xs' <- mapM addKinds xs
+       q <- expectT e0 (foldr (uncurry TExists) tdom xs' `funTy` tcod) expected
+       (existentials, (assumed, tdom')) <- second splitPreds . existsBinders <$> flattenT tdom
+       wrap q . EExLam (xs' ++ existentials) assumed y Nothing <$>
+         (upLevel $
+          bindTys (xs' ++ existentials) $
+          assumes assumed $
+          bind y tdom' $
+          checkTerm m (shiftTN 0 (length xs' + length existentials) tcod))
+  | Just t <- mt =
+    do tdom <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
+       tcod <- expectedGoal "cod"
+       xs' <- mapM addKinds xs
+       q <- expectT e0 (tdom `funTy` tcod) expected
+       (ys, (assumed, tdom')) <- second (splitPreds) . existsBinders <$> flattenT tdom
+       trace $ "! existentials: split " ++ renderString (ppr tdom) ++ " into " ++ show (ys, assumed, tdom')
+       wrap q . EExLam (xs' ++ drop (length xs') ys) assumed y Nothing <$>
+         (upLevel $
+          bindTys (xs' ++ drop (length xs') ys) $
+          assumes assumed $
+          bind y tdom' $
+          checkTerm m (shiftTN 0 (length ys) tcod))
+  where
+    addKinds (x, Just k) = return (x, Just k)
+    addKinds (x, Nothing) =
+      do k <- kindGoal "k"
+         return (x, Just k)
+
+    splitPreds (TExistsP p t) = first (p :) (splitPreds t)
+    splitPreds t              = ([], t)
+
+    bindTys [] m                 = m
+    bindTys ((_, Just k) : xs) m = bindTy k (bindTys xs m)
+
+    assumes [] m       = m
+    assumes (p : ps) m = assume p (assumes ps m)
+
 checkTerm0 e0@(EApp f e) expected =
   do tdom <- expectedGoal "dom"
-     elimForm expected $ \expected ->
+     wrapInst expected $ \expected ->
        EApp <$>
          checkTerm f (funTy tdom expected) <*>
          checkTerm' e tdom
--- Unknown instantiations should be *introduced* during type checking, so how are we trying to type check one...?
-checkTerm0 e0@(EInst e (Unknown _ ig)) expected =
-  fail $ "in " ++ show e0 ++ ": unexpected instantiation hole in type checking"
 checkTerm0 e0@(EInst e is) expected =
   do is' <- checkInsts is
-     elimForm expected $ \expected ->
+     wrapInst expected $ \expected ->
        EInst <$> checkTerm e (TInst is' expected) <*> pure is'
   where checkInsts :: Insts -> CheckM Insts
-        checkInsts (Unknown _ _) = error "internal: why am I type checking an unknown instantiation?"
-        checkInsts (Known is)    = Known <$> mapM checkInst is
+        checkInsts is    = mapM checkInst is
         checkInst :: Inst -> CheckM Inst
         checkInst (TyArg t) =
           do k <- kindGoal "k"
@@ -119,30 +163,40 @@ checkTerm0 e0@(EInst e is) expected =
              return (TyArg t')
         checkInst (PrArg _) =
           error "internal: why am I type checking a predicate instantiation?"
+        checkInst (TyPack t) =
+          do k <- kindGoal "k"
+             (t', q) <- normalize [] =<< toCheckM (checkTy' e0 t k)
+             return (TyPack t')
+        checkInst (PrPack _) =
+          error "internal: why am I type checking a predicate pack?"
+        checkInst (Unknown {}) =
+          error "internal: why am I type checking an unknown instantiation?"
 checkTerm0 e0@(ESing t) expected =
   do t' <- toCheckM . checkTy' e0 t =<< kindGoal "k"
-     q <- expectT e0 (TSing t') expected
-     return (wrap q (ESing t'))
+     wrapInst expected $ \expected ->
+       do q <- expectT e0 (TSing t') expected
+          return (wrap q (ESing t'))
 checkTerm0 e0@(ELabel Nothing el e) expected =
   do k <- ctorGoal "k"
      tl <- expectedGoal' "l" KLabel
      t <- expectedGoal "t"
-     q <- expectT e0 (TConApp k (TRow [TLabeled tl t])) expected
-     wrap q <$>
-       (ELabel (Just k) <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
+     wrapInst expected $ \expected ->
+       do q <- expectT e0 (TConApp k (TRow [TLabeled tl t])) expected
+          wrap q <$>
+            (ELabel (Just k) <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
 checkTerm0 e0@(EUnlabel Nothing e el) expected =
   do k <- ctorGoal "k"
      tl <- expectedGoal' "l" KLabel
      el' <- checkTerm el (TSing tl)
-     elimForm expected $ \expected ->
+     wrapInst expected $ \expected ->
        do e' <- checkTerm' e (TConApp k (TRow [TLabeled tl expected]))
           return (EUnlabel (Just k) e' el')
 checkTerm0 e@(EConst c) expected =
   do ir <- newRef Nothing
      t <- constType c
      name <- fresh "i"
-     q <- expectT e t (TInst (Unknown 0 (Goal (name, ir))) expected)
-     return (wrap q $ EInst e (Unknown 0 (Goal (name, ir))))
+     q <- expectT e t (TInst [Unknown 0 (Goal (name, ir))] expected)
+     return (wrap q $ EInst e [Unknown 0 (Goal (name, ir))])
   where -- This is necessary because I don't yet support kind polymorphism, so I can't express the
         -- types of the constants directly
         constType CPrj =
@@ -239,22 +293,22 @@ checkTerm0 e@(EConst c) expected =
 checkTerm0 e0@(ETyped e t) expected =
   do (t', _) <- normalize [] =<< toCheckM (checkTy' e0 t KType)
      e' <- checkTerm e t'  -- any reason to preserve the type ascription?
-     elimForm expected $ \expected ->
+     wrapInst expected $ \expected ->
        do q <- expectT e0 t' expected
           return (ECast e' q)
 checkTerm0 e0@(ELet x e f) expected =
   do (e', t) <- generalize False e
-     f' <- bind x t (elimForm expected (checkTerm f))
+     f' <- bind x t (wrapInst expected (checkTerm f))
      return (ELet x e' f')
 checkTerm0 e0@(EStringLit _) expected =
-  do expectT e0 TString expected
-     return e0
+  wrapInst expected $ \expected ->
+    do expectT e0 TString expected
+       return e0
 checkTerm0 e0@(EHole s) expected =
   do tcin <- ask
      tell (TCOut [] [(s, expected, tcin)])
      return e0
 checkTerm0 e0@((EInfix ss)) expected = error $ "internal: infix expression `" <> concatMap show ss <> "` should have been been desugared before type-checking."
-
 
 generalize :: Bool -> Term -> CheckM (Term, Ty)
 generalize topLevel e =
@@ -298,6 +352,7 @@ generalize topLevel e =
         uvars _ TFun = return []
         uvars level (TThen p t) = cat <$> puvars level p <*> uvars level t
         uvars level (TForall _ _ t) = uvars level t
+        uvars level (TExists _ _ t) = uvars level t
         uvars level (TLam _ _ t) = uvars level t
         uvars level (TApp t u) = cat <$> uvars level t <*> uvars level u
         uvars _ (TLab {}) = return []
@@ -307,10 +362,12 @@ generalize topLevel e =
         uvars level (TConApp k t) = uvars level t
         uvars level (TMap t) = uvars level t
         uvars level (TInst is t) = cat <$> isuvars is <*> uvars level t where
-          isuvars (Unknown {}) = return []
-          isuvars (Known is)   = foldl cat [] <$> mapM iuvars is
-          iuvars (TyArg t)  = uvars level t
-          iuvars (PrArg {}) = return []
+          isuvars is           = foldl cat [] <$> mapM iuvars is
+          iuvars (TyArg t)    = uvars level t
+          iuvars (PrArg {})   = return []
+          iuvars (TyPack t)   = uvars level t
+          iuvars (PrPack {})  = return []
+          iuvars (Unknown {}) = return []
         uvars level (TMapApp t) = uvars level t
         uvars _ TString = return []
         uvars level (TCompl t1 t2) = cat <$> uvars level t1 <*> uvars level t2
@@ -367,10 +424,10 @@ generalize topLevel e =
                case mu of
                  Just u  -> fixInsts u >> return t
                  Nothing -> return t
-          fixInst t@(TInst (Unknown _ (Goal (_, iref))) _) =
+          fixInst t@(TInst [Unknown _ (Goal (_, iref))] _) =
             do mi <- readRef iref
                case mi of
-                 Nothing -> do writeRef iref (Just (Known []))
+                 Nothing -> do writeRef iref (Just [])
                                return t
                  _       -> return t
           fixInst t = return t

@@ -26,13 +26,13 @@ functorId : Functor Id
 functorId = id
 
 functorConst : forall t. Functor (Const t)
-functorConst = \f. id
+functorConst f = id
 
 functorTwo : Functor (\t. Pair t t)
-functorTwo = \f x. pair (f (sel x '1)) (f (sel x '2))
+functorTwo f x = pair (f x.'1) (f x.'2)
 
 functorThree : Functor (\t. Triple t t t)
-functorThree = \f x. triple (f (sel x '1)) (f (sel x '2)) (f (sel x '3))
+functorThree f x = triple (f x.'1) (f x.'2) (f x.'3)
 
 functorBool : Pi (Functor BoolF)
 functorBool = ('BConst := functorConst, 'If := functorThree)

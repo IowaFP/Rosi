@@ -1,7 +1,9 @@
+{- HLINT ignore "Move brackets to avoid $" -}
 module Checker.Promote where
 
 import Control.Monad
 import Control.Monad.Reader
+import Data.List
 
 import Checker.Monad
 import Checker.Types        hiding (trace)
@@ -65,8 +67,11 @@ promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k
                 return (Just (newT m))
 promoteN v _ TFun = return (Just TFun)
 promoteN v n (TThen p t) = liftM2 TThen <$> promoteP v n p <*> promoteN v n t
+promoteN v n (TExistsP p t) = liftM2 TExistsP <$> promoteP v n p <*> promoteN v n t
 promoteN v n (TForall s (Just k) t) = liftM (TForall s (Just k)) <$> (atLevel 0 $ bindTy k $ promoteN v (n + 1) t)
 promoteN v n (TForall s Nothing t) = error "can't promote unkinded forall"
+promoteN v n (TExists s (Just k) t) = liftM (TExists s (Just k)) <$> (atLevel 0 $ bindTy k $ promoteN v (n + 1) t)
+promoteN v n (TExists s Nothing t) = error "can't promote unkinded exists"
 promoteN v n (TLam s (Just k) t) = liftM (TLam s (Just k)) <$> (atLevel 0 $ bindTy k $ promoteN v (n + 1) t)
 promoteN v n (TLam s Nothing t) = error "can't promote unkinded lambda"
 promoteN v n (TApp t u) = liftM2 TApp <$> promoteN v n t <*> promoteN v n u
@@ -80,21 +85,23 @@ promoteN v n (TMap t) = liftM TMap <$> promoteN v n t
 promoteN v n (TCompl y z) = liftM2 TCompl <$> promoteN v n y <*> promoteN v n z
 promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promoteN v m t
   where promoteIs :: MonadCheck m => Insts -> m (Maybe Insts)
-        promoteIs is@(Unknown n' g@(Goal (s, r))) =
+        promoteIs is = liftM concat . sequence <$> mapM promoteI is
+        promoteI :: MonadCheck m => Inst -> m (Maybe Insts)
+        promoteI (TyArg t)    = liftM (singleton . TyArg) <$> promoteN v n t
+        promoteI i@(PrArg v)  = return (Just [i])
+        promoteI (TyPack t)   =liftM (singleton . TyPack) <$> promoteN v n t
+        promoteI i@(PrPack v) = return (Just [i])
+        promoteI i@(Unknown n' g@(Goal (s, r))) =
           do mis <- readRef r
              case mis of
                Just is -> promoteIs (shiftIsV [] 0 n' is)
                Nothing
-                 | n' >= n   -> return (Just $ Unknown (n' - n) g)
+                 | n' >= n   -> return (Just [Unknown (n' - n) g])
                  | otherwise -> do r' <- newRef Nothing
                                    s' <- fresh s
                                    let newIs n = Unknown n (Goal (s', r'))
-                                   writeRef r (Just (newIs (n - n')))
-                                   return (Just (newIs 0))
-        promoteIs (Known is) = liftM Known . sequence <$> mapM promoteI is
-        promoteI :: MonadCheck m => Inst -> m (Maybe Inst)
-        promoteI (TyArg t)   = liftM TyArg <$> promoteN v n t
-        promoteI i@(PrArg v) = return (Just i)
+                                   writeRef r (Just [newIs (n - n')])
+                                   return (Just [newIs 0])
 promoteN v n (TMapApp f) = liftM TMapApp <$> promoteN v n f
 promoteN v n t = error $ "promote: missing " ++ show t
 

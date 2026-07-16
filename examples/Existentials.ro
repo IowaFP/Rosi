@@ -1,117 +1,65 @@
-import Ro.Base , Data.Nat, Data.Tuple
+import Ro.Base, Data.Tuple, Data.Nat
 
---------------------------------------------------------------------------------
+-- Comparer over existentially hidden key type, as required for orderBy
+type Comparer : * -> *
+type Comparer = \t. exists v. Pair (t -> v) (Compare v)
+
+compareField : {l := t} < z => #l -> Compare t -> Comparer (Pi z)
+compareField l f = pair .l f
+
+compare : Comparer t -> Compare t
+compare p x y = p.'2 (p.'1 x) (p.'1 y)
+
+
+
+compared  : Cmp
+compared  = compare (pair .'1 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+
+compared' : Cmp
+compared' = compare (pair .'2 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+
+comparedHO  : Cmp
+comparedHO  = compare (compareField '1 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+
+comparedHO' : Cmp
+comparedHO' = compare (compareField '2 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+
+-- Just playing with syntax
+
+type Bogus : * -> *
+type Bogus = \t. exists u v. Pi {'1 := t -> u, '2 := t -> v, '3 := u -> v -> Bool}
+
+bogoid : Bogus t -> t -> Bool
+bogoid @t (@!u p : Bogus t) x = p.'3 (p.'1 x) (p.'2 x)
+
+bogoid2 @t (p : Bogus t) x = p.'3 (p.'1 x) (p.'2 x)
+
+-- Can make implicit existential explicit...
+
+compareField' : forall z. {l := t} < z => #l -> Compare t -> Comparer (Pi z)
+compareField' @z l f = pack #(\v. Pair (Pi z -> v) (Compare v)) (pair (.l) f)
+
+-- Let's use some constraints
+
+type Subrecord : R[*] -> *
+type Subrecord z = exists y. y < z => Pi y
+
+updateS : Subrecord z -> Pi z -> Pi z
+updateS r s = upd r s
+
+updated = updateS ('1 := 2) ('1 := 1, '2 := 2)
+
+-- Typing fails, as it should: '3 is not contained in {'1 := Nat, '2 := Nat}
 --
+-- updated' : Pair Nat Nat
+-- updated' = updateS ('3 := 2) ('1 := 1, '2 := 2)
 
-type Ordering : R[*] -> *
-type Ordering = \r. forall z. (forall v. (Pi r -> v) -> Compare v -> z) -> z
+-- Variable escape?
+--
+-- Does generate an error, as would be hoped, but (unfortunately) is an internal
+-- error.
 
--- Intuitition: Ordering r = exists v. (Pi r -> v) /\ Compare v
--- Represented as eliminator
+-- escape @t (p : Comparer t) = p.'1
 
-orderByField : {l := t} < r => #l -> Compare t -> Ordering r
-orderByField = \l c f. f .l c
-
-orderRecords : Ordering r -> Compare (Pi r)
-orderRecords = \o x y. o (\p c. c (p x) (p y))
-
-hier' : Ordering r -> Ordering r -> Ordering r
-hier' = \o1 o2 @z f.
-         o1 (\@z1 p1 c1. o2 (\@z2 p2 c2.
-         f @(Pair z1 z2)
-           (\x. ('1 := p1 x, '2 := p2 x))
-           (\x y.
-             match (c1 x.'1 y.'1)
-             ( 'EQ: u -> c2 x.'2 y.'2
-             | inj
-             )
-           )
-         ))
-
--- We don't actually need any type information
-hier : Ordering r -> Ordering r -> Ordering r
-hier = \o1 o2. \f.
-        o1 (\p1 c1. o2 (\p2 c2.
-        f (\x. ('1 := p1 x, '2 := p2 x))
-          (\x y.
-            match (c1 x.'1 y.'1)
-            ( 'EQ: u -> c2 x.'2 y.'2
-            | inj
-            )
-          )
-        ))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
---------------------------------------------------------------------------------
--- Existentials in Haskell look like:
---   data Foo = forall a. Foo a
--- where there is a quantified type `a` "hidden" on the RHS.
--- the type Foo is isomorphic to an existential quantification. That is,
--- the types
---   data Foo : Set where
---     foo : forall (A : Set) -> A -> Fool
--- and
---   record Foo : Set where
---     field
---       A : Set
---       a : A
--- are isomorphic. A naive attempt at translation is simply incorrect.
---   type Foo : *
---   type Foo = Sigma {'foo := forall a. a}
--- Here we would need an inhabitant of (forall a. a) to populate Foo.
--- Instead, we need to encode existential quantification.
-
--- I suppose the silly thing about this is that Rosi doesn't
--- have nominal types. So we would like to write:
---   foo : forall a. a -> Foo
--- And, indeed, sans the use of type synonyms, this is immediate:
-
-foo : forall a. a -> Sigma {'foo := a}
-foo = \ a. (#'foo := a)
-
-fnat : Sigma {'foo := Nat}
-fnat = foo 2
-
-fbool : Sigma {'foo := Bool}
-fbool = foo True
-
--- By the Yoneda lemma, we have that the functor
---   type Foo : * -> *
---   type Foo = \ a. Sigma {'foo := a}
--- induces a bijection:
---   forall r. (a -> r) -> Sigma {'foo := r} ≃ Sigma {'foo := a}
--- We use this fact to eliminate the existential quantifier in
--- the type
---   data Foo = exists a. Foo a
--- More specifically:
---   Foo
--- = exists a. Sigma {'foo := a}
---   {Apply Yoneda to inside}
--- ≃ exists a. (forall r. (a -> r) -> Sigma {'foo := r})
---   {a occurs negatively}
--- ≃ forall r. (forall a. a -> r) -> Sigma {'foo := r}
-
-type Foo : *
-type Foo = forall r. (forall a. a -> r) -> Sigma {'foo := r}
-
-foo' : forall a. a -> Foo
-foo' = \ a f. (#'foo := f a)
-
-fnat' : Foo
-fnat' = foo' 2
-
-fbool' : Foo
-fbool' = foo' True
+-- compare' : forall t. Comparer t -> Compare t
+compare' @t (@!v p : Comparer t) (x y : t) = p.'2 (p.'1 x : v) (p.'1 y : v)

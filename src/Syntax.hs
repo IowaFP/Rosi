@@ -4,6 +4,8 @@ import Control.Monad.IO.Class
 import Data.Bifunctor         (first)
 import Data.Generics          hiding (Fixity (..), GT, TyCon)
 import Data.IORef
+import Data.List              (singleton)
+import Data.Sequence          hiding (singleton)
 import GHC.Stack
 
 --------------------------------------------------------------------------------
@@ -126,6 +128,8 @@ instance Show Level where
   show (Lv i) = show i
 
 data UVar = UV { uvShift :: Int, uvLevel :: Level, uvGoal :: Goal Ty, uvKind :: Kind }
+  -- we essentially have a delayed shift call here: UV n l g k delays a
+  -- shift of variables by n
   deriving (Data, Show, Typeable)
 
 instance Eq UVar where
@@ -144,11 +148,11 @@ data TyOrdering = Leq | Geq
   deriving (Data, Eq, Show, Typeable)
 
 data Ty =
-    TVar Int QName
-  | TUnif UVar
-    -- we essentially have a delayed shiftTN call here: TUnif n l g k delays a shift of variables by n
-  | TFun | TThen Pred Ty | TForall String (Maybe Kind) Ty | TLam String (Maybe Kind) Ty | TApp Ty Ty
-  | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TConApp TyCon Ty
+    TVar Int QName | TUnif UVar
+  | TForall String (Maybe Kind) Ty | TThen Pred Ty
+  | TExists String (Maybe Kind) Ty | TExistsP Pred Ty
+  | TLam String (Maybe Kind) Ty | TApp Ty Ty
+  | TFun | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TConApp TyCon Ty
   | TMap Ty | TCompl Ty Ty
   | TString
   -- Internals and temporaries
@@ -161,11 +165,13 @@ unitTy = TConApp Pi (TRow [])
 boolTy :: Ty
 boolTy = TConApp Sigma (TRow [TLabeled (TLab "False") unitTy, TLabeled (TLab "True") unitTy])
 
-data Inst = TyArg Ty | PrArg Evid
+data Inst = TyArg Ty | PrArg Evid | TyPack Ty | PrPack Evid | Unknown Int (Goal Insts)
   deriving (Data, Eq, Show, Typeable)
 
-data Insts = Known [Inst] | Unknown Int (Goal Insts)
-  deriving (Data, Eq, Show, Typeable)
+type Insts = [Inst]
+
+-- data Insts = Known [Inst] | Unknown Int (Goal Insts)
+--   deriving (Data, Eq, Show, Typeable)
 
 infixr 4 `TThen`
 
@@ -176,30 +182,35 @@ infixr 5 `funTy`
 
 -- Do De Bruijn index ns occur free in type t?
 tvFreeIn :: [Int] -> Ty -> Bool
-tvFreeIn ns (TVar i _) = i `elem` ns
-tvFreeIn ns (TUnif u) = False
-tvFreeIn ns TFun = False
-tvFreeIn ns (TThen p t) = tvFreeInP ns p || tvFreeIn ns t
-tvFreeIn ns (TForall s _ t) = tvFreeIn (map (1+) ns) t
-tvFreeIn ns (TLam s _ t) = tvFreeIn (map (1+) ns) t
-tvFreeIn ns (TApp t u) = tvFreeIn ns t || tvFreeIn ns u
-tvFreeIn ns (TLab s) = False
-tvFreeIn ns (TSing t) = tvFreeIn ns t
-tvFreeIn ns (TLabeled t u) = tvFreeIn ns t || tvFreeIn ns u
-tvFreeIn ns (TRow ts) = any (tvFreeIn ns) ts
-tvFreeIn ns (TConApp c t) = tvFreeIn ns t
-tvFreeIn ns (TMap t) = tvFreeIn ns t
-tvFreeIn ns (TCompl t u) = tvFreeIn ns t || tvFreeIn ns u
-tvFreeIn ns TString = False
-tvFreeIn ns (TInst is t) = tvFreeInIs is || tvFreeIn ns t where
-  tvFreeInIs (Unknown {}) = False
-  tvFreeInIs (Known is)   = any tvFreeInI is
-  tvFreeInI (TyArg t)  = tvFreeIn ns t
-  tvFreeInI (PrArg {}) = False
-tvFreeIn ns (TMapApp t) = tvFreeIn ns t
-tvFreeIn ns (TPlus y z) = tvFreeIn ns y || tvFreeIn ns z
+tvFreeIn ns (TVar i _)      = i `elem` ns
+tvFreeIn ns (TUnif u)       = False
+tvFreeIn ns TFun            = False
+tvFreeIn ns (TForall _ _ t) = tvFreeIn (map (1+) ns) t
+tvFreeIn ns (TThen p t)     = tvFreeInP ns p || tvFreeIn ns t
+tvFreeIn ns (TExists _ _ t) = tvFreeIn (map (1+) ns) t
+tvFreeIn ns (TExistsP p t)  = tvFreeInP ns p || tvFreeIn ns t
+tvFreeIn ns (TLam s _ t)    = tvFreeIn (map (1+) ns) t
+tvFreeIn ns (TApp t u)      = tvFreeIn ns t || tvFreeIn ns u
+tvFreeIn ns (TLab s)        = False
+tvFreeIn ns (TSing t)       = tvFreeIn ns t
+tvFreeIn ns (TLabeled t u)  = tvFreeIn ns t || tvFreeIn ns u
+tvFreeIn ns (TRow ts)       = any (tvFreeIn ns) ts
+tvFreeIn ns (TConApp c t)   = tvFreeIn ns t
+tvFreeIn ns (TMap t)        = tvFreeIn ns t
+tvFreeIn ns (TCompl t u)    = tvFreeIn ns t || tvFreeIn ns u
+tvFreeIn ns TString         = False
+tvFreeIn ns (TInst is t)    = tvFreeInIs is || tvFreeIn ns t where
+  tvFreeInIs             = any tvFreeInI
+  tvFreeInI (TyArg t)    = tvFreeIn ns t
+  tvFreeInI (PrArg {})   = False
+  tvFreeInI (TyPack t)   = tvFreeIn ns t
+  tvFreeInI (PrPack {})  = False
+  tvFreeInI (Unknown {}) = False
+tvFreeIn ns (TMapApp t)     = tvFreeIn ns t
+tvFreeIn ns (TPlus y z)     = tvFreeIn ns y || tvFreeIn ns z
 tvFreeIn ns (TConOrd _ _ t) = tvFreeIn ns t
 
+tvFreeInP :: [Int] -> Pred -> Bool
 tvFreeInP ns (PEq t u)     = tvFreeIn ns t || tvFreeIn ns u
 tvFreeInP ns (PLeq y z)    = tvFreeIn ns y || tvFreeIn ns z
 tvFreeInP ns (PPlus x y z) = tvFreeIn ns x || tvFreeIn ns y || tvFreeIn ns z
@@ -212,8 +223,10 @@ isXType :: MonadIO m => Ty -> m Bool
 isXType (TVar {})       = return False
 isXType (TUnif uv)      = maybe (return False) isXType =<< liftIO (readIORef (goalRef (uvGoal uv)))
 isXType TFun            = return False
-isXType (TThen p t)     = isXPred p <||> isXType t
 isXType (TForall _ _ t) = isXType t
+isXType (TThen p t)     = isXPred p <||> isXType t
+isXType (TExists _ _ t) = isXType t
+isXType (TExistsP p t)  = isXPred p <||> isXType t
 isXType (TLam _ _ t)    = isXType t
 isXType (TApp t u)      = isXType t <||> isXType u
 isXType (TLab {})       = return False
@@ -255,31 +268,42 @@ splitConcreteLabel :: Ty -> Maybe (String, Ty)
 splitConcreteLabel (TLabeled (TLab s) t) = Just (s, t)
 splitConcreteLabel _                     = Nothing
 
-tybinders :: Ty -> ([(Name, Maybe Kind)], Ty)
-tybinders (TForall x k t) = ((x, k) : bs, t')
-  where (bs, t') = tybinders t
-tybinders t = ([], t)
+forallBinders, existsBinders :: Ty -> ([(Name, Maybe Kind)], Ty)
+forallBinders (TForall x k t) = first ((x, k) :) (forallBinders t)
+forallBinders t               = ([], t)
 
-rebind :: [(Name, Maybe Kind)] -> Ty -> Ty
-rebind = flip (foldr (uncurry TForall))
+existsBinders (TExists x k t) = first ((x, k) :) (existsBinders t)
+existsBinders t               = ([], t)
 
-data Quant = QuForall String Kind | QuThen Pred
+rebindForall, rebindExists :: [(Name, Maybe Kind)] -> Ty -> Ty
+rebindForall = flip (foldr (uncurry TForall))
+rebindExists = flip (foldr (uncurry TExists))
+
+data Quant = QuForall String Kind | QuThen Pred | QuExists String Kind | QuExistsP Pred
   deriving (Data, Eq, Show, Typeable)
 
-quants :: Ty -> ([Quant], Ty)
-quants (TForall x (Just k) t) = first (QuForall x k :) (quants t)
-quants (TForall x Nothing t)  = error "quants: forall without kind"
-quants (TThen p t)            = first (QuThen p :) (quants t)
-quants t                      = ([], t)
+univQuants :: Ty -> ([Quant], Ty)
+univQuants (TForall x (Just k) t) = first (QuForall x k :) (univQuants t)
+univQuants (TForall x Nothing t)  = error "quants: forall without kind"
+univQuants (TThen p t)            = first (QuThen p :) (univQuants t)
+univQuants t                      = ([], t)
+
+existQuants :: Ty -> ([Quant], Ty)
+existQuants (TExists x (Just k) t) = first (QuExists x k :) (existQuants t)
+existQuants (TExists x Nothing t)  = error "quants: exists without kind"
+existQuants (TExistsP p t)         = first (QuExistsP p :) (existQuants t)
+existQuants t                      = ([], t)
 
 quantify :: [Quant] -> Ty -> Ty
 quantify [] t                   = t
 quantify (QuForall x k : qus) t = TForall x (Just k) (quantify qus t)
 quantify (QuThen p : qus) t     = TThen p (quantify qus t)
+quantify (QuExists x k : qus) t = TExists x (Just k) (quantify qus t)
+quantify (QuExistsP p : qus) t  = TExistsP p (quantify qus t)
 
-insts :: Ty -> ([Insts], Ty)
-insts (TInst is t) = first (is :) (insts t)
-insts t            = ([], t)
+insts :: Ty -> (Seq Inst, Ty)
+insts (TInst is t) = first (fromList is ><) (insts t)
+insts t            = (Empty, t)
 
 spine :: Ty -> (Ty, [Ty])
 spine (TApp f t) = (f', ts ++ [t])
@@ -304,10 +328,14 @@ flattenT t@(TUnif (UV n l g@(Goal (_, r)) k)) =
        Just t' -> flattenT (shiftTN 0 n t')
 flattenT TFun =
   return TFun
-flattenT (TThen p t) =
-  TThen <$> flattenP p <*> flattenT t
 flattenT (TForall x k t) =
   TForall x <$> traverse flattenK k <*> flattenT t
+flattenT (TThen p t) =
+  TThen <$> flattenP p <*> flattenT t
+flattenT (TExists x k t) =
+  TExists x <$> traverse flattenK k <*> flattenT t
+flattenT (TExistsP p t) =
+  TExistsP <$> flattenP p <*> flattenT t
 flattenT (TLam x k t) =
   TLam x <$> traverse flattenK k <*> flattenT t
 flattenT (TApp t u) =
@@ -326,8 +354,8 @@ flattenT (TCompl r0 r1) =
   TCompl <$> flattenT r0 <*> flattenT r1
 flattenT TString =
   return TString
--- not entirely sure what *should* happen here
 flattenT (TInst is t) =
+  -- not entirely sure what *should* happen here
   TInst <$> flattenIs is <*> flattenT t
 flattenT (TMapApp t) =
   TMapApp <$> flattenT t
@@ -347,14 +375,16 @@ flattenP (PFold z) =
   PFold <$> flattenT z
 
 flattenIs :: MonadIO m => Insts -> m Insts
-flattenIs is@(Unknown n (Goal (s, r))) =
-  do mis <- liftIO $ readIORef r
-     case mis of
-       Nothing -> return is
-       Just is -> flattenIs (shiftIsV [] 0 n is)
-flattenIs (Known is) = Known <$> mapM flattenI is
-  where flattenI (TyArg t) = TyArg <$> flattenT t
-        flattenI (PrArg v) = PrArg <$> flattenV v
+flattenIs is = concat <$> mapM flattenI is where
+  flattenI (TyArg t)  = singleton . TyArg <$> flattenT t
+  flattenI (PrArg v)  = singleton . PrArg <$> flattenV v
+  flattenI (TyPack t) = singleton . TyPack <$> flattenT t
+  flattenI (PrPack v) = singleton . PrPack <$> flattenV v
+  flattenI i@(Unknown n (Goal (s, r))) =
+    do mis <- liftIO $ readIORef r
+       case mis of
+         Nothing -> return [i]
+         Just is -> flattenIs (shiftIsV [] 0 n is)
 
 -- shiftTNV vs j n t shifts variables, but *not uvars in `vs`*, at or above `j`
 -- up by `n`
@@ -369,8 +399,10 @@ shiftTNV _ j n (TVar i x)
 shiftTNV vs _ n t@(TUnif v@(UV n' l g k))
   | v `elem` vs = t
   | otherwise = TUnif (UV (n + n') l g k)
-shiftTNV vs j n (TThen p t) = TThen (shiftPNV vs j n p) (shiftTNV vs j n t)
 shiftTNV vs j n (TForall x k t) = TForall x k (shiftTNV vs (j + 1) n t)
+shiftTNV vs j n (TThen p t) = TThen (shiftPNV vs j n p) (shiftTNV vs j n t)
+shiftTNV vs j n (TExists x k t) = TExists x k (shiftTNV vs (j + 1) n t)
+shiftTNV vs j n (TExistsP p t) = TExistsP (shiftPNV vs j n p) (shiftTNV vs j n t)
 shiftTNV vs j n (TLam x k t) = TLam x k (shiftTNV vs (j + 1) n t)
 shiftTNV vs j n (TApp t u) = TApp (shiftTNV vs j n t) (shiftTNV vs j n u)
 shiftTNV vs j n (TSing t) = TSing (shiftTNV vs j n t)
@@ -392,10 +424,12 @@ shiftTN :: HasCallStack => Int -> Int -> Ty -> Ty
 shiftTN = shiftTNV []
 
 shiftIsV :: [UVar] -> Int -> Int -> Insts -> Insts
-shiftIsV vs j n (Unknown n' ig) = Unknown (n + n') ig
-shiftIsV vs j n (Known is) = Known (map shiftI is) where
-  shiftI (TyArg t) = TyArg (shiftTNV vs j n t)
-  shiftI (PrArg v) = PrArg v
+shiftIsV vs j n = map shiftI where
+  shiftI (TyArg t)       = TyArg (shiftTNV vs j n t)
+  shiftI (PrArg v)       = PrArg v
+  shiftI (TyPack t)      = TyPack (shiftTNV vs j n t)
+  shiftI (PrPack v)      = PrPack v
+  shiftI (Unknown n' ig) = Unknown (n + n') ig
 
 shiftPNV :: [UVar] -> Int -> Int -> Pred -> Pred
 shiftPNV vs j n (PEq t u)     = PEq (shiftTNV vs j n t) (shiftTNV vs j n u)
@@ -419,7 +453,9 @@ data Const =
 
 data Term =
     EVar Int QName | ELam String (Maybe Ty) Term | EApp Term Term
-  | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term | EInst Term Insts
+  | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term
+  | EExLam [(String, Maybe Kind)] [Pred] String (Maybe Ty) Term
+  | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const | EInfix [EInfixToken]
   | ELet String Term Term | ECast Term Evid | ETyped Term Ty
@@ -444,22 +480,23 @@ data AppTerm = AType Ty | ATerm Term
   deriving (Data, Eq, Show)
 
 shiftENV :: [UVar] -> Int -> Int -> Term -> Term
-shiftENV _ _ _ e@(EVar {})       = e
-shiftENV vs j n (ELam x mt e)    = ELam x (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
-shiftENV vs j n (EApp f e)       = EApp (shiftENV vs j n f) (shiftENV vs j n e)
-shiftENV vs j n (ETyLam x mk e)  = ETyLam x mk (shiftENV vs (j + 1) n e)
-shiftENV vs j n (EPrLam p e)     = EPrLam (shiftPNV vs j n p) e
-shiftENV vs j n (EInst e is)     = EInst (shiftENV vs j n e) (shiftIsV [] j n is)
-shiftENV vs j n (ESing t)        = ESing (shiftTNV vs j n t)
-shiftENV vs j n (ELabel k l e)   = ELabel k (shiftENV vs j n l) (shiftENV vs j n e)
-shiftENV vs j n (EUnlabel k e l) = EUnlabel k (shiftENV vs j n e) (shiftENV vs j n l)
-shiftENV _ _ _ e@(EConst {})     = e
-shiftENV vs j n (ELet x e f)     = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
-shiftENV vs j n (ECast e q)      = ECast (shiftENV vs j n e) q
-shiftENV vs j n (ETyped e t)     = ETyped e (shiftTNV vs j n t)
-shiftENV vs j n (EInfix ops)     = EInfix $ map (shiftENVfix vs j n) ops
-shiftENV _ _ _ e@(EStringLit {}) = e
-shiftENV _ _ _ e@(EHole {})      = e
+shiftENV _ _ _ e@(EVar {})            = e
+shiftENV vs j n (ELam x mt e)         = ELam x (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
+shiftENV vs j n (EApp f e)            = EApp (shiftENV vs j n f) (shiftENV vs j n e)
+shiftENV vs j n (ETyLam x mk e)       = ETyLam x mk (shiftENV vs (j + 1) n e)
+shiftENV vs j n (EPrLam p e)          = EPrLam (shiftPNV vs j n p) e
+shiftENV vs j n (EExLam xs ps y mt e) = EExLam xs (map (shiftPNV vs j n) ps) y (shiftTNV vs j n <$> mt) (shiftENV vs j n e)
+shiftENV vs j n (EInst e is)          = EInst (shiftENV vs j n e) (shiftIsV [] j n is)
+shiftENV vs j n (ESing t)             = ESing (shiftTNV vs j n t)
+shiftENV vs j n (ELabel k l e)        = ELabel k (shiftENV vs j n l) (shiftENV vs j n e)
+shiftENV vs j n (EUnlabel k e l)      = EUnlabel k (shiftENV vs j n e) (shiftENV vs j n l)
+shiftENV _ _ _ e@(EConst {})          = e
+shiftENV vs j n (ELet x e f)          = ELet x (shiftENV vs j n e) (shiftENV vs j n f)
+shiftENV vs j n (ECast e q)           = ECast (shiftENV vs j n e) q
+shiftENV vs j n (ETyped e t)          = ETyped e (shiftTNV vs j n t)
+shiftENV vs j n (EInfix ops)          = EInfix $ map (shiftENVfix vs j n) ops
+shiftENV _ _ _ e@(EStringLit {})      = e
+shiftENV _ _ _ e@(EHole {})           = e
 
 -- shiftENVfix vs j n (Operand tm) = Operand $ shiftENV vs j n tm
 shiftENVfix vs j n e            = error "should have desugared Einfix before now"
@@ -473,23 +510,24 @@ flattenE = everywhereM (mkM flattenInsts) <=< everywhereM (mkM flattenT) <=< eve
   flattenInsts (EInst m is) =
     do is' <- flattenIs is
        case is' of
-         Known [] -> return m
-         _        -> return (EInst m is')
+         [] -> return m
+         _  -> return (EInst m is')
   flattenInsts m            = return m
 
 hasHoles :: Term -> Bool
-hasHoles (EHole {})       = True
-hasHoles (ELam _ _ e)     = hasHoles e
-hasHoles (EApp f e)       = hasHoles f || hasHoles e
-hasHoles (ETyLam _ _ e)   = hasHoles e
-hasHoles (EPrLam _ e)     = hasHoles e
-hasHoles (EInst e _)      = hasHoles e
-hasHoles (ELabel _ l e)   = hasHoles l || hasHoles e
-hasHoles (EUnlabel _ e l) = hasHoles e || hasHoles l
-hasHoles (ELet _ e f)     = hasHoles e || hasHoles f
-hasHoles (ECast e _)      = hasHoles e
-hasHoles (ETyped e _)     = hasHoles e
-hasHoles _                = False -- covers: EVar, ESing, EConst
+hasHoles (EHole {})         = True
+hasHoles (ELam _ _ e)       = hasHoles e
+hasHoles (EApp f e)         = hasHoles f || hasHoles e
+hasHoles (ETyLam _ _ e)     = hasHoles e
+hasHoles (EPrLam _ e)       = hasHoles e
+hasHoles (EExLam _ _ _ _ e) = hasHoles e
+hasHoles (EInst e _)        = hasHoles e
+hasHoles (ELabel _ l e)     = hasHoles l || hasHoles e
+hasHoles (EUnlabel _ e l)   = hasHoles e || hasHoles l
+hasHoles (ELet _ e f)       = hasHoles e || hasHoles f
+hasHoles (ECast e _)        = hasHoles e
+hasHoles (ETyped e _)       = hasHoles e
+hasHoles _                  = False -- covers: EVar, ESing, EConst
 
 --------------------------------------------------------------------------------
 -- Evidence
@@ -540,9 +578,10 @@ data Evid =
   | VEqMapId                        -- ^(\x.x) r ~ r
   | VEqMapCompose                   -- ^f (^g r) ~ ^(f . g) r
   -- Congruence rules
-  | VEqThen Evid Evid | VEqLambda Evid | VEqForall Evid | VEqApp Evid Evid
-  | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid | VEqCon TyCon Evid
-  | VEqMapCong Evid | VEqComplCong Evid Evid
+  | VEqThen Evid Evid | VEqExistsP Evid Evid
+  | VEqLambda Evid | VEqForall Evid | VEqExists Evid
+  | VEqApp Evid Evid | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid
+  | VEqCon TyCon Evid | VEqMapCong Evid | VEqComplCong Evid Evid
   | VEqLeq Evid Evid | VEqPlus Evid Evid Evid
   --
   -- Fold proofs
@@ -608,6 +647,7 @@ flattenV v@(VEqRowPermute is)
 flattenV (VEqThen v1 v2) = foldBinary VEqThen <$> flattenV v1 <*> flattenV v2
 flattenV (VEqLambda v) = foldUnary VEqLambda <$> flattenV v
 flattenV (VEqForall v) = foldUnary VEqForall <$> flattenV v
+flattenV (VEqExists v) = foldUnary VEqExists <$> flattenV v
 flattenV (VEqApp v1 v2) = foldBinary VEqApp <$> flattenV v1 <*> flattenV v2
 flattenV (VEqLabeled v1 v2) = foldBinary VEqLabeled <$> flattenV v1 <*> flattenV v2
 flattenV (VEqRow []) = return VEqRefl

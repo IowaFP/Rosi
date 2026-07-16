@@ -15,9 +15,12 @@ kindOf :: MonadCheck m => Ty -> m Kind
 kindOf (TVar i _) = flattenK =<< asks (kbKind . (!! i) . kctxt)
 kindOf (TUnif (UV {uvKind = k})) = flattenK k
 kindOf TFun = return $ KFun KType (KFun KType KType)
-kindOf (TThen _ t) = kindOf t
 kindOf (TForall _ (Just k) t) = bindTy k $ kindOf t
 kindOf (TForall _ Nothing t) = error "kindOf: unkinded forall"
+kindOf (TThen _ t) = kindOf t
+kindOf (TExists _ (Just k) t) = bindTy k $ kindOf t
+kindOf (TExists _ Nothing _) = error "kindOf: unkinded exists"
+kindOf (TExistsP _ t) = kindOf t
 kindOf (TLam x (Just k) t) = KFun k <$> (bindTy k $ kindOf t)
 kindOf (TLam x Nothing t) = error "kindOf: unkinded lambda"
 kindOf t@(TApp f _) =
