@@ -76,6 +76,13 @@ upd : Labels x' < Labels x => Pi x -> Pi (x' + y) -> Pi (x + y)
 upd = \r s. r ++ prj s
 
 --------------------------------------------------------------------------------
+-- Existential types
+
+-- Function singleton here because figuring out functions is hard...
+pack : forall f t. #f -> f t -> (exists x. f x)
+pack f x = x
+
+--------------------------------------------------------------------------------
 -- The Bool type
 
 type Bool : *
@@ -211,3 +218,4 @@ either = \ f g. (case 'Left f | case 'Right g)
 
 sorry : forall a. a
 sorry = fix (\x. x)
+

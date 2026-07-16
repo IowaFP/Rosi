@@ -382,6 +382,8 @@ unify0 t@(TInst {}) u =
 unify0 TFun TFun = return VEqRefl
 unify0 (TThen pa ta) (TThen px tx) =
   VEqThen <$> unifyP pa px <*> unify' ta tx
+unify0 (TExistsP pa ta) (TExistsP px tx) =
+  VEqExistsP <$> unifyP pa px <*> unify' ta tx
 unify0 t@(TApp {}) (u@(TApp {}))
   | TUnif {} <- ft = requireEq t u -- unifySpines
   | TUnif {} <- fu = requireEq t u -- unifySpines

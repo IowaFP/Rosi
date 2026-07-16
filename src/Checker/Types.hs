@@ -168,6 +168,10 @@ checkTy0 (TThen pi t) expected =
   TThen <$>
     checkPred pi <*>
     (assume pi $ checkTy t expected)
+checkTy0 (TExistsP pi t) expected =
+  TExistsP <$>
+    checkPred pi <*>
+    (assume pi $ checkTy t expected)
 checkTy0 t@(TForall {}) expected =
   implicitConstraints False t expected
 checkTy0 t@(TExists {}) expected =
@@ -275,6 +279,8 @@ checkTy0 t@(TConOrd k rel u) expected =
               Leq -> PLeq z u'
               Geq -> PLeq u' z, v)]
      return (TConApp k z)
+checkTy0 t _ =
+  error $ "checkTy0: missing case " ++ show t
 
 checkPred :: Pred -> KindM Pred
 checkPred p@(PLeq y z) =

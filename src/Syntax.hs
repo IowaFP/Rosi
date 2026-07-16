@@ -578,7 +578,8 @@ data Evid =
   | VEqMapId                        -- ^(\x.x) r ~ r
   | VEqMapCompose                   -- ^f (^g r) ~ ^(f . g) r
   -- Congruence rules
-  | VEqThen Evid Evid | VEqLambda Evid | VEqForall Evid | VEqExists Evid
+  | VEqThen Evid Evid | VEqExistsP Evid Evid
+  | VEqLambda Evid | VEqForall Evid | VEqExists Evid
   | VEqApp Evid Evid | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid
   | VEqCon TyCon Evid | VEqMapCong Evid | VEqComplCong Evid Evid
   | VEqLeq Evid Evid | VEqPlus Evid Evid Evid

@@ -1,3 +1,4 @@
+{- HLINT ignore "Move brackets to avoid $" -}
 module Checker.Promote where
 
 import Control.Monad
@@ -66,6 +67,7 @@ promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k
                 return (Just (newT m))
 promoteN v _ TFun = return (Just TFun)
 promoteN v n (TThen p t) = liftM2 TThen <$> promoteP v n p <*> promoteN v n t
+promoteN v n (TExistsP p t) = liftM2 TExistsP <$> promoteP v n p <*> promoteN v n t
 promoteN v n (TForall s (Just k) t) = liftM (TForall s (Just k)) <$> (atLevel 0 $ bindTy k $ promoteN v (n + 1) t)
 promoteN v n (TForall s Nothing t) = error "can't promote unkinded forall"
 promoteN v n (TExists s (Just k) t) = liftM (TExists s (Just k)) <$> (atLevel 0 $ bindTy k $ promoteN v (n + 1) t)

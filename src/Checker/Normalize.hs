@@ -30,6 +30,7 @@ instance HasTyVars Ty where
                        return u'
   subst v t TFun = return TFun
   subst v t (TThen p u) = TThen <$> subst v t p <*> subst v t u
+  subst v t (TExistsP p u) = TExistsP <$> subst v t p <*> subst v t u
   subst v t (TForall w k u) = TForall w k <$> subst (v + 1) (shiftT 0 t) u
   subst v t (TExists w k u) = TExists w k <$> subst (v + 1) (shiftT 0 t) u
   subst v t (TLam w k u) = TLam w k <$> subst (v + 1) (shiftT 0 t) u

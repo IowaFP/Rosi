@@ -350,16 +350,21 @@ The grammar of types is given by
     t ::= x             Type variables and constants
        |  t -> t        Functions
        |  'l            Label constants (l is any alphanumeric string)
-       |  {l1 := t1 ... ln := tn}
+       |  {l1 := t1, ..., ln := tn}
                         Rows
        |  Pi t          Record types
        |  Sigma t       Variant types
        |  \x. t         Type functions
        |  t u           Type application
        |  Mu t          Fixed point of type operators
-       |  forall x. t   Universally quantified types
+       |  forall x1 ... xn. t
+                        Universally quantified types
+       |  exists x1 ... xn. t
+                        Existentially quantified types
        |  p1, ..., pn => t
                         Qualified types
+       | exists p1, ..., pn => t
+                        Existentially qualified types
        |  t - t         Row difference
        |  t + t         Row combination
 
@@ -438,6 +443,16 @@ The grammar of terms is given by
        |  m : t         Type ascription
        |  "string"      String constants
 
+Binders are:
+    b ::= x             Term binder
+       |  @a            Type binder
+       |  (x1 ... xn : t)
+                        Type-annotated term binder
+       |  (@a1 ... @an : k)
+                        Kind-annotated type binder
+        | (@!a x)       Existential unpack
+        | (@!a x : t)   Type-annotated existential unpack
+
 Term constants are:
 
     k ::= inj           Variant injection
@@ -458,6 +473,8 @@ Rosi's type inference mechanism attempts to support first-class polymorphism. In
 Conditional expressions are written with `if`, which is just a function defined in `Ro.Base` with type `Bool -> t -> t -> t`. The usual boolean operators (`and`, `not`, `or`, `xor`) are also defined there.
 
 Rosi supports holes. A term `?` cause Rosi to print out the expected type and the bindings in context. Different holes can be identified with alphanumeric labels `?xxx`.
+
+Rose supports first-class implicit existential types. See [these notes](docs/Existentials.md) for more details on the current state.
 
 ## Rosi's type errors
 
