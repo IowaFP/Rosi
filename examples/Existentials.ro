@@ -10,11 +10,17 @@ compareField l f = pair (.l) f
 compare : Comparer t -> Compare t
 compare p x y = p.'2 (p.'1 x) (p.'1 y)
 
-compared : Cmp
-compared = compare (pair (.'1) compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+compared  : Cmp
+compared  = compare (pair (.'1) compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
 
 compared' : Cmp
-compared' = compare (compareField '1 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+compared' = compare (pair (.'2) compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+
+comparedHO  : Cmp
+comparedHO  = compare (compareField '1 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+
+comparedHO' : Cmp
+comparedHO' = compare (compareField '2 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
 
 -- Just playing with syntax
 
