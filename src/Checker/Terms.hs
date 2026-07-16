@@ -1,5 +1,5 @@
 {- HLINT ignore "Move brackets to avoid $" -}
-module Checker.Terms where
+module Checker.Terms (module Checker.Terms) where
 
 import Control.Monad
 import Control.Monad.Reader.Class
@@ -52,8 +52,8 @@ checkTerm m t =
        return $ "checkTerm@" ++ show l ++ " (" ++ renderString (ppr m) ++ ") (" ++ renderString (ppr t') ++ ")"-- ") in (" ++ intercalate "," (map (renderString . ppr) g) ++ ")"
      typeErrorContext (ErrContextTerm m) $ checkTerm0 m t
 
-elimForm :: Ty -> (Ty -> CheckM Term) -> CheckM Term
-elimForm expected k =
+wrapInst :: Ty -> (Ty -> CheckM Term) -> CheckM Term
+wrapInst expected k =
   do iv <- newRef Nothing
      name <- fresh "i"
      flip EInst [Unknown 0 (Goal (name, iv))] <$> k (TInst [Unknown 0 (Goal (name, iv))] expected)
@@ -67,8 +67,8 @@ checkTerm0 e0@(ETyLam v (Just k) e) expected =
      q <- expectT e0 (TForall v (Just k) tcod) expected
      wrap q . ETyLam v (Just k) <$>
        (upLevel $
-        bindTy k $
-          checkTerm' e tcod)
+       bindTy k $
+         checkTerm' e tcod)
 checkTerm0 _ (TForall v Nothing t) =
   error "checkTerm: forall without kind"
 checkTerm0 e (TForall v (Just k) t) =
@@ -76,27 +76,18 @@ checkTerm0 e (TForall v (Just k) t) =
     (upLevel $
      bindTy k $
        checkTerm (shiftEN 0 1 e) t)
-checkTerm0 _ (TExists _ Nothing _) =
-  error "checkTerm: exists without kind"
-checkTerm0 e (TExists v (Just k) t) =
-  do x <- typeGoalWithLevel' "x" k Top
-     t' <- subst 0 x t
-     flip EInst [TyPack x] <$> checkTerm e (shiftTN 0 (-1) t')
-checkTerm0 e (TExistsP p t) =
-  do v <- newRef Nothing
-     require p v
-     flip EInst [PrPack (VGoal (Goal ("v", v)))] <$> checkTerm e t
 checkTerm0 e0@(EPrLam p e) expected =
   do tcod <- expectedGoal "cod"
-     q <- expectT e0 (TThen p tcod) expected
-     wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
+     wrapInst expected $ \expected ->
+       do q <- expectT e0 (TThen p tcod) expected
+          wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
 checkTerm0 e (TThen p t) =
   EPrLam p <$> assume p (checkTerm e t)
 checkTerm0 (EVar (-1) x) expected =
   typeError (ErrOther $ "scoping error: variable " ++ head x ++ " not resolved")
 checkTerm0 e@(EVar i v) expected =
   do t <- lookupVar i
-     elimForm expected $ \ expected ->
+     wrapInst expected $ \ expected ->
        do q <- expectT e t expected
           return (wrap q (EVar i v))
 checkTerm0 (ELam v Nothing e) expected =
@@ -105,12 +96,13 @@ checkTerm0 (ELam v Nothing e) expected =
 checkTerm0 e0@(ELam v (Just t) e) expected =
   do tcod <- expectedGoal "cod"
      t' <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
-     q <- expectT e0 (funTy t' tcod) expected
-     tdom <- flattenT t'
-     case tdom of
-       TExists {} -> checkTerm (EExLam [] [] v (Just tdom) e) expected
-       _          -> do
-                        wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
+     wrapInst expected $ \expected ->
+       do q <- expectT e0 (funTy t' tcod) expected
+          tdom <- flattenT t'
+          case tdom of
+            TExists {} -> checkTerm (EExLam [] [] v (Just tdom) e) expected
+            _          -> do
+                              wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
 checkTerm0 e0@(EExLam xs _ y mt m) expected
   | Nothing <- mt =
     do tdom <- expectedGoal "dom"
@@ -154,13 +146,13 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
 
 checkTerm0 e0@(EApp f e) expected =
   do tdom <- expectedGoal "dom"
-     elimForm expected $ \expected ->
+     wrapInst expected $ \expected ->
        EApp <$>
          checkTerm f (funTy tdom expected) <*>
          checkTerm' e tdom
 checkTerm0 e0@(EInst e is) expected =
   do is' <- checkInsts is
-     elimForm expected $ \expected ->
+     wrapInst expected $ \expected ->
        EInst <$> checkTerm e (TInst is' expected) <*> pure is'
   where checkInsts :: Insts -> CheckM Insts
         checkInsts is    = mapM checkInst is
@@ -181,20 +173,22 @@ checkTerm0 e0@(EInst e is) expected =
           error "internal: why am I type checking an unknown instantiation?"
 checkTerm0 e0@(ESing t) expected =
   do t' <- toCheckM . checkTy' e0 t =<< kindGoal "k"
-     q <- expectT e0 (TSing t') expected
-     return (wrap q (ESing t'))
+     wrapInst expected $ \expected ->
+       do q <- expectT e0 (TSing t') expected
+          return (wrap q (ESing t'))
 checkTerm0 e0@(ELabel Nothing el e) expected =
   do k <- ctorGoal "k"
      tl <- expectedGoal' "l" KLabel
      t <- expectedGoal "t"
-     q <- expectT e0 (TConApp k (TRow [TLabeled tl t])) expected
-     wrap q <$>
-       (ELabel (Just k) <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
+     wrapInst expected $ \expected ->
+       do q <- expectT e0 (TConApp k (TRow [TLabeled tl t])) expected
+          wrap q <$>
+            (ELabel (Just k) <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
 checkTerm0 e0@(EUnlabel Nothing e el) expected =
   do k <- ctorGoal "k"
      tl <- expectedGoal' "l" KLabel
      el' <- checkTerm el (TSing tl)
-     elimForm expected $ \expected ->
+     wrapInst expected $ \expected ->
        do e' <- checkTerm' e (TConApp k (TRow [TLabeled tl expected]))
           return (EUnlabel (Just k) e' el')
 checkTerm0 e@(EConst c) expected =
@@ -299,22 +293,22 @@ checkTerm0 e@(EConst c) expected =
 checkTerm0 e0@(ETyped e t) expected =
   do (t', _) <- normalize [] =<< toCheckM (checkTy' e0 t KType)
      e' <- checkTerm e t'  -- any reason to preserve the type ascription?
-     elimForm expected $ \expected ->
+     wrapInst expected $ \expected ->
        do q <- expectT e0 t' expected
           return (ECast e' q)
 checkTerm0 e0@(ELet x e f) expected =
   do (e', t) <- generalize False e
-     f' <- bind x t (elimForm expected (checkTerm f))
+     f' <- bind x t (wrapInst expected (checkTerm f))
      return (ELet x e' f')
 checkTerm0 e0@(EStringLit _) expected =
-  do expectT e0 TString expected
-     return e0
+  wrapInst expected $ \expected ->
+    do expectT e0 TString expected
+       return e0
 checkTerm0 e0@(EHole s) expected =
   do tcin <- ask
      tell (TCOut [] [(s, expected, tcin)])
      return e0
 checkTerm0 e0@((EInfix ss)) expected = error $ "internal: infix expression `" <> concatMap show ss <> "` should have been been desugared before type-checking."
-
 
 generalize :: Bool -> Term -> CheckM (Term, Ty)
 generalize topLevel e =

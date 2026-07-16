@@ -13,11 +13,8 @@ compare p x y = p.'2 (p.'1 x) (p.'1 y)
 compared : Cmp
 compared = compare (pair (.'1) compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
 
--- BROKEN: over-eagerly adds packs before `compareField '1 lte`, which is going
--- to itself return an existential.
---
--- compared' : Cmp
--- compared' = compare (compareField '1 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
+compared' : Cmp
+compared' = compare (compareField '1 compN) ('1 := 1, '2 := 2) ('1 := 2, '2 := 1)
 
 -- Just playing with syntax
 
@@ -28,3 +25,12 @@ bogoid : Bogus t -> t -> Bool
 bogoid @t (@!u p : Bogus t) x = p.'3 (p.'1 x) (p.'2 x)
 
 bogoid2 @t (p : Bogus t) x = p.'3 (p.'1 x) (p.'2 x)
+
+-- Can make implicit existential explicit...
+
+-- Function singleton here because figuring out functions is hard...
+pack : forall f t. #f -> f t -> (exists x. f x)
+pack f x = x
+
+compareField' : forall z. {l := t} < z => #l -> Compare t -> Comparer (Pi z)
+compareField' @z l f = pack #(\v. Pair (Pi z -> v) (Compare v)) (pair (.l) f)

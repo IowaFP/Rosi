@@ -120,10 +120,10 @@ data InstantiationStep = Progress Ty (Seq Inst) Ty | Defer | Done Ty Ty
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify' actual expected =
-  do trace ("4 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     eqns <- theEqns
+  do eqns <- theEqns
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected
+     trace ("4 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
      -- TODO: do we need to renormalize each time around?
      let f = case q of
                VEqRefl -> id
@@ -153,15 +153,17 @@ unifyInstantiating t u unify =
     ---------------------------------------------------------------------------
 
     loop :: Ty -> Seq Inst -> Ty -> UnifyM Evid
-    loop t is u =
-      do trace $ "Instantiation loop: " ++ renderString (ppr t) ++ " - " ++ show is ++ " - " ++ renderString (ppr u)
-         result <- universals t is u
-         case result of
-           Progress t' is' u' -> loop t' is' u'
-           Done t u           -> do trace $ "Instantiation done: " ++ renderString (ppr t) ++ " ~ " ++ renderString (ppr u)
-                                    unify t u
-           Defer              -> do trace $ "Deferring instantiation: " ++ renderString (ppr t) ++ " ~ " ++ renderString (ppr u)
-                                    unificationFails t u
+    loop t is u = go universals existentials False t is u where
+      go flip flop deferred t is u =
+        do trace $ "Instantiation loop: " ++ renderString (ppr t) ++ " - " ++ show is ++ " - " ++ renderString (ppr u)
+           result <- flip t is u
+           case result of
+             Progress t' is' u' -> go flip flop False t' is' u'
+             Done t u           -> do trace $ "Instantiation done: " ++ renderString (ppr t) ++ " ~ " ++ renderString (ppr u)
+                                      unify t u
+             Defer | deferred   -> do trace $ "Deferring instantiation: " ++ renderString (ppr t) ++ " ~ " ++ renderString (ppr u)
+                                      unificationFails t u
+                   | otherwise  -> go flop flip True t is u
 
     ---------------------------------------------------------------------------
     -- Universals
@@ -172,8 +174,8 @@ unifyInstantiating t u unify =
       error "Unannoted forall in instantiation!"
     -- Match a forall against an explicit type argument and instantiate
     universals (TForall _ (Just k) t) (TyArg s :<| is) u =
-      do u' <- liftToUnifyM . toCheckM $ checkTy s k
-         t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u') t
+      do s' <- liftToUnifyM . toCheckM $ checkTy s k
+         t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 s') t
          return (Progress t' is u)
     -- An explicit type argument without an initial forall is a unification
     -- failure.
@@ -204,10 +206,12 @@ unifyInstantiating t u unify =
     universals (TForall {}) (Unknown {} :<| _) (TUnif {}) =
       return Defer
     universals t is u
-      -- Fewer forall-like quantifiers on the left than on the right. In this
-      -- case, we fall back on trying to unify the left and right-hand side
-      -- directly, after solving any remaining unification variables to the
-      -- empty sequence.
+      | null qts, TExists {} <- u =
+        return Defer
+      -- Fewer (but some!) forall-like quantifiers on the left than on the
+      -- right. In this case, we fall back on trying to unify the left and
+      -- right-hand side directly, after solving any remaining unification
+      -- variables to the empty sequence.
       | length qts <= length qus =
         do mapM_ solveEmpty is
            return (Done t u)
@@ -225,6 +229,10 @@ unifyInstantiating t u unify =
            let i' = Unknown n (Goal (name, gr))
            writeRef (goalRef g) (Just (insts ++ [i']))
            return (Progress t'' (i' :<| is') u)
+      -- Don't actually know how this case is possible, but if we do get here
+      -- we're out of ideas.
+      | otherwise =
+        unificationFails t (TInst (toList is) u)
 
       where (qts, t') = univQuants t
             (qus, _) = univQuants u
@@ -251,6 +259,100 @@ unifyInstantiating t u unify =
               shift [] 0 (- m) <$> foldM (\t (i, u) -> subst i u t) t us'
               where us' = zip [0..] (map (shiftTN 0 (m + n)) us)
                     m   = length us
+
+    ---------------------------------------------------------------------------
+    -- Existentials
+    ---------------------------------------------------------------------------
+
+    existentials :: Ty -> Seq Inst -> Ty -> UnifyM InstantiationStep
+    existentials _ _ (TExists _ Nothing _) =
+      error "Unannotated exists in instantiation!"
+    -- Match an existential against an explicit type argument and instantiate
+    existentials t (is :|> TyPack s) (TExists _ (Just k) u) =
+      do s' <- liftToUnifyM . toCheckM $ checkTy s k
+         u' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 s') u
+         return (Progress t is u')
+    -- An explicit pack without an initial exists is a unification failure.
+    existentials t is@(_ :|> TyPack _) u =
+      unificationFails t (TInst (toList is) u)
+    -- Defer ambiguous packs
+    existentials t (is :|> Unknown {} :|> Unknown {}) (TExists {}) =
+      return Defer
+    -- Defer packing of metavariables
+    existentials _ _ (TUnif {}) =
+      return Defer
+    -- If there's an instantiation before a pack, and there are existential
+    -- predicates intervening, then pack them. This is also a weird corner case,
+    -- and would arise with a type like `exists x. P x => exists y. ...`
+    existentials t (is@(_ :|> TyPack _) :|> Unknown n g) u =
+      do writeRef (goalRef g) . Just =<< mapM solve ps
+         return (Progress t is u')
+      where (ps, u') = thens u
+            thens :: Ty -> ([Pred], Ty)
+            thens (TExistsP p t) = first (p :) (thens t)
+            thens t              = ([], t)
+            solve p =
+              do vr <- newRef Nothing
+                 require p vr
+                 return (PrPack (VGoal (Goal ("v", vr))))
+    existentials (TUnif {}) (_ :|> Unknown {}) (TExists {}) =
+      return Defer
+    existentials t is u
+      | null qus, TForall {} <- t =
+        return Defer
+      -- Fewer (but some!) exists-like quantifiers on the right than on the
+      -- left. In this case, we fall back on trying to unify the left and
+      -- right-hand side directly, after solving any remaining unification
+      -- variables to the empty sequence.
+      | length qus <= length qts =
+        do mapM_ solveEmpty is
+           return (Done t u)
+      -- More exists-like quantifiers on the right. We solve the additional
+      -- prefix of the right-hand side. We know that `is'` is either (a) empty or
+      -- (b) a `TyArg`, because otherwise we would have hit one of the previous
+      -- cases. Because the unknown instantiation might also need to capture
+      -- universals, we generate a fresh unknown instantiation to add to the
+      -- end of our solution.
+      | is' :|> Unknown n g <- is =
+        do (insts, us) <- solve n (take (length qus - length qts) qus) []
+           u'' <- instantiate shiftTNV n us (quantify (drop (length qus - length qts) qus) u')
+           gr <- newRef Nothing
+           name <- fresh "i"
+           let i' = Unknown n (Goal (name, gr))
+           writeRef (goalRef g) (Just (insts ++ [i']))
+           return (Progress t (is' :|> i') u'')
+      -- Don't actually know how this case is possible, but if we do get here
+      -- we're out of ideas.
+      | otherwise =
+        unificationFails t (TInst (toList is) u)
+
+      where (qts, _) = existQuants t
+            (qus, u') = existQuants u
+
+            solveEmpty (Unknown n g) =
+              writeRef (goalRef g) (Just [])
+            solveEmpty _ =
+              unificationFails t (TInst (toList is) u)
+
+            solve :: Int -> [Quant] -> [Ty] -> UnifyM ([Inst], [Ty])
+            solve _ [] us =
+              return ([], us)
+            solve n (QuExists x k : qs) us =
+              do u <- typeGoal' x k
+                 first (TyPack u :) <$> solve n qs (u : us)
+            solve n (QuExistsP p : qs) us =
+              do vr <- newRef Nothing
+                 p' <- instantiate shiftPNV n us p
+                 require p' vr
+                 first (PrPack (VGoal (Goal ("v", vr))) :) <$> solve n qs us
+            solve_  _ _ = error "impossible, working on foralls"
+
+            instantiate shift n us t =
+              shift [] 0 (- m) <$> foldM (\t (i, u) -> subst i u t) t us'
+              where us' = zip [0..] (map (shiftTN 0 (m + n)) us)
+                    m   = length us
+
+-- TODO: actually impossible to bounce back and forth, isn't it??
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify0 (TVar i _) (TVar j _)

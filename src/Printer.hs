@@ -289,7 +289,7 @@ instance Printable Term where
       do minst <- liftIO $ readIORef r
          case minst of
            Nothing -> ppre s
-          --  Just is -> commaSep (map pprI is)
+           Just is -> sep (punctuate "," (map pprI is))
   ppr (ESing t) = "#" <> at 4 (ppr t)
   ppr (ELabel Nothing l m) = with 3 (fillSep [ppr l <+> ":=", at 3 (ppr m)])
   ppr (ELabel (Just k) l m) = with 3 (fillSep [ppr l <+> ":=" <> ppr k, at 3 (ppr m)])
