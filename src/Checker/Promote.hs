@@ -53,7 +53,7 @@ promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k
   | otherwise =
     do mt <- readRef r'
        case mt of
-         Just t' -> promoteN v m (shiftTN 0 n' t')
+         Just t' -> promoteN v m (shiftN 0 n' t')
          Nothing
            | n' < m ->
              return (Just t)
@@ -94,7 +94,7 @@ promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promo
         promoteI i@(Unknown n' g@(Goal (s, r))) =
           do mis <- readRef r
              case mis of
-               Just is -> promoteIs (shiftIsV [] 0 n' is)
+               Just is -> promoteIs (shiftN 0 n' is)
                Nothing
                  | n' >= n   -> return (Just [Unknown (n' - n) g])
                  | otherwise -> do r' <- newRef Nothing

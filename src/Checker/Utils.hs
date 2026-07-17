@@ -12,8 +12,8 @@ kindGoal s =
      return (KUnif (Goal (s', kr)))
 
 kindOf :: MonadCheck m => Ty -> m Kind
-kindOf (TVar i _) = flattenK =<< asks (kbKind . (!! i) . kctxt)
-kindOf (TUnif (UV {uvKind = k})) = flattenK k
+kindOf (TVar i _) = flatten =<< asks (kbKind . (!! i) . kctxt)
+kindOf (TUnif (UV {uvKind = k})) = flatten k
 kindOf TFun = return $ KFun KType (KFun KType KType)
 kindOf (TForall _ (Just k) t) = bindTy k $ kindOf t
 kindOf (TForall _ Nothing t) = error "kindOf: unkinded forall"

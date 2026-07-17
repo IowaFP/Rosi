@@ -85,7 +85,7 @@ unifyProductive eqns actual expected =
      (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
      case result of
        Right q ->
-         do q' <- flattenV q
+         do q' <- flatten q
             case q' of
               VGoal _ ->
                 do reset m
@@ -135,8 +135,8 @@ unify' actual expected =
 -- pass it as `u` but pass `flip unify` as the third argument.
 unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM Evid) -> UnifyM Evid
 unifyInstantiating t u unify =
-  do t' <- flattenT t
-     u' <- flattenT u
+  do t' <- flatten t
+     u' <- flatten u
 
      let (uis, u'') = insts u'
      case (t', u') of
@@ -155,7 +155,7 @@ unifyInstantiating t u unify =
     -- Match a forall against an explicit type argument and instantiate
     universals (TForall _ (Just k) t) (TyArg s :<| is) u =
       do s' <- liftToUnifyM . toCheckM $ checkTy s k
-         t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 s') t
+         t' <- beta t s'
          universals t' is u
     -- An explicit type argument without an initial forall is a unification
     -- failure.
@@ -202,7 +202,7 @@ unifyInstantiating t u unify =
       -- end of our solution.
       | Unknown n g :<| is' <- is =
         do (insts, ts) <- solve n (take (length qts - length qus) qts) []
-           t'' <- instantiate shiftTNV n ts (quantify (drop (length qts - length qus) qts) t')
+           t'' <- instantiate shiftNV n ts (quantify (drop (length qts - length qus) qts) t')
            gr <- newRef Nothing
            name <- fresh "i"
            let i' = Unknown n (Goal (name, gr))
@@ -229,14 +229,14 @@ unifyInstantiating t u unify =
                  first (TyArg u :) <$> solve n qs (u : us)
             solve n (QuThen p : qs) us =
               do vr <- newRef Nothing
-                 p' <- instantiate shiftPNV n us p
+                 p' <- instantiate shiftNV n us p
                  require p' vr
                  first (PrArg (VGoal (Goal ("v", vr))) :) <$> solve n qs us
             solve_  _ _ = error "impossible, working on foralls"
 
             instantiate shift n us t =
               shift [] 0 (- m) <$> foldM (\t (i, u) -> subst i u t) t us'
-              where us' = zip [0..] (map (shiftTN 0 (m + n)) us)
+              where us' = zip [0..] (map (shiftN 0 (m + n)) us)
                     m   = length us
 
     ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ unifyInstantiating t u unify =
     -- Match an existential against an explicit type argument and instantiate
     existentials t (is :|> TyPack s) (TExists _ (Just k) u) =
       do s' <- liftToUnifyM . toCheckM $ checkTy s k
-         u' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 s') u
+         u' <- beta u s'
          existentials t is u'
     -- An explicit pack without an initial exists is a unification failure.
     existentials t is@(_ :|> TyPack _) u =
@@ -294,7 +294,7 @@ unifyInstantiating t u unify =
       -- end of our solution.
       | is' :|> Unknown n g <- is =
         do (insts, us) <- solve n (take (length qus - length qts) qus) []
-           u'' <- instantiate shiftTNV n us (quantify (drop (length qus - length qts) qus) u')
+           u'' <- instantiate shiftNV n us (quantify (drop (length qus - length qts) qus) u')
            gr <- newRef Nothing
            name <- fresh "i"
            let i' = Unknown n (Goal (name, gr))
@@ -321,14 +321,14 @@ unifyInstantiating t u unify =
                  first (TyPack u :) <$> solve n qs (u : us)
             solve n (QuExistsP p : qs) us =
               do vr <- newRef Nothing
-                 p' <- instantiate shiftPNV n us p
+                 p' <- instantiate shiftNV n us p
                  require p' vr
                  first (PrPack (VGoal (Goal ("v", vr))) :) <$> solve n qs us
             solve_  _ _ = error "impossible, working on foralls"
 
             instantiate shift n us t =
               shift [] 0 (- m) <$> foldM (\t (i, u) -> subst i u t) t us'
-              where us' = zip [0..] (map (shiftTN 0 (m + n)) us)
+              where us' = zip [0..] (map (shiftN 0 (m + n)) us)
                     m   = length us
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid
@@ -346,7 +346,7 @@ unify0 (TInst [Unknown 0 (Goal (_, r))] (TUnif w)) (TUnif v)
 unify0 actual t@(TUnif v@(UV n lref (Goal (uvar, r)) k)) =
   do mt <- readRef r
      case mt of
-       Just t -> unify' actual (shiftTN 0 n t)
+       Just t -> unify' actual (shiftN 0 n t)
        Nothing ->
          do chk <- canUpdate r
             if chk
@@ -358,7 +358,7 @@ unify0 actual t@(TUnif v@(UV n lref (Goal (uvar, r)) k)) =
 unify0 actual@(TUnif v@(UV n lref (Goal (uvar, r)) k)) expected =
   do mt <- readRef r
      case mt of
-       Just t -> unify' (shiftTN 0 n t) expected
+       Just t -> unify' (shiftN 0 n t) expected
        Nothing ->
          do chk <- canUpdate r
             if chk

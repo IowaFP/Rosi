@@ -26,11 +26,11 @@ expectT m actual expected =
      b <- typeErrorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify [] actual expected
      case b of
        Left (actual', expected') -> typeMismatch m actual expected actual' expected'
-       Right q                   -> flattenV q
+       Right q                   -> flatten q
 
 typeMismatch :: Term -> Ty -> Ty -> Ty -> Ty -> CheckM a
 typeMismatch m actual expected actual' expected' =
-  do [actual0, expected0, actual'0, expected'0] <- mapM flattenT [actual, expected, actual', expected']
+  do [actual0, expected0, actual'0, expected'0] <- mapM flatten [actual, expected, actual', expected']
      typeError (ErrContextTerm m $ ErrTypeMismatch actual0 expected0 actual'0 expected'0)
 
 wrap :: Evid -> Term -> Term
@@ -38,7 +38,7 @@ wrap VEqRefl t = t
 wrap q t       = ECast t q
 
 checkTerm' :: Term -> Ty -> CheckM Term
-checkTerm' e t = checkTerm e =<< flattenT t
+checkTerm' e t = checkTerm e =<< flatten t
 
 lookupVar :: Int -> CheckM Ty
 lookupVar i = asks (lookupV i . tctxt)
@@ -75,7 +75,7 @@ checkTerm0 e (TForall v (Just k) t) =
   ETyLam v (Just k) <$>
     (upLevel $
      bindTy k $
-       checkTerm (shiftEN 0 1 e) t)
+       checkTerm (shiftN 0 1 e) t)
 checkTerm0 e0@(EPrLam p e) expected =
   do tcod <- expectedGoal "cod"
      wrapInst expected $ \expected ->
@@ -98,7 +98,7 @@ checkTerm0 e0@(ELam v (Just t) e) expected =
      t' <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
      wrapInst expected $ \expected ->
        do q <- expectT e0 (funTy t' tcod) expected
-          tdom <- flattenT t'
+          tdom <- flatten t'
           case tdom of
             TExists {} -> checkTerm (EExLam [] [] v (Just tdom) e) expected
             _          -> do
@@ -109,26 +109,26 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
        tcod <- expectedGoal "cod"
        xs' <- mapM addKinds xs
        q <- expectT e0 (foldr (uncurry TExists) tdom xs' `funTy` tcod) expected
-       (existentials, (assumed, tdom')) <- second splitPreds . existsBinders <$> flattenT tdom
+       (existentials, (assumed, tdom')) <- second splitPreds . existsBinders <$> flatten tdom
        wrap q . EExLam (xs' ++ existentials) assumed y Nothing <$>
          (upLevel $
           bindTys (xs' ++ existentials) $
           assumes assumed $
           bind y tdom' $
-          checkTerm m (shiftTN 0 (length xs' + length existentials) tcod))
+          checkTerm m (shiftN 0 (length xs' + length existentials) tcod))
   | Just t <- mt =
     do tdom <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
        tcod <- expectedGoal "cod"
        xs' <- mapM addKinds xs
        q <- expectT e0 (tdom `funTy` tcod) expected
-       (ys, (assumed, tdom')) <- second (splitPreds) . existsBinders <$> flattenT tdom
+       (ys, (assumed, tdom')) <- second (splitPreds) . existsBinders <$> flatten tdom
        trace $ "! existentials: split " ++ renderString (ppr tdom) ++ " into " ++ show (ys, assumed, tdom')
        wrap q . EExLam (xs' ++ drop (length xs') ys) assumed y Nothing <$>
          (upLevel $
           bindTys (xs' ++ drop (length xs') ys) $
           assumes assumed $
           bind y tdom' $
-          checkTerm m (shiftTN 0 (length ys) tcod))
+          checkTerm m (shiftN 0 (length ys) tcod))
   where
     addKinds (x, Just k) = return (x, Just k)
     addKinds (x, Nothing) =
@@ -328,10 +328,10 @@ generalize topLevel e =
      tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere) [])
      genVars <- foldl cat [] <$> ((:) <$> uvars level t <*> mapM (puvars level . fst) generalizable)
      fixInsts t
-     t' <- shiftTNV genVars 0 (length genVars) <$> flattenT t
-     e'' <- shiftENV genVars 0 (length genVars) <$> flattenE e'
+     t' <- shiftNV genVars 0 (length genVars) <$> flatten t
+     e'' <- shiftNV genVars 0 (length genVars) <$> flatten e'
      generalizable' <- forM generalizable $ \(p, evid) ->
-       do p' <- shiftPNV genVars 0 (length genVars) <$> flattenP p
+       do p' <- shiftNV genVars 0 (length genVars) <$> flatten p
           return (p', evid)
      trace $ "Generalizing " ++ intercalate ", " (map (renderString . ppr) genVars) ++ " in " ++ renderString (ppr t')
      as <- generalizeVars genVars

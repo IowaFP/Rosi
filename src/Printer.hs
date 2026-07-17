@@ -113,7 +113,7 @@ instance Printable UVar where
   ppr (UV n l (Goal (s, rmt)) k) =
     do mt <- liftIO (readIORef rmt)
        case mt of
-         Just t -> ppr (shiftTN 0 n t)
+         Just t -> ppr (shiftN 0 n t)
          Nothing ->
            do pk <- asks printKinds
               let name = "%" <> ppre s <> "@" <> ppr l <>
@@ -180,7 +180,7 @@ instance Printable Ty where
   ppr (TConApp (Mu _) (TConApp Sigma (TRow [
                         TLabeled (TLab "Cons") (TLam _ (Just KType) (TConApp Pi (TRow [TLabeled (TLab "1") t, TLabeled (TLab "2") (TVar 0 _)]))),
                         TLabeled (TLab "Nil") (TLam _ (Just KType) (TConApp Pi (TRow [])))])))
-                        = "List" <+> at 4 (ppr (shiftTN 0 (-1) t))
+                        = "List" <+> at 4 (ppr (shiftN 0 (-1) t))
   ppr (TConApp k t) = ppr k <+> at 4 (ppr t)
   ppr (TMap t) =
     do b <- asks printMaps
@@ -202,7 +202,7 @@ instance Printable Ty where
             do minst <- liftIO $ readIORef r
                case minst of
                  Nothing -> "^" <> ppre n <> "%" <> ppre s
-                 Just is -> sep (punctuate "," (map pprI $ shiftIsV [] 0 n is))
+                 Just is -> sep (punctuate "," (map pprI $ shiftN 0 n is))
 
   ppr (TCompl r0 r1) = fillSep [ppr r0 <+> "-", ppr r1]
   ppr (TPlus y z) = fillSep [parens (ppr y) <+> "+", parens (ppr z)] -- oops, need a precedence table...

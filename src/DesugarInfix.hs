@@ -13,6 +13,8 @@ import Syntax
 class DesugarInfix a where
   desugarInfix :: a -> Either Error a
 
+defaultFixity = Fixity InfixL 9
+
 instance DesugarInfix Term where
 
   desugarInfix :: Term -> Either Error Term

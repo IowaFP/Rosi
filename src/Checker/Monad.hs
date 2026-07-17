@@ -1,6 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use fmap" #-}
+{- HLINT ignore "Use fmap" -}
 
 module Checker.Monad where
 
@@ -37,11 +36,6 @@ traceM ms =
   do b <- liftIO $ readIORef traceTypeInference
      when b (ms >>= liftIO . putStrLn)
 
-class Monad m => MonadRef m where
-  readRef :: IORef a -> m a
-  writeRef :: Typeable a => IORef a -> a -> m ()
-  newRef :: Typeable a => a -> m (IORef a)
-
 data KBinding =
     KBVar { kbKind :: Kind, kbLevel :: Level }
   | KBDefn { kbKind :: Kind, kbDefn :: Ty }
@@ -61,7 +55,7 @@ lookupV 0 ((_, t) : _) = t
 lookupV n (_ : ts)     = lookupV (n - 1) ts
 
 shiftE :: TCtxt -> TCtxt
-shiftE = map (second (shiftTN 0 1))
+shiftE = map (second (shiftN 0 1))
 
 data Update where
   U :: IORef a -> a -> Update
@@ -133,7 +127,7 @@ checkXPred s p =
 
 class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => MonadCheck m where
   bindTy :: Kind -> m a -> m a
-  bindTy k = local (\env -> env { kctxt = KBVar k (level env) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftPNV [] 0 1) (pctxt env) })
+  bindTy k = local (\env -> env { kctxt = KBVar k (level env) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (shiftN 0 1) (pctxt env) })
 
   defineTy :: Kind -> Ty -> m a -> m a
   defineTy k t = local (\env -> env { kctxt = KBDefn k t : kctxt env, tctxt = shiftE (tctxt env), level = level env + 1 })
@@ -169,7 +163,7 @@ class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => Monad
 instance MonadCheck CheckM where
   require p r =
     do cin <- ask
-       p' <- flattenP p
+       p' <- flatten p
        trace ("requiring " ++ show p')
        tell (TCOut [(cin, p, r)] [])
 

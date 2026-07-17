@@ -90,8 +90,8 @@ unifyK' _ _ =
 
 kindMismatch :: MonadCheck m => Ty -> Kind -> Kind -> m a
 kindMismatch t actual expected =
-  do actual' <- flattenK actual
-     expected' <- flattenK expected
+  do actual' <- flatten actual
+     expected' <- flatten expected
      typeError (ErrContextType t (ErrKindMismatch actual' expected'))
 
 --
@@ -140,9 +140,9 @@ implicitConstraints topLevel t expected =
      (t2, pairs) <- collect $ foldr bindTy (checkTy t' expected) ks'
      let (here, there)
             | topLevel = (pairs, [])
-            | otherwise = partition ((tvFreeInP [0..length bs - 1]) . fst) pairs
+            | otherwise = partition (isFree [0..length bs - 1] . fst) pairs
          (ps, uvs) = unzip here
-         t3 = shiftTNV uvs 0 (length uvs) (foldr TThen t2 ps)
+         t3 = shiftNV uvs 0 (length uvs) (foldr TThen t2 ps)
          insts = [(goalRef (uvGoal v), Just (TVar i [s, ""])) | (v, i) <- zip (reverse uvs) [0..], let s = goalName (uvGoal v)]
          t4 = rebind (zip xs (map Just ks') ++ [(x, Just k) | v <- uvs, let x = goalName (uvGoal v), let k = uvKind v]) t3
      tell there

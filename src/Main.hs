@@ -117,20 +117,20 @@ main = do nowArgs <- getArgs
           when (printOkay flags) $ putStrLn "okay"
   where goCheck _ d g [] = return []
         goCheck flags d g (TyDecl x k t : ds) =
-          do t' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
+          do t' <- flatten . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
                -- Shouldn't be any holes in types...
              goCheck flags (KBDefn k t' : d) g ds
         goCheck flags d g (TmDecl v (Just ty) te _ : ds) =
-          do ty' <- flattenT . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints True ty KType)))
+          do ty' <- flatten . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints True ty KType)))
              (te', holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
-             te'' <- flattenE te'
+             te'' <- flatten te'
              reportHoles flags holes
              ds' <- goCheck flags d ((v, ty') : g) ds
              return ((v, ty', te'') : ds')
         goCheck flags d g (TmDecl v Nothing te _: ds) =
           do ((te', ty), holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
-             ty' <- flattenT ty
-             te'' <- flattenE te'
+             ty' <- flatten ty
+             te'' <- flatten te'
              reportHoles flags holes
              ds' <- goCheck flags d ((v, ty') : g) ds
              return ((v, ty, te'') : ds')
@@ -141,7 +141,7 @@ main = do nowArgs <- getArgs
         goEvalE h ((x, t, m) : ds)
           | hasHoles m = return []
           | otherwise =
-            do m' <- flattenE m
+            do m' <- flatten m
                let v = E.eval ([], h) m'
                ((x, v) :) <$> goEvalE (v : h) ds
 
@@ -150,8 +150,8 @@ main = do nowArgs <- getArgs
         reportHoles :: Flags -> [(String, Ty, TCtxt)] -> IO ()
         reportHoles flags = mapM_ reportHole where
           reportHole (s, t, tcin) =
-            do t' <- flattenT t
-               locals' <- mapM (\(x, t) -> (x,) <$> flattenT t) locals
+            do t' <- flatten t
+               locals' <- mapM (\(x, t) -> (x,) <$> flatten t) locals
                putDocWLn 120 flags $
                  if null locals'
                  then nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"

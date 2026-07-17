@@ -12,57 +12,6 @@ import Syntax
 
 import GHC.Stack
 
-
-class HasTyVars t where
-  subst :: MonadRef m => Int -> Ty -> t -> m t
-
-instance HasTyVars Ty where
-  subst j t u@(TVar i _)
-    | j == i = return t
-    | otherwise = return u
-  subst v t u@(TUnif (UV n _ (Goal (y, r)) k)) =
-    do mt <- readRef r
-       case mt of
-         Nothing -> return u
-         Just u  -> do u' <- subst v t (shiftTN 0 n u)
-                       -- TODO: This should be handled by promotion as well
-                       writeRef r (Just (shiftTN 0 (negate n) u'))
-                       return u'
-  subst v t TFun = return TFun
-  subst v t (TThen p u) = TThen <$> subst v t p <*> subst v t u
-  subst v t (TExistsP p u) = TExistsP <$> subst v t p <*> subst v t u
-  subst v t (TForall w k u) = TForall w k <$> subst (v + 1) (shiftT 0 t) u
-  subst v t (TExists w k u) = TExists w k <$> subst (v + 1) (shiftT 0 t) u
-  subst v t (TLam w k u) = TLam w k <$> subst (v + 1) (shiftT 0 t) u
-  subst v t (TApp u0 u1) =
-    TApp <$> subst v t u0 <*> subst v t u1
-  subst v t u@(TLab _) = return u
-  subst v t (TSing u) = TSing <$> subst v t u
-  subst v t (TLabeled l u) = TLabeled <$> subst v t l <*> subst v t u
-  subst v t (TRow us) = TRow <$> mapM (subst v t) us
-  subst v t (TConApp k u) = TConApp k <$> subst v t u
-  subst v t (TCompl y x) = TCompl <$> subst v t y <*> subst v t x
-  subst v t (TInst is u) = TInst <$> (concat <$> mapM substI is) <*> subst v t u where
-    substI (TyArg u) = singleton . TyArg <$> subst v t u
-    substI (PrArg v) = return [PrArg v]
-    substI (TyPack u) = singleton . TyPack <$> subst v t u
-    substI (PrPack v) = return [PrPack v]
-    substI i@(Unknown n (Goal (_, r))) =
-      do minst <- readRef r
-         case minst of
-           Nothing -> return [i]
-           Just is -> concat <$> mapM substI is
-  subst v t (TMap f) = TMap <$> subst v t f
-  subst v t (TMapApp f) = TMapApp <$> subst v t f
-  subst v t TString = return TString
-  subst v t u = error $ "internal: subst " ++ show v ++ " (" ++ show t ++ ") (" ++ show u ++")"
-
-instance HasTyVars Pred where
-  subst v t (PEq u u')    = PEq <$> subst v t u <*> subst v t u'
-  subst v t (PLeq y z)    = PLeq <$> subst v t y <*> subst v t z
-  subst v t (PPlus x y z) = PPlus <$> subst v t x <*> subst v t y <*> subst v t z
-  subst v t (PFold z)     = PFold <$> subst v t z
-
 normalize' :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
 normalize' eqns t =
   do (u, q) <- normalize eqns t
@@ -74,7 +23,7 @@ normalize' eqns t =
 
 etaContract :: Ty -> (Ty, Evid)
 etaContract ty@(TLam s1 (Just k) (TApp t (TVar 0 s3)))
-  | not (tvFreeIn [0] t) = (shiftTN 0 (-1) t , VEqEta)
+  | not (isFree [0] t) = (shiftN 0 (-1) t , VEqEta)
 etaContract t = (t , VEqRefl)
 
 normalize :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
@@ -86,10 +35,10 @@ normalize eqns t@(TVar i _) =
   do kb <- asks ((!! i) . kctxt)
      case kb of
        KBVar k _ -> return (t, VEqRefl)
-       KBDefn _ def -> do (t', q) <- normalize eqns (shiftTN 0 (i + 1) def)
+       KBDefn _ def -> do (t', q) <- normalize eqns (shiftN 0 (i + 1) def)
                           return (t', VEqTrans VEqDefn q)
 normalize eqns t0@(TApp (TLam x (Just k) t) u) =
-  do t1 <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
+  do t1 <- beta t u
      (t2, q) <- normalize eqns t1
      return (t2, VEqTrans VEqBeta q)
 normalize eqns (TApp (TConApp Pi r) t) =
@@ -129,11 +78,11 @@ normalize eqns (TApp (TMapApp (TRow es)) t)
 normalize eqns (TMapApp z) =
     do k <- kindOf z
        case k of
-         KRow (KFun k1 k2) -> return (TLam "X" (Just k1) (TApp (TMap (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 ["Y", ""]) (TVar 1 ["X", ""])))) (shiftTN 0 1 z)), VEqDefn)
+         KRow (KFun k1 k2) -> return (TLam "X" (Just k1) (TApp (TMap (TLam "Y" (Just (KFun k1 k2)) (TApp (TVar 0 ["Y", ""]) (TVar 1 ["X", ""])))) (shiftN 0 1 z)), VEqDefn)
          _                 -> fail ("normalize: ill-kinded " ++ show (TMapApp z))
 normalize eqns (TApp t1 t2) =
   do (t1', q1) <- normalize eqns t1
-     q1' <- flattenV q1
+     q1' <- flatten q1
      case q1' of
        VEqRefl -> do (t2', q2) <- normalize eqns t2
                      return (TApp t1 t2', VEqApp VEqRefl q2)

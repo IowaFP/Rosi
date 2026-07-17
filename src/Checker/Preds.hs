@@ -25,13 +25,13 @@ solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
   do trace $ "Solving: " ++ renderString (ppr p) ++ "\nin " ++ show (kctxt cin)
-     as' <- mapM (normalizeP [] <=< flattenP) (pctxt cin)
+     as' <- mapM (normalizeP [] <=< flatten) (pctxt cin)
      unless (null as') $ trace ("Expanding " ++ show as')
      let as'' = expandAll (zip as' [VVar i | i <- [0..]])
      let eqns = pickEqns as''
      unless (null as'') $ trace ("Expanded " ++ show as' ++ " to " ++ show as'')
      unless (null eqns) $ trace ("Found equations " ++ show eqns)
-     p' <- normalizeP eqns =<< flattenP p
+     p' <- normalizeP eqns =<< flatten p
      trace ("Normalized goal to " ++ renderString (ppr p'))
      mv <- everything as'' p'
      case mv of
@@ -400,7 +400,7 @@ guesses prs =
 
   guessAt :: Int -> CheckM [Guess]
   guessAt i =
-    do p' <- local (const tcin) (flattenP =<< normalizeP [] p)
+    do p' <- local (const tcin) (flatten =<< normalizeP [] p)
        let tries = catMaybes $ map ($ (tcin, p', v)) guessers
        return (map (wrapGuess (dropAt i prs) . local (const tcin)) tries)
     where (tcin, p, v) = prs !! i
@@ -448,7 +448,7 @@ guesses prs =
 
                   instantiate t [] = return t
                   instantiate (TForall _ _ t) (u : us) =
-                    do t' <- shiftTN 0 (-1) <$> subst 0 (shiftTN 0 1 u) t
+                    do t' <- beta t u
                        instantiate t' us
   guessInst _ = Nothing
 
@@ -526,11 +526,11 @@ guesses prs =
       do mt <- readRef (goalRef (uvGoal v))
          case mt of
            Nothing -> return (TUnif v { uvShift = uvShift v + 1 })
-           Just t  -> walk x u m (shiftTN 0 (uvShift v) t)
+           Just t  -> walk x u m (shiftN 0 (uvShift v) t)
     walk _ _ _ TFun = return TFun
     walk x u m (TThen p t) = TThen <$> walkP x u m p <*> walk x u m t
-    walk x u m (TForall s mk t) = TForall s mk <$> walk (shiftTN 0 1 x) (shiftTN 0 1 u) (m + 1) t
-    walk x u m (TLam s mk t) = TLam s mk <$> walk (shiftTN 0 1 x) (shiftTN 0 1 u) (m + 1) t
+    walk x u m (TForall s mk t) = TForall s mk <$> walk (shiftN 0 1 x) (shiftN 0 1 u) (m + 1) t
+    walk x u m (TLam s mk t) = TLam s mk <$> walk (shiftN 0 1 x) (shiftN 0 1 u) (m + 1) t
     walk x u m (TApp t t') = TApp <$> walk x u m t <*> walk x u m t'
     walk x u m t@(TLab _) = return t
     walk x u m (TSing t) = TSing <$> walk x u m t
@@ -550,7 +550,7 @@ guesses prs =
         do mis <- readRef (goalRef g)
            case mis of
              Nothing  -> return [Unknown n g]
-             Just is' -> walkIs (shiftIsV [] 0 n is')
+             Just is' -> walkIs (shiftN 0 n is')
 
     walkP :: Ty -> Ty -> Int -> Pred -> CheckM Pred
     walkP v u m (PLeq x y)    = PLeq <$> walk v u m x <*> walk v u m y
@@ -593,8 +593,8 @@ andSolve makeGuesses m =
 notEntailed :: [Problem] -> CheckM a
 notEntailed problems = throwError . ErrNotEntailed =<< mapM mkError problems
   where mkError (cin, p, _) =
-          do p' <- flattenP p
-             ps' <- mapM flattenP (pctxt cin)
+          do p' <- flatten p
+             ps' <- mapM flatten (pctxt cin)
              return (p', ps')
 
 
