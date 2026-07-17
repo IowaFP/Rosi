@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ParallelListComp   #-}
 {- HLINT ignore "Fuse foldr/map" -}
 module Parser where
 
@@ -12,6 +13,7 @@ import Data.Data                  hiding (Fixity, Infix, Prefix)
 import Data.IORef                 (newIORef)
 import Data.List                  (intercalate, intersperse, singleton)
 import Data.List.NonEmpty         (fromList)
+import Data.Maybe
 import Data.Void                  (Void)
 import System.Exit                (exitFailure)
 import System.IO                  (hPutStrLn, stderr)
@@ -343,7 +345,11 @@ atype = choice [ TLab <$> lexeme lidentifier
                , TRow <$> braces (commaSep labeledTy)
                , TString <$ reserved "String"
                , TVar (-1) <$> lexeme qidentifier
-               , parens ty ]
+               , do ts <- parens (commaSep ty)
+                    return $ case ts of
+                      []  -> TConApp Pi (TRow [])
+                      [t] -> t
+                      ts  -> TConApp Pi (TRow [TLabeled (TLab (show n)) t | n <- [1..] | t <- ts])]
 
 pr :: Parser Pred
 pr = choice [ do reserved "Fold"
@@ -531,11 +537,15 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
                  , EStringLit <$> stringLit
                  , do symbol "("
                       t <- do ts <- commaSep term
-                              case (ts, mapM labeledTerm ts) of
-                                 ([], _)            -> return (EVar (-1) (reverse ["Ro", "Base", "tt"]))
-                                 ([t], _)           -> return t
-                                 (_, Just (t : ts)) -> return (foldl (\t1 t2 -> EApp (EApp (EConst CConcat) t1) t2) t ts)
-                                 (_, Nothing)       -> unexpected $ Label (fromList "unlabeled term")
+                              case (ts, map labeledTerm ts) of
+                                 ([], _)       -> return (EVar (-1) (reverse ["Ro", "Base", "tt"]))
+                                 ([t], _)      -> return t
+                                 (t : ts, mts)
+                                   | Just (t : ts) <- sequence mts
+                                               -> return (catAll t ts)
+                                   | all isNothing mts
+                                               -> return (catAll (labelRecord "1" t) [labelRecord (show i) t | i <- [2..] | t <- ts])
+                                   | otherwise -> unexpected $ Label (fromList "unlabeled term")
                       guardIndent (string ")")
                       s <- optional stor
                       whitespace
@@ -550,6 +560,10 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
   buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
 
+  catAll = foldl (\t1 t2 -> EApp (EApp (EConst CConcat) t1) t2)
+
+  labelRecord :: String -> Term -> Term
+  labelRecord s t = ELabel Nothing (ESing (TLab s)) t
 
 data TL = KindSig Kind | TypeDef Ty | TypeSig Ty | TermDef Term | ImportTL [String] | FixityDecl Fixity
   deriving (Data, Eq, Show, Typeable)
