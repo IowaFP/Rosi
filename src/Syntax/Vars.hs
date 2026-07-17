@@ -171,3 +171,52 @@ instance HasTyVars Term where
   isFree = error "isFree not implemented for terms"
 
   subst = error "subst not implemented for terms"
+
+class HasUVars t where
+  uvars :: MonadRef m => Level -> t -> m [UVar]
+
+cat :: [UVar] -> [UVar] -> [UVar]
+cat ts us = ts ++ filter (\u -> all (different u) ts) us where
+  different t u = goalRef (uvGoal t) /= goalRef (uvGoal u)
+
+instance HasUVars Ty where
+  uvars _ (TVar {}) = return []
+  uvars level (TUnif v@(UV { uvLevel = uvl, uvGoal = Goal (_, r) })) =
+    do mt <- readRef r
+       case mt of
+         Just t -> uvars level t
+         Nothing
+           | uvl >= level -> return [v]
+           | otherwise    -> return []
+  uvars _ TFun = return []
+  uvars level (TThen p t) = cat <$> uvars level p <*> uvars level t
+  uvars level (TExistsP p t) = cat <$> uvars level p <*> uvars level t
+  uvars level (TForall _ _ t) = uvars level t
+  uvars level (TExists _ _ t) = uvars level t
+  uvars level (TLam _ _ t) = uvars level t
+  uvars level (TApp t u) = cat <$> uvars level t <*> uvars level u
+  uvars _ (TLab {}) = return []
+  uvars level (TSing t) = uvars level t
+  uvars level (TLabeled l t) = cat <$> uvars level l <*> uvars level t
+  uvars level (TRow ts) = foldl cat [] <$> mapM (uvars level) ts
+  uvars level (TConApp k t) = uvars level t
+  uvars level (TMap t) = uvars level t
+  uvars level (TInst is t) = cat <$> uvars level is <*> uvars level t where
+
+  uvars level (TMapApp t) = uvars level t
+  uvars _ TString = return []
+  uvars level (TCompl t1 t2) = cat <$> uvars level t1 <*> uvars level t2
+
+instance HasUVars [Inst] where
+  uvars level is = foldl cat [] <$> mapM iuvars is where
+    iuvars (TyArg t)    = uvars level t
+    iuvars (PrArg {})   = return []
+    iuvars (TyPack t)   = uvars level t
+    iuvars (PrPack {})  = return []
+    iuvars (Unknown {}) = return []
+
+instance HasUVars Pred where
+  uvars level (PEq t u)     = cat <$> uvars level t <*> uvars level u
+  uvars level (PLeq y z)    = cat <$> uvars level y <*> uvars level z
+  uvars level (PPlus x y z) = cat <$> (cat <$> uvars level x <*> uvars level y) <*> uvars level z
+  uvars level (PFold z)     = uvars level z

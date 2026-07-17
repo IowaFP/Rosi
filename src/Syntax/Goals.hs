@@ -85,7 +85,6 @@ instance HasGoals Pred where
   flatten (PFold z) =
     PFold <$> flatten z
 
-
 instance HasGoals Insts where
   flatten is = concat <$> mapM flattenI is where
     flattenI (TyArg t)  = singleton . TyArg <$> flatten t

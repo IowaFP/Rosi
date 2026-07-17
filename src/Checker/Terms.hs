@@ -326,7 +326,7 @@ generalize topLevel e =
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
      unless (null ungeneralizable) $ notEntailed ungeneralizable
      tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere) [])
-     genVars <- foldl cat [] <$> ((:) <$> uvars level t <*> mapM (puvars level . fst) generalizable)
+     genVars <- foldl cat [] <$> ((:) <$> uvars level t <*> mapM (uvars level . fst) generalizable)
      fixInsts t
      t' <- shiftNV genVars 0 (length genVars) <$> flatten t
      e'' <- shiftNV genVars 0 (length genVars) <$> flatten e'
@@ -340,57 +340,11 @@ generalize topLevel e =
      trace $ "Generalized: " ++ renderString (ppr t'')
      return (e''', t'')
 
-  where uvars :: Level -> Ty -> CheckM [UVar]
-        uvars _ (TVar {}) = return []
-        uvars level (TUnif v@(UV { uvLevel = uvl, uvGoal = Goal (_, r) })) =
-          do mt <- readRef r
-             case mt of
-               Just t -> uvars level t
-               Nothing
-                 | uvl >= level -> return [v]
-                 | otherwise    -> return []
-        uvars _ TFun = return []
-        uvars level (TThen p t) = cat <$> puvars level p <*> uvars level t
-        uvars level (TExistsP p t) = cat <$> puvars level p <*> uvars level t
-        uvars level (TForall _ _ t) = uvars level t
-        uvars level (TExists _ _ t) = uvars level t
-        uvars level (TLam _ _ t) = uvars level t
-        uvars level (TApp t u) = cat <$> uvars level t <*> uvars level u
-        uvars _ (TLab {}) = return []
-        uvars level (TSing t) = uvars level t
-        uvars level (TLabeled l t) = cat <$> uvars level l <*> uvars level t
-        uvars level (TRow ts) = foldl cat [] <$> mapM (uvars level) ts
-        uvars level (TConApp k t) = uvars level t
-        uvars level (TMap t) = uvars level t
-        uvars level (TInst is t) = cat <$> isuvars is <*> uvars level t where
-          isuvars is           = foldl cat [] <$> mapM iuvars is
-          iuvars (TyArg t)    = uvars level t
-          iuvars (PrArg {})   = return []
-          iuvars (TyPack t)   = uvars level t
-          iuvars (PrPack {})  = return []
-          iuvars (Unknown {}) = return []
-        uvars level (TMapApp t) = uvars level t
-        uvars _ TString = return []
-        uvars level (TCompl t1 t2) = cat <$> uvars level t1 <*> uvars level t2
-
-        puvars :: Level -> Pred -> CheckM [UVar]
-        puvars level (PEq t u)     = cat <$> uvars level t <*> uvars level u
-        puvars level (PLeq y z)    = cat <$> uvars level y <*> uvars level z
-        puvars level (PPlus x y z) = cat <$> (cat <$> uvars level x <*> uvars level y) <*> uvars level z
-        puvars level (PFold z)     = uvars level z
-
-        cat :: [UVar] -> [UVar] -> [UVar]
-        cat ts us = ts ++ filter (\u -> all (different u) ts) us
-
-        ref = goalRef . uvGoal
-        different t u = ref t /= ref u
-        same t u = ref t == ref u
-
-        splitProblems :: Level -> [Problem] -> CheckM ([Problem], [Problem])
+  where splitProblems :: Level -> [Problem] -> CheckM ([Problem], [Problem])
         splitProblems level [] = return ([], [])
         splitProblems level (pr@(tcin, p, _) : prs) =
           do (here, there) <- splitProblems level prs
-             prUvars <- (++) <$> (foldr (++) [] <$> mapM (puvars level) (pctxt tcin)) <*> puvars level p
+             prUvars <- (++) <$> (foldr (++) [] <$> mapM (uvars level) (pctxt tcin)) <*> uvars level p
              if null prUvars
              then return (here, pr : there)
              else return (pr : here, there)
@@ -421,7 +375,7 @@ generalize topLevel e =
         fixInsts t = everywhereM (mkM fixInst) t >> return () where
           fixInst :: Ty -> CheckM Ty
           fixInst t@(TUnif v) =
-            do mu <- readRef (ref v)
+            do mu <- readRef (goalRef (uvGoal v))
                case mu of
                  Just u  -> fixInsts u >> return t
                  Nothing -> return t
