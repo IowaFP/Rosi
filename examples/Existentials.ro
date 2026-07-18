@@ -75,9 +75,7 @@ formalName p = p.'title ^ " " ^ fullName p
 
 name = formalName ('title := "Dr", 'first := "Garrett", 'last := "Morris", 'office := "1E Jessup Hall")
 
--- But this won't work.
+prof : Object {'title := String, 'first := String, 'last := String, 'office := String}
+prof = ('title := "Dr", 'first := "Garrett", 'last := "Morris", 'office := "1E Jessup Hall")
 
--- prof : Object {'title := String, 'first := String, 'last := String, 'office := String}
--- prof = ('title := "Dr", 'first := "Garrett", 'last := "Morris", 'office := "1E Jessup Hall")
-
--- name' = formalName prof
+name' = formalName prof

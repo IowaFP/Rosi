@@ -6,8 +6,10 @@ module Main where
 import Control.Monad         (when)
 import Control.Monad.Reader  (runReaderT)
 import Control.Monad.State
+import Data.Bifunctor        (first, second)
 import Data.IORef
 import Data.List.Split
+import Data.Semigroup        ()
 import Data.String
 import Prettyprinter.Util    qualified as P
 import System.Console.GetOpt
@@ -108,73 +110,89 @@ main = do nowArgs <- getArgs
           decls <- parseChasing (imports flags) (inputs flags)
           scoped <- reportErrors flags $ runScopeM $ scopeProg decls
           deOpped <- reportErrors flags $ desugarInfix scoped
-          checked <- goCheck flags [] [] deOpped
+          checked <- goCheck flags [] [] [] deOpped
           when (doPrintTyped flags) $
             mapM_ (putDocWLn 120 flags . pprTyping) checked
-          evaled <- goEvalE [] checked
+          evaled <- goEvalE ([], []) checked
           let output = filter ((`elem` evals flags) . head . fst) evaled
           sequence_ [putStrLn $ stringFromQName x ++ " = " ++ show v | (x, v) <- output]
           when (printOkay flags) $ putStrLn "okay"
-  where goCheck _ d g [] = return []
-        goCheck flags d g (TyDecl x k t : ds) =
-          do t' <- flatten . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
-               -- Shouldn't be any holes in types...
-             goCheck flags (KBDefn k t' : d) g ds
-        goCheck flags d g (TmDecl v (Just ty) te _ : ds) =
-          do ty' <- flatten . fst =<< reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints True ty KType)))
-             (te', holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
-             te'' <- flatten te'
-             reportHoles flags holes
-             ds' <- goCheck flags d ((v, ty') : g) ds
-             return ((v, ty', te'') : ds')
-        goCheck flags d g (TmDecl v Nothing te _: ds) =
-          do ((te', ty), holes) <- reportErrors flags =<< runCheckM' d g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
-             ty' <- flatten ty
-             te'' <- flatten te'
-             reportHoles flags holes
-             ds' <- goCheck flags d ((v, ty') : g) ds
-             return ((v, ty, te'') : ds')
-        goCheck flags d g (TyDecl {} : ds) =
-          goCheck flags d g ds
+  where
+    goCheck :: Flags -> KCtxt -> PCtxt -> TCtxt -> [Decl] -> IO [(QName, Ty, [Pred], Term)]
+    goCheck _ _ _ _ [] = return []
+    goCheck flags d p g (TyDecl x k t : ds) =
+      do t' <- flatten . fst =<< reportErrors flags =<< runCheckM' d p g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
+           -- Shouldn't be any holes in types...
+         goCheck flags (KBDefn k t' : d) p g ds
+    goCheck flags d p g (TyDecl {} : ds) =
+      goCheck flags d p g ds
+    goCheck flags d p g (TmDecl v mt te _ : ds) =
+      do (te', ty', holes) <-
+           case mt of
+             Nothing ->
+               do ((te', ty), holes) <- reportErrors flags =<< runCheckM' d p g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
+                  ty' <- flatten ty
+                  return (te', ty', holes)
+             Just ty ->
+               do ty' <- flatten . fst =<< reportErrors flags =<< runCheckM' d p g (typeErrorContext (ErrContextDefn v . ErrContextType ty) $ fst <$> (normalize [] =<< toCheckM (implicitConstraints True ty KType)))
+                  (te', holes) <- reportErrors flags =<< runCheckM' d p g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ fst <$> checkTop te (Just ty'))
+                  return (te', ty', holes)
+         te'' <- flatten te'
+         reportHoles flags holes
+         case ty' of
+           TExists {} ->
+             let (existentials, (assumed, t')) = second existsQuals $ existsBinders ty'
+                 d' = [KBVar k 0 | (_, Just k) <- existentials] ++ d
+                 p' = assumed ++ p
+                 g' = (v, t') : g
+             in ((v, ty', assumed, te'') :) <$> goCheck flags d' p' g' (map (shiftN 0 (length existentials)) ds)
+           _ ->
+             ((v, ty', [], te'') :) <$> goCheck flags d p ((v, ty') : g) ds
 
-        goEvalE _ [] = return []
-        goEvalE h ((x, t, m) : ds)
-          | hasHoles m = return []
-          | otherwise =
-            do m' <- flatten m
-               let v = E.eval ([], h) m'
-               ((x, v) :) <$> goEvalE (v : h) ds
+    goEvalE :: Env -> [(QName, Ty, [Pred], Term)] -> IO [(QName, Value)]
+    goEvalE _ [] = return []
+    goEvalE h ((x, t, ps, m) : ds)
+      | hasHoles m = return []
+      | otherwise =
+        do m' <- flatten m
+           let v = E.eval h m'
+           if null ps
+           then ((x, v) :) <$> goEvalE (second (v :) h) ds
+           else let (qs, v') = peel ps v
+                in ((x, v) :) <$> goEvalE ((qs, [v']) <> h) ds
+      where peel [] v                 = ([], v)
+            peel (_ : ps) (VPack q v) = first (q :) (peel ps v)
+            peel ps v                 = error $ "unexpected peel " ++ show ps ++ " " ++ show v
+    thirdM f (a, b, c) = (a, b,) <$> f c
 
-        thirdM f (a, b, c) = (a, b,) <$> f c
+    reportHoles :: Flags -> [(String, Ty, TCtxt)] -> IO ()
+    reportHoles flags = mapM_ reportHole where
+      reportHole (s, t, tcin) =
+        do t' <- flatten t
+           locals' <- mapM (\(x, t) -> (x,) <$> flatten t) locals
+           putDocWLn 120 flags $
+             if null locals'
+             then nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
+                                   , ppr t']
+             else vsep [ nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
+                                          , ppr t']
+                       , nest 4 $ vsep ("Local variables in scope:" :
+                                       [ppr x <:> ppr t | (x, t) <- locals']) ]
 
-        reportHoles :: Flags -> [(String, Ty, TCtxt)] -> IO ()
-        reportHoles flags = mapM_ reportHole where
-          reportHole (s, t, tcin) =
-            do t' <- flatten t
-               locals' <- mapM (\(x, t) -> (x,) <$> flatten t) locals
-               putDocWLn 120 flags $
-                 if null locals'
-                 then nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
-                                       , ppr t']
-                 else vsep [ nest 4 $ fillSep [ if null s then "Found hole with type" else "Found hole" <+> fromString s <+> "with type"
-                                              , ppr t']
-                           , nest 4 $ vsep ("Local variables in scope:" :
-                                           [ppr x <:> ppr t | (x, t) <- locals']) ]
+        where locals = filter (\(x, t) -> length x == 2 && null (head (tail x))) tcin
 
-            where locals = filter (\(x, t) -> length x == 2 && null (head (tail x))) tcin
+    wordsIfExists :: FilePath -> IO [String]
+    wordsIfExists fn =
+      do exists <- doesFileExist fn
+         if exists then words <$> readFile fn else return []
 
-        wordsIfExists :: FilePath -> IO [String]
-        wordsIfExists fn =
-          do exists <- doesFileExist fn
-             if exists then words <$> readFile fn else return []
-
-        printUsage =
-          do exeName <- getProgName
-             let exeName' | dropExtension exeName == "cabal" = "cabal run Rosi --"
-                          | otherwise                        = exeName
-             putStrLn (usageInfo ("Usage:\n\n\t" ++ exeName' ++ " FILES OPTIONS\n\n\
-                                  \where FILES are Rose modules, either file names or module names\n\
-                                  \and the available options are:\n") (tail options))
+    printUsage =
+      do exeName <- getProgName
+         let exeName' | dropExtension exeName == "cabal" = "cabal run Rosi --"
+                      | otherwise                        = exeName
+         putStrLn (usageInfo ("Usage:\n\n\t" ++ exeName' ++ " FILES OPTIONS\n\n\
+                              \where FILES are Rose modules, either file names or module names\n\
+                              \and the available options are:\n") (tail options))
 
 reportErrors :: Flags -> Either Error t -> IO t
 reportErrors flags (Left err) =

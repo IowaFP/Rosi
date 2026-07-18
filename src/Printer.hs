@@ -322,7 +322,7 @@ instance Printable Evid where
 pprTyDecl :: QName -> Ty -> RDoc ann
 pprTyDecl x ty = fillSep [ppr x <+> ":", ppr ty]
 
-pprTyping (x, ty, e) =
+pprTyping (x, ty, _, e) =
   vcat [fillSep [ppr x <+> ":", ppr ty], fillSep [ppr x <+> "=", ppr e]]
 
 pprTypeError :: Error -> RDoc ann

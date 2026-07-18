@@ -169,6 +169,11 @@ forallBinders t               = ([], t)
 existsBinders (TExists x k t) = first ((x, k) :) (existsBinders t)
 existsBinders t               = ([], t)
 
+existsQuals :: Ty -> ([Pred], Ty)
+existsQuals (TExistsP p t) = first (p :) (existsQuals t)
+existsQuals t              = ([], t)
+
+
 rebindForall, rebindExists :: [(Name, Maybe Kind)] -> Ty -> Ty
 rebindForall = flip (foldr (uncurry TForall))
 rebindExists = flip (foldr (uncurry TExists))

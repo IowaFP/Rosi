@@ -56,3 +56,14 @@ hasHoles (ELet _ e f)       = hasHoles e || hasHoles f
 hasHoles (ECast e _)        = hasHoles e
 hasHoles (ETyped e _)       = hasHoles e
 hasHoles _                  = False -- covers: EVar, ESing, EConst
+
+--------------------------------------------------------------------------------
+-- Programs
+--------------------------------------------------------------------------------
+
+data Program = Prog ([String], [Decl])
+  deriving (Eq, Show)
+
+data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term (Maybe Fixity)
+  deriving (Eq, Show)
+

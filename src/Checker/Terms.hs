@@ -109,7 +109,7 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
        tcod <- expectedGoal "cod"
        xs' <- mapM addKinds xs
        q <- expectT e0 (foldr (uncurry TExists) tdom xs' `funTy` tcod) expected
-       (existentials, (assumed, tdom')) <- second splitPreds . existsBinders <$> flatten tdom
+       (existentials, (assumed, tdom')) <- second existsQuals . existsBinders <$> flatten tdom
        wrap q . EExLam (xs' ++ existentials) assumed y Nothing <$>
          (upLevel $
           bindTys (xs' ++ existentials) $
@@ -121,8 +121,7 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
        tcod <- expectedGoal "cod"
        xs' <- mapM addKinds xs
        q <- expectT e0 (tdom `funTy` tcod) expected
-       (ys, (assumed, tdom')) <- second (splitPreds) . existsBinders <$> flatten tdom
-       trace $ "! existentials: split " ++ renderString (ppr tdom) ++ " into " ++ show (ys, assumed, tdom')
+       (ys, (assumed, tdom')) <- second existsQuals . existsBinders <$> flatten tdom
        wrap q . EExLam (xs' ++ drop (length xs') ys) assumed y Nothing <$>
          (upLevel $
           bindTys (xs' ++ drop (length xs') ys) $
@@ -134,9 +133,6 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
     addKinds (x, Nothing) =
       do k <- kindGoal "k"
          return (x, Just k)
-
-    splitPreds (TExistsP p t) = first (p :) (splitPreds t)
-    splitPreds t              = ([], t)
 
     bindTys [] m                 = m
     bindTys ((_, Just k) : xs) m = bindTy k (bindTys xs m)
@@ -298,8 +294,25 @@ checkTerm0 e0@(ETyped e t) expected =
           return (ECast e' q)
 checkTerm0 e0@(ELet x e f) expected =
   do (e', t) <- generalize False e
-     f' <- bind x t (wrapInst expected (checkTerm f))
-     return (ELet x e' f')
+     case t of
+       TExists {} ->
+         let (existentials, (assumed, t')) = second existsQuals $ existsBinders t
+         in do f' <- upLevel $
+                     bindTys existentials $
+                     assumes assumed $
+                     bind x t' $
+                     checkTerm f (shiftN 0 (length existentials) expected)
+               return (EApp (EExLam existentials assumed x (Just t) f') e')
+       _ -> do f' <- bind x t (wrapInst expected (checkTerm f))
+               return (ELet x e' f')
+  where
+    bindTys [] m                 = m
+    bindTys ((_, Just k) : xs) m = bindTy k (bindTys xs m)
+
+    assumes [] m       = m
+    assumes (p : ps) m = assume p (assumes ps m)
+
+
 checkTerm0 e0@(EStringLit _) expected =
   wrapInst expected $ \expected ->
     do expectT e0 TString expected

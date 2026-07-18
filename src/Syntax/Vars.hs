@@ -172,6 +172,14 @@ instance HasTyVars Term where
 
   subst = error "subst not implemented for terms"
 
+instance HasTyVars Decl where
+  shiftNV vs j n (TyDecl x k t)     = TyDecl x k (shiftNV vs j n t)
+  shiftNV vs j n (TmDecl x mt m fx) = TmDecl x (shiftNV vs j n <$> mt) (shiftNV vs j n m) fx
+
+  isFree = error "isFree not implemented for declarations"
+
+  subst = error "subst not implemented for declarations"
+
 class HasUVars t where
   uvars :: MonadRef m => Level -> t -> m [UVar]
 

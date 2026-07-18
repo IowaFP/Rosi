@@ -1,4 +1,4 @@
-module Checker (runCheckM, runCheckM', checkTy, checkTop, normalize, TCtxt(..), traceKindInference, traceTypeInference, KBinding(..), typeErrorContext, toCheckM, implicitConstraints) where
+module Checker (runCheckM, runCheckM', checkTy, checkTop, normalize, KCtxt(..), PCtxt(..), TCtxt(..), traceKindInference, traceTypeInference, KBinding(..), typeErrorContext, toCheckM, implicitConstraints) where
 
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -21,6 +21,6 @@ runCheckM :: CheckM a -> IO (Either Error (a, [(String, Ty, TCtxt)]))
 runCheckM m = runExceptT (second (map (third tctxt) . holes) <$> evalStateT (runReaderT (runWriterT m') emptyTCIn) emptyTCSt) where
   CM m' = andSolve True m
 
-runCheckM' :: KCtxt -> TCtxt -> CheckM a -> IO (Either Error (a, [(String, Ty, TCtxt)]))
-runCheckM' d g m = runExceptT (second (map (third tctxt) . holes) <$> evalStateT (runReaderT (runWriterT m') (emptyTCIn { kctxt = d, tctxt = g })) emptyTCSt) where
+runCheckM' :: KCtxt -> PCtxt -> TCtxt -> CheckM a -> IO (Either Error (a, [(String, Ty, TCtxt)]))
+runCheckM' d p g m = runExceptT (second (map (third tctxt) . holes) <$> evalStateT (runReaderT (runWriterT m') (emptyTCIn { kctxt = d, pctxt = p, tctxt = g })) emptyTCSt) where
   CM m' = andSolve True m
