@@ -61,6 +61,7 @@ updated = updateS ('1 := 2) ('1 := 1, '2 := 2)
 
 -- compare' : forall t. Comparer t -> Compare t
 compare' @t (@!v p : Comparer t) (x y : t) = p.'2 (p.'1 x : v) (p.'1 y : v)
+compare'' @t (p : Comparer t) (x y : t) = p.'2 (p.'1 x) (p.'1 y)
 
 -- Okay this is dumb
 

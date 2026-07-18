@@ -155,7 +155,9 @@ instance HasTyVars Term where
   shiftNV vs j n (EApp f e)            = EApp (shiftNV vs j n f) (shiftNV vs j n e)
   shiftNV vs j n (ETyLam x mk e)       = ETyLam x mk (shiftNV vs (j + 1) n e)
   shiftNV vs j n (EPrLam p e)          = EPrLam (shiftNV vs j n p) e
-  shiftNV vs j n (EExLam xs ps y mt e) = EExLam xs (map (shiftNV vs j n) ps) y (shiftNV vs j n <$> mt) (shiftNV vs j n e)
+  shiftNV vs j n (EExLam xs ps y mt e) = EExLam xs (map (shiftNV vs (j + length xs) n) ps)
+                                                y (shiftNV vs (j + length xs) n <$> mt)
+                                                (shiftNV vs (j + length xs) n e)
   shiftNV vs j n (EInst e is)          = EInst (shiftNV vs j n e) (shiftNV [] j n is)
   shiftNV vs j n (ESing t)             = ESing (shiftNV vs j n t)
   shiftNV vs j n (ELabel k l e)        = ELabel k (shiftNV vs j n l) (shiftNV vs j n e)

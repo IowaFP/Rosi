@@ -115,7 +115,7 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
           bindTys (xs' ++ existentials) $
           assumes assumed $
           bind y tdom' $
-          checkTerm m (shiftN 0 (length xs' + length existentials) tcod))
+          checkTerm (shiftN 0 (length existentials) m) (shiftN 0 (length xs' + length existentials) tcod))
   | Just t <- mt =
     do tdom <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
        tcod <- expectedGoal "cod"
@@ -127,7 +127,7 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
           bindTys (xs' ++ drop (length xs') ys) $
           assumes assumed $
           bind y tdom' $
-          checkTerm m (shiftN 0 (length ys) tcod))
+          checkTerm (shiftN 0 (length ys - length xs') m) (shiftN 0 (length ys) tcod))
   where
     addKinds (x, Just k) = return (x, Just k)
     addKinds (x, Nothing) =
