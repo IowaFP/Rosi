@@ -263,7 +263,7 @@ data Evid =
   | VEqLambda Evid | VEqForall Evid | VEqExists Evid
   | VEqApp Evid Evid | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid
   | VEqCon TyCon Evid | VEqMapCong Evid | VEqComplCong Evid Evid
-  | VEqLeq Evid Evid | VEqPlus Evid Evid Evid
+  | VEqLeq Evid Evid | VEqPlus Evid Evid Evid | VEqEq Evid Evid | VEqFold Evid
   --
   -- Fold proofs
   --

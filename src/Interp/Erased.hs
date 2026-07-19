@@ -89,6 +89,7 @@ instance Show Value where
   show (VRecord vs names) = "⟨" ++ intercalate ", " (zipWith3 showRecordEntry names vs [0..]) ++ "⟩"
   show (VSyn t) = "<<syn>>"
   show (VString s) = "\"" ++ s ++ "\""
+  show (VPack e v) = "<" ++ show e ++ ", " ++ show v ++ ">"
 
 --------------------------------------------------------------------------------
 -- Evidence
@@ -186,23 +187,26 @@ eval' h (EExLam _ ps _ _ e) =
   where
     peel (qs, vs) [] v                 = eval (qs, v : vs) e
     peel (qs, vs) (_ : ps) (VPack q v) = peel (q : qs, vs) ps v
+    peel _ qs v                        = error $ "bad peel: " ++ show qs ++ " " ++ show v
 eval' h (EApp f e) = app (eval h f) (eval h e)
 eval' h (ELet x e f) = eval h (EApp (ELam x Nothing f) e)
 eval' h (ETyLam _ _ e) = eval h e
 eval' h (EPrLam _ e) = VPrLam h (Term e)
 eval' h (EInst t is) = inst (eval h t) is
   where
-    inst v []              = v
-    inst v (TyArg _ : is)  = inst v is
-    inst v (PrArg q : is)  = inst (prapp v (evalV h q)) is
-    inst v (TyPack _ : is) = inst v is
-    inst v (PrPack q : is) = inst (VPack (evalV h q) v) is
+    inst v []                = v
+    inst v (TyArg _ : is)    = inst v is
+    inst v (PrArg q : is)    = inst (prapp v (evalV h q)) is
+    inst v (TyPack _ : is)   = inst v is
+    inst v (PrPack q : is)   = inst (VPack (evalV h q) v) is
+    inst v (Unknown _ _ : _) = error "attempted to evaluate unsolved existential"
 eval' h (ESing t) = VSing (labelFromTy t)
 eval' h (ELabel (Just k) l e) =
   case k of
     Pi       -> VRecord [v]  [labelFromValue (eval h l)]
     Sigma    -> VVariant 0 v (labelFromValue (eval h l))
     TCUnif _ -> VRecord [v]  [labelFromValue (eval h l)]
+    Mu {}    -> error "ELabel isn't the constructor for recursive types"
   where
     v = eval h e
 eval' h e0@(EUnlabel (Just k) e l) =
@@ -210,6 +214,7 @@ eval' h e0@(EUnlabel (Just k) e l) =
     (Sigma, VVariant _ v _) -> v
     (Pi, VRecord [v] _)     -> v
     (Pi, VSyn f)            -> f 0
+    _                       -> error $ "can't unlabel " ++ show v ++ " as " ++ show k
   where
     v = eval h e
 eval' h (EConst CPrj) =
@@ -258,6 +263,7 @@ eval' h (EConst CConcat) =
               pick (Left i)  = recordFrom v i
               pick (Right j) = recordFrom w j
           in VSyn (fst . pick . (ps !!))
+        _ -> error "bad environment for ++"
 eval' h (EConst CBranch) =
   VPrLam h $ Prim $ \h ->
     VLam h $ Prim $ \h ->
@@ -288,6 +294,7 @@ eval' h (EConst CSyn) =
     VLam h $ Prim $ \case
       (_, f : _) ->
         VSyn (\i -> app (prapp f (VLeq (Incl [i]))) (VSing Nothing))
+      _ -> error "bad environment for syn"
 eval' h (EConst CAna) =
   VLam h $ Prim $ \h ->
     VLam h $ Prim $ \h ->
@@ -296,6 +303,7 @@ eval' h (EConst CAna) =
           app (app (prapp f (VLeq (Incl [k]))) (VSing s)) w
         (_, v : e : _) ->
           error $ "bad argument for (ana" ++ show e ++ "): " ++ show v
+        _ -> error "bad environment for ana"
 eval' h (EConst CFold) =
   VPrLam h $ Prim $ \h ->
     VLam h $ Prim $ \h ->
@@ -307,6 +315,7 @@ eval' h (EConst CFold) =
                 let vs = recordFrom r
                     one k = app (app (prapp single (VLeq $ Incl [k])) (VSing Nothing)) (fst (vs k))
                  in if n == 0 then def else foldl (\v w -> app (app comp v) w) (one 0) (map one [1 .. n - 1])
+              _ -> error "bad environment for fold"
 eval' h (ECast e q) = q `seq` eval h e
 eval' h (ETyped e _) = eval h e
 eval' h (EStringLit s) = VString s

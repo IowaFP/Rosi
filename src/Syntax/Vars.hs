@@ -216,6 +216,8 @@ instance HasUVars Ty where
   uvars level (TMapApp t) = uvars level t
   uvars _ TString = return []
   uvars level (TCompl t1 t2) = cat <$> uvars level t1 <*> uvars level t2
+  uvars level (TPlus _ _) = error "uvars: TPlus should be desugared by now"
+  uvars level (TConOrd _ _ _) = error "uvars: TConOrd should be desugared by now"
 
 instance HasUVars [Inst] where
   uvars level is = foldl cat [] <$> mapM iuvars is where

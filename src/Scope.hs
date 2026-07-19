@@ -86,7 +86,6 @@ bindableTyVars (TInst is t)    = error "internal type constructor in scoping"
 bindableTyVars (TMapApp t)     = bindableTyVars t
 bindableTyVars (TPlus t u)     = bindableTyVars t >> bindableTyVars u
 bindableTyVars (TConOrd _ _ t) = bindableTyVars t
-bindableTyVars t               = error $ "<whoopsie: " ++ show t ++ ">"
 
 bindableTyVarsP (PEq t u)     = bindableTyVars t >> bindableTyVars u
 bindableTyVarsP (PLeq y z)    = bindableTyVars y >> bindableTyVars z
@@ -129,6 +128,7 @@ instance HasVars Ty where
   scope TString           = return TString
   scope (TPlus t u)       = TPlus <$> scope t <*> scope u
   scope (TConOrd k rel t) = TConOrd k rel <$> scope t
+  scope (TInst {})        = error "error: TInst appear in scoping"
 
 implicitQuantifiers :: Ty -> ScopeM Ty
 implicitQuantifiers t =

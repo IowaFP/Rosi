@@ -279,8 +279,6 @@ checkTy0 t@(TConOrd k rel u) expected =
               Leq -> PLeq z u'
               Geq -> PLeq u' z, v)]
      return (TConApp k z)
-checkTy0 t _ =
-  error $ "checkTy0: missing case " ++ show t
 
 checkPred :: Pred -> KindM Pred
 checkPred p@(PLeq y z) =

@@ -296,11 +296,12 @@ solve (cin, p, r) =
                return (Just (VPlusSimple is))
     where align (Left i, TLabeled _ t)  = force p t u where TLabeled _ u = x !! i
           align (Right i, TLabeled _ t) = force p t u where TLabeled _ u = y !! i
+          align _                       = error "attemped to align unlabeled type"
   prim p@(PPlus (TRow x) y (TRow z))
     | Just xs <- mapM splitConcreteLabel x, Just zs <- mapM splitConcreteLabel z, Just is <- mapM (flip elemIndex (map fst zs)) (map fst xs) =
         do forceAssocs xs (map (zs !!) is)
            let js = [j | j <- [0..length zs - 1], j `notElem` is]
-               ys = (map (uncurry (TLabeled . TLab) . (zs !!)) js)
+               ys = map (uncurry (TLabeled . TLab) . (zs !!)) js
                go n m
                  | n >= length zs = []
                  | Just i <- elemIndex n is = Left i : go (n + 1) m
@@ -327,6 +328,7 @@ solve (cin, p, r) =
               case (elemIndex k (map fst xs), elemIndex k (map fst ys)) of
                 (Just i, _) -> Left i
                 (_, Just j) -> Right j
+                _           -> error "impossible: all labels in z were checked for membership in x or y already"
             is = map (pick . fst) zs
         in
         do force p z (TRow (map (uncurry (TLabeled . TLab)) zs))
@@ -395,6 +397,7 @@ guesses prs =
 
   dropAt 0 (x : xs) = xs
   dropAt i (x : xs) = x : dropAt (i - 1) xs
+  dropAt _ []       = error "dropAt: index too large"
 
   wrapGuess prs = fmap (++ prs)
 
@@ -450,6 +453,9 @@ guesses prs =
                   instantiate (TForall _ _ t) (u : us) =
                     do t' <- beta t u
                        instantiate t' us
+                  instantiate _ _ = error "can't instantiate non-forall types"
+          guessInstantiation _ _ =
+            error "can't guess instantiation of non-instantiation types"
   guessInst _ = Nothing
 
   guessMapLeq pr@(tcin, PLeq (TApp (TMap f) y) (TApp (TMap f') z), v)
@@ -529,7 +535,9 @@ guesses prs =
            Just t  -> walk x u m (shiftN 0 (uvShift v) t)
     walk _ _ _ TFun = return TFun
     walk x u m (TThen p t) = TThen <$> walkP x u m p <*> walk x u m t
+    walk x u m (TExistsP p t) = TExistsP <$> walkP x u m p <*> walk x u m t
     walk x u m (TForall s mk t) = TForall s mk <$> walk (shiftN 0 1 x) (shiftN 0 1 u) (m + 1) t
+    walk x u m (TExists s mk t) = TExists s mk <$> walk (shiftN 0 1 x) (shiftN 0 1 u) (m + 1) t
     walk x u m (TLam s mk t) = TLam s mk <$> walk (shiftN 0 1 x) (shiftN 0 1 u) (m + 1) t
     walk x u m (TApp t t') = TApp <$> walk x u m t <*> walk x u m t'
     walk x u m t@(TLab _) = return t
@@ -551,11 +559,16 @@ guesses prs =
            case mis of
              Nothing  -> return [Unknown n g]
              Just is' -> walkIs (shiftN 0 n is')
+    walk x u m TString = return TString
+    walk x u m (TPlus {}) = error "walk: TPlus should have been desugared by now"
+    walk x u m (TConOrd {}) = error "walk: TConOrd should have been desugared by now"
 
     walkP :: Ty -> Ty -> Int -> Pred -> CheckM Pred
     walkP v u m (PLeq x y)    = PLeq <$> walk v u m x <*> walk v u m y
     walkP v u m (PEq t t')    = PEq <$> walk v u m t <*> walk v u m t'
     walkP v u m (PPlus x y z) = PPlus <$> walk v u m x <*> walk v u m y <*> walk v u m z
+    walkP v u m (PFold z)     = PFold <$> walk v u m z
+
 
   guessApp _ = Nothing
 

@@ -136,6 +136,7 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
 
     bindTys [] m                 = m
     bindTys ((_, Just k) : xs) m = bindTy k (bindTys xs m)
+    bindTys _ _                  = error "unannotated type variable in bindTys"
 
     assumes [] m       = m
     assumes (p : ps) m = assume p (assumes ps m)
@@ -174,7 +175,9 @@ checkTerm0 e0@(ESing t) expected =
           return (wrap q (ESing t'))
 checkTerm0 e0@(ELabel Nothing el e) expected =
   do k <- ctorGoal "k"
-     tl <- expectedGoal' "l" KLabel
+     checkTerm (ELabel (Just k) el e) expected
+checkTerm0 e0@(ELabel (Just k) el e) expected =
+  do tl <- expectedGoal' "l" KLabel
      t <- expectedGoal "t"
      wrapInst expected $ \expected ->
        do q <- expectT e0 (TConApp k (TRow [TLabeled tl t])) expected
@@ -182,7 +185,9 @@ checkTerm0 e0@(ELabel Nothing el e) expected =
             (ELabel (Just k) <$> checkTerm'  el (TSing tl) <*> checkTerm'  e t)
 checkTerm0 e0@(EUnlabel Nothing e el) expected =
   do k <- ctorGoal "k"
-     tl <- expectedGoal' "l" KLabel
+     checkTerm (EUnlabel (Just k) e el) expected
+checkTerm0 e0@(EUnlabel (Just k) e el) expected =
+  do tl <- expectedGoal' "l" KLabel
      el' <- checkTerm el (TSing tl)
      wrapInst expected $ \expected ->
        do e' <- checkTerm' e (TConApp k (TRow [TLabeled tl expected]))
@@ -199,6 +204,7 @@ checkTerm0 e@(EConst c) expected =
           do k <- kindGoal "r"
              let tvar 1 = TVar 1 ["y", ""]
                  tvar 0 = TVar 0 ["z", ""]
+                 tvar _ = error "too many tvars"
              return (TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PLeq (tvar 1) (tvar 0) `TThen`
                          TConApp Pi (tvar 0) `funTy` TConApp Pi (tvar 1))
@@ -206,6 +212,7 @@ checkTerm0 e@(EConst c) expected =
           do k <- kindGoal "r"
              let tvar 1 = TVar 1 ["y", ""]
                  tvar 0 = TVar 0 ["z", ""]
+                 tvar _ = error "too many tvars"
              return (TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PLeq (tvar 1) (tvar 0) `TThen`
                          TConApp Sigma (tvar 1) `funTy` TConApp Sigma (tvar 0))
@@ -214,6 +221,7 @@ checkTerm0 e@(EConst c) expected =
              let tvar 2 = TVar 2 ["x", ""]
                  tvar 1 = TVar 1 ["y", ""]
                  tvar 0 = TVar 0 ["z", ""]
+                 tvar _ = error "too many tvars"
              return (TForall "x" (Just (KRow k)) $ TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $
                        PPlus (tvar 2) (tvar 1) (tvar 0) `TThen`
                          TConApp Pi (tvar 2) `funTy` TConApp Pi (tvar 1) `funTy` TConApp Pi (tvar 0))
@@ -223,6 +231,7 @@ checkTerm0 e@(EConst c) expected =
                  tvar 2 = TVar 2 ["y", ""]
                  tvar 1 = TVar 1 ["z", ""]
                  tvar 0 = TVar 0 ["t", ""]
+                 tvar _ = error "too many tvars"
              return (TForall "x" (Just (KRow k)) $ TForall "y" (Just (KRow k)) $ TForall "z" (Just (KRow k)) $ TForall "t" (Just KType) $
                        PPlus (tvar 3) (tvar 2) (tvar 1) `TThen`
                          (TConApp Sigma (tvar 3) `funTy` tvar 0) `funTy`
@@ -308,11 +317,10 @@ checkTerm0 e0@(ELet x e f) expected =
   where
     bindTys [] m                 = m
     bindTys ((_, Just k) : xs) m = bindTy k (bindTys xs m)
+    bindTys _ _                  = error "unannotated type variable in bindTys"
 
     assumes [] m       = m
     assumes (p : ps) m = assume p (assumes ps m)
-
-
 checkTerm0 e0@(EStringLit _) expected =
   wrapInst expected $ \expected ->
     do expectT e0 TString expected
@@ -321,6 +329,7 @@ checkTerm0 e0@(EHole s) expected =
   do tcin <- ask
      tell (TCOut [] [(s, expected, tcin)])
      return e0
+checkTerm0 (ECast {}) _ = error "internal: attempting to type check cast expression"
 checkTerm0 e0@((EInfix ss)) expected = error $ "internal: infix expression `" <> concatMap show ss <> "` should have been been desugared before type-checking."
 
 generalize :: Bool -> Term -> CheckM (Term, Ty)
@@ -405,10 +414,12 @@ generalize topLevel e =
           (tyLams ts names (prLams ps e), quantifiers ts names (qualifiers ps t))
           where quantifiers [] _ t              = t
                 quantifiers (u : us) (b : bs) t = TForall b (Just (uvKind u)) (quantifiers us bs t)
+                quantifiers _ _ _               = error "misaligned variable and uvar lists"
                 qualifiers [] t            = t
                 qualifiers ((p, _) : ps) t = TThen p (qualifiers ps t)
                 tyLams [] _ e              = e
                 tyLams (u : us) (b : bs) e = ETyLam b (Just (uvKind u)) (tyLams us bs e)
+                tyLams _ _ _=              error "misaligned variable and uvar lists"
                 prLams [] e            = e
                 prLams ((p, _) : ps) e = EPrLam p (prLams ps e)
 

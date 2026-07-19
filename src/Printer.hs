@@ -209,7 +209,6 @@ instance Printable Ty where
   ppr (TConOrd k rel t) = ppr k <> pprel rel <+> at 4 (ppr t) where
     pprel Geq = ">"
     pprel Leq = "<"
-  ppr t = "<missing: " <> ppre (show t) <> ">"
 
 instance Printable Pred where
   ppr :: Pred -> RDoc ann
@@ -350,6 +349,7 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrTypeDesugaring t) = "Error in desugaring" <+> ppr t
         pprErr (ErrInfixDesugaring e exp) = vsep ["Infix resolution error", ppr e, "Error occured while desugaring expression " <+> hsep (map ppr exp)]
         pprErr (ErrOther s) = ppre s
+        pprErr _ = mempty -- Context cases, should have been handled by contexts. Maybe split type?
 
 instance Printable InfixDesugaringError where
   ppr :: InfixDesugaringError -> RDoc ann

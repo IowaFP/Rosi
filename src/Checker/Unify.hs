@@ -232,7 +232,7 @@ unifyInstantiating t u unify =
                  p' <- instantiate shiftNV n us p
                  require p' vr
                  first (PrArg (VGoal (Goal ("v", vr))) :) <$> solve n qs us
-            solve_  _ _ = error "impossible, working on foralls"
+            solve _ _ _ = error "impossible, working on foralls"
 
             instantiate shift n us t =
               shift [] 0 (- m) <$> foldM (\t (i, u) -> subst i u t) t us'
@@ -324,7 +324,7 @@ unifyInstantiating t u unify =
                  p' <- instantiate shiftNV n us p
                  require p' vr
                  first (PrPack (VGoal (Goal ("v", vr))) :) <$> solve n qs us
-            solve_  _ _ = error "impossible, working on foralls"
+            solve _ _ _ = error "impossible, working on foralls"
 
             instantiate shift n us t =
               shift [] 0 (- m) <$> foldM (\t (i, u) -> subst i u t) t us'
@@ -544,5 +544,8 @@ unify0 t u
 unifyP :: Pred -> Pred -> UnifyM Evid
 unifyP (PLeq y z) (PLeq y' z')        = VEqLeq <$> unify' y y' <*> unify' z z'
 unifyP (PPlus x y z) (PPlus x' y' z') = VEqPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'
+unifyP (PEq t u) (PEq t' u')          = VEqEq <$> unify' t t' <*> unify' u u'
+unifyP (PFold z) (PFold z')           = VEqFold <$> unify' z z'
+unifyP p q                            = unificationFails (p `TThen` TConApp Pi (TRow [])) (q `TThen` TConApp Pi (TRow []))
 
 

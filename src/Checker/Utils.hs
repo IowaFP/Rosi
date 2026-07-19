@@ -61,6 +61,8 @@ kindOf (TMapApp f) =
      return $ KFun kd (KRow kc)
 kindOf (TCompl r _) = kindOf r
 kindOf TString = return KType
+kindOf (TPlus {}) = error "kindOf: TPlus should be desugared by now"
+kindOf (TConOrd {}) = error "kindOf: TConOrd should be desugared by now"
 
 typeGoal, expectedGoal :: MonadCheck m => String -> m Ty
 typeGoal s = typeGoalWithLevel s =<< theLevel
