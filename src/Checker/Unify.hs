@@ -109,6 +109,10 @@ requireEq :: Ty -> Ty -> UnifyM Evid
 requireEq t u =
   do s <- get
      case s of
+       -- Shortcut: if we're in checking mode, then we only want to succeed when
+       -- the types exactly align. If we've gotten this far, then we already
+       -- know the equation isn't solved by updating one of the local uvars, so
+       -- no need to check...
        Just _ -> unificationFails t u
        Nothing ->
          do v <- newRef Nothing
@@ -121,14 +125,13 @@ unify' actual expected =
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected
      trace ("4 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
-     -- TODO: do we need to renormalize each time around?
      let f = case q of
                VEqRefl -> id
                _       -> VEqTrans q
          f' = case q' of
                VEqRefl -> id
                _       -> VEqTrans (VEqSym q')
-     (f' . f) <$> unify0 actual' expected'
+     f' . f <$> unify0 actual' expected'
 
 -- This function handles unification cases `t ~ u` where `u` starts with some
 -- instantiation variables. If `t` start with instantiation variables instead,
@@ -385,8 +388,8 @@ unify0 (TThen pa ta) (TThen px tx) =
 unify0 (TExistsP pa ta) (TExistsP px tx) =
   VEqExistsP <$> unifyP pa px <*> unify' ta tx
 unify0 t@(TApp {}) (u@(TApp {}))
-  | TUnif {} <- ft = requireEq t u -- unifySpines
-  | TUnif {} <- fu = requireEq t u -- unifySpines
+  | TUnif {} <- ft = requireEq t u
+  | TUnif {} <- fu = requireEq t u
   | otherwise      =
       do mq <- try $ checking $ unify' ft fu
          case mq of
@@ -396,20 +399,6 @@ unify0 t@(TApp {}) (u@(TApp {}))
                 return (foldl VEqApp q qs)
   where (ft, ts) = spine t
         (fu, us) = spine u
-
-        unifySpines  = unifySpines' ft' ts' fu' us'
-          where m = length ts
-                n = length us
-                (ts0, ts') = splitAt (m - n) ts
-                ft' = foldl TApp ft ts0
-                (us0, us') = splitAt (n - m) us
-                fu' = foldl TApp fu us0
-
-        unifySpines' ft ts fu us =
-          do q <- unify' ft fu
-             qs <- zipWithM unify' ts us
-             return (Just (foldl VEqApp q qs))
-
 unify0 (TApp (TMap fa) ra) (TRow []) =
   do q <- unify' ra (TRow [])
      return VEqMap

@@ -171,7 +171,7 @@ instance MonadCheck CheckM where
 
   fresh x = do i <- gets next
                modify (\st -> st { next = i + 1 })
-               return ((takeWhile ('#' /=) x) ++ '#' : show i)
+               return (takeWhile ('#' /=) x ++ '#' : show i)
 
   mark = do st <- get
             let m = Mark (next st)
@@ -187,7 +187,8 @@ instance MonadCheck CheckM where
          when (m /= m') $ resetLoop rest
 
 collect :: CheckM a -> CheckM (a, [Problem])
-collect m = censor (\out -> out { goals = [] }) $ (second goals <$> listen m)
+collect m = censor (\out -> out { goals = [] }) $
+              second goals <$> listen m
 
 upLevel m = do l <- theLevel
                atLevel (l + 1) m
@@ -218,7 +219,7 @@ instance MonadRef UnifyM where
 
 instance MonadReader TCIn UnifyM where
   ask = liftToUnifyM ask
-  local f r = UM $ ExceptT $ StateT $ \checking -> WriterT $ (ReaderT $ \eqns -> local f (runReaderT (runWriterT (runStateT (runExceptT (runUnifyM r)) checking)) eqns))
+  local f r = UM $ ExceptT $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> local f (runReaderT (runWriterT (runStateT (runExceptT (runUnifyM r)) checking)) eqns)
 
 instance MonadCheck UnifyM where
   require p r =
