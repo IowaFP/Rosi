@@ -12,26 +12,38 @@ import Data.List                  (intercalate, union)
 import Checker.Monad
 import Checker.Normalize
 import Checker.Preds
-import Checker.Types              hiding (collect, trace)
+import Checker.Types              hiding (assume, collect, trace)
 import Checker.Unify
 import Checker.Utils
-import Errors
+import Errors                     hiding (Unproductive)
+import Errors                     qualified as E
 import Printer
 import Syntax
 
+assume :: Pred -> CheckM t -> CheckM t
+assume p m =
+  do qs <- asks (shiftPC 1 . pctxt)
+     ps <- expand qs [(p, VVar 0)]
+     local (\env -> env { pctxt = ps }) m
 
 expectT :: Term -> Ty -> Ty -> CheckM Evid
 expectT m actual expected =
   do trace ("expect (" ++ renderString (ppr actual) ++ ") (" ++ renderString (ppr expected) ++ ")")
-     b <- typeErrorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify [] actual expected
+     eqns <- asks (pickEqns . pctxt)
+     b <- typeErrorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify eqns actual expected
      case b of
-       Left (actual', expected') -> typeMismatch m actual expected actual' expected'
-       Right q                   -> flatten q
-
-typeMismatch :: Term -> Ty -> Ty -> Ty -> Ty -> CheckM a
-typeMismatch m actual expected actual' expected' =
-  do [actual0, expected0, actual'0, expected'0] <- mapM flatten [actual, expected, actual', expected']
-     typeError (ErrContextTerm m $ ErrTypeMismatch actual0 expected0 actual'0 expected'0)
+       Left (TypesDon'tUnify actual' expected') -> typeMismatch actual' expected'
+       Left (PredsDon'tUnify actual' expected') -> predMismatch actual' expected'
+       Left E.Unproductive                      -> error "shouldn't be asking for productive unification"
+       Left (UErrOther s)                       -> fail s
+       Right q                                  -> flatten q
+  where typeMismatch actual' expected' =
+          do [actual0, expected0, actual'0, expected'0] <- mapM flatten [actual, expected, actual', expected']
+             typeError (ErrContextTerm m $ ErrTypeMismatch actual0 expected0 actual'0 expected'0)
+        predMismatch actual' expected' =
+          do [actual0, expected0] <- mapM flatten [actual, expected]
+             [actual'0, expected'0] <- mapM flatten [actual', expected']
+             typeError (ErrContextTerm m $ ErrPredMismatch actual0 expected0 actual'0 expected'0)
 
 wrap :: Evid -> Term -> Term
 wrap VEqRefl t = t
@@ -337,7 +349,6 @@ generalize topLevel e =
   do tcin <- ask
      (level, t, e', remaining, psThere) <-
        upLevel $
-       local (\cin -> cin { pctxt = [] }) $
        do t <- expectedGoal "t"
           level <- theLevel
           (e', ps) <- collect $ checkTerm e t
@@ -347,7 +358,7 @@ generalize topLevel e =
           return (level, t, e', remaining, psThere)
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
      unless (null ungeneralizable) $ notEntailed ungeneralizable
-     tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere) [])
+     tell (TCOut psThere [])
      genVars <- foldl union [] <$> ((:) <$> uvars level t <*> mapM (uvars level . fst) generalizable)
      fixInsts t
      t' <- shiftNV genVars 0 (length genVars) <$> flatten t
@@ -366,7 +377,7 @@ generalize topLevel e =
         splitProblems level [] = return ([], [])
         splitProblems level (pr@(tcin, p, _) : prs) =
           do (here, there) <- splitProblems level prs
-             prUvars <- (++) <$> (foldr (++) [] <$> mapM (uvars level) (pctxt tcin)) <*> uvars level p
+             prUvars <- union <$> (foldr union [] <$> mapM (uvars level . fst) (pctxt tcin)) <*> uvars level p
              if null prUvars
              then return (here, pr : there)
              else return (pr : here, there)

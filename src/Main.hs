@@ -1,6 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections     #-}
-{-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module Main where
 
 import Control.Monad         (when)
@@ -130,8 +127,6 @@ main = do nowArgs <- getArgs
       do t' <- flatten . fst =<< reportErrors flags =<< runCheckM' d p g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
            -- Shouldn't be any holes in types...
          goCheck flags (KBDefn k t' : d) p g ds
-    goCheck flags d p g (TyDecl {} : ds) =
-      goCheck flags d p g ds
     goCheck flags d p g (TmDecl v mt te _ : ds) =
       do when (doShowProgress flags) $
            let s = intercalate "." (reverse v)
@@ -152,7 +147,7 @@ main = do nowArgs <- getArgs
            TExists {} ->
              let (existentials, (assumed, t')) = second existsQuals $ existsBinders ty'
                  d' = [KBVar k 0 | (_, Just k) <- existentials] ++ d
-                 p' = assumed ++ p
+                 p' = [(p, VVar i) | p <- assumed | i <- [0..]] ++ shiftPC (length assumed) p
                  g' = (v, t') : g
              in ((v, ty', assumed, te'') :) <$> goCheck flags d' p' g' (map (shiftN 0 (length existentials)) ds)
            _ ->

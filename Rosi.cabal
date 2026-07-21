@@ -61,7 +61,7 @@ executable Rosi
                    Syntax.Goals, Syntax.Terms, Syntax.Types, Syntax.Vars
 
     -- LANGUAGE extensions used by modules in this package.
-    other-extensions: PatternGuards
+    default-extensions: OverloadedStrings, ParallelListComp, PatternGuards, TupleSections
 
     -- Other library packages from which modules are imported.
     build-depends:    base >=4.18, filepath >= 1.5, megaparsec >= 9.6, mtl >= 2.3, syb >= 0.7,

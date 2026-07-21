@@ -1,8 +1,8 @@
+{-# LANGUAGE CPP #-}
 module Checker.Unify (module Checker.Unify) where
 
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Bifunctor       (first)
@@ -14,10 +14,14 @@ import Checker.Normalize
 import Checker.Promote
 import Checker.Types        hiding (trace)
 import Checker.Utils
+import Errors
 import Printer
 import Syntax
 
+
 import GHC.Stack
+
+#define __unificationFails(t, u) do { trace (show __LINE__ ++ " incoming unification failure " ++ renderString (ppr (t)) ++ " ~/~ " ++ renderString (ppr (u))); unificationFails (t) (u)}
 
 {--
 
@@ -52,79 +56,48 @@ types). How bad are the error messages?
 
 --}
 
-unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either (Ty, Ty) Evid)
+unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either UnificationError Evid)
 unify eqns actual expected =
   do trace ("1 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     m <- mark
-     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
-     case result of
-       Right q ->
-         do tell (TCOut preds [])
-            return (Right q)
-       Left err ->
-         do reset m
-            return (Left err)
+     runUnifyM (unify' actual expected) eqns unifying
 
 check eqns actual expected =
   do trace ("2 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     m <- mark
-     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) (Just [])) eqns
-     case result of
-       Right q ->
-         do tell (TCOut preds [])
-            return (Right q)
-       Left err ->
-         do reset m
-            return (Left err)
+     runUnifyM (unify' actual expected) eqns checking
 
-data ProductiveUnification = Productive Evid | Unproductive | UnificationFails (Ty, Ty)
-
+unifyProductive :: [Eqn] -> Ty -> Ty -> CheckM (Either UnificationError Evid)
 unifyProductive eqns actual expected =
   do trace ("3 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     m <- mark
-     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
+     runUnifyM (productive =<< unify' actual expected) eqns unifying
+
+productive :: Evid -> UnifyM Evid
+productive q =
+  do q' <- flatten q
+     case q' of
+       VGoal _ -> throwError Unproductive
+       _       -> return q'
+
+unifyCollecting :: [Eqn] -> Ty -> Ty -> CheckM (Either UnificationError [Pred])
+unifyCollecting eqns actual expected =
+  do trace ("4 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
+     result <- runUnifyM (collect (unify' actual expected)) eqns collecting
      case result of
-       Right q ->
-         do q' <- flatten q
-            case q' of
-              VGoal _ ->
-                do reset m
-                   return Unproductive
-              _ ->
-                do tell (TCOut preds [])
-                   return (Productive q')
-       Left err ->
-         do reset m
-            return  (UnificationFails err)
+       Left errs     -> return (Left errs)
+       Right (q, ps) -> return (Right [p | (_, p, _) <- ps])
+  where collect :: UnifyM a -> UnifyM (a, [Problem])
+        collect = censor (const []) . listen
 
-checking :: UnifyM t -> UnifyM t
-checking m =
-  do s <- get
-     bracket
-       (put (Just []))
-       m
-       (put s)
 
-requireEq :: Ty -> Ty -> UnifyM Evid
-requireEq t u =
-  do s <- get
-     case s of
-       -- Shortcut: if we're in checking mode, then we only want to succeed when
-       -- the types exactly align. If we've gotten this far, then we already
-       -- know the equation isn't solved by updating one of the local uvars, so
-       -- no need to check...
-       Just _ -> unificationFails t u
-       Nothing ->
-         do v <- newRef Nothing
-            require (PEq t u) v
-            return (VGoal (Goal ("q", v)))
+checkEq :: Ty -> Ty -> UnifyM (Maybe Evid)
+checkEq t u = try $ withHandler checking $ unify' t u
+  where try m = either (const Nothing) Just <$> tryError m
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify' actual expected =
   do eqns <- theEqns
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected
-     trace ("4 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
+     trace ("5 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
      let f = case q of
                VEqRefl -> id
                _       -> VEqTrans q
@@ -133,9 +106,75 @@ unify' actual expected =
                _       -> VEqTrans (VEqSym q')
      f' . f <$> unify0 actual' expected'
 
+-- =============================================================================
+-- Handlers
+--
+-- Different modes of unification are captured with different "handlers", which
+-- override the behavior of "atomic" unification problems
+-- =============================================================================
+
+unifying, checking, collecting :: AtomicHandler
+
+unifying = AH onTVar onUVar onEq where
+  onTVar i n u =
+    __unificationFails(TVar i n, u)
+  onUVar v u =
+    do mq <- solveUV v u
+       case mq of
+         Nothing -> __unificationFails(TUnif v, u)
+         Just q  -> return q
+  onEq t u =
+    do g <- newGoal "q"
+       require (PEq t u) g
+       return (VGoal g)
+
+checking = AH onTVar onUVar onEq where
+  onTVar i n u =
+    __unificationFails(TVar i n, u)
+  onUVar v u =
+    do chk <- currentEpoch (goalRef (uvGoal v))
+       if chk
+       then do mq <- solveUV v u
+               case mq of
+                 Nothing -> __unificationFails(TUnif v, u)
+                 Just q  -> return q
+       else __unificationFails(TUnif v, u)
+  currentEpoch r =
+    do epochs <- liftToUnifyM (gets references)
+       case epochs of
+         []               -> return True
+         ((_, cs, _) : _) -> return (any (sameRef r) cs)
+  onEq t u =
+    __unificationFails(t, u)
+
+collecting = AH onTVar onUVar onEq where
+  onTVar i n u =
+    do q <- onEq (TVar i n) u
+       addEqn (TVar i n, (u, q))
+       return q
+
+  onUVar v u =
+    do q <- onEq (TUnif v) u
+       addEqn (TUnif v, (u, q))
+       return q
+
+  onEq t u =
+    do g <- newGoal "q"
+       require (PEq t u) g
+       return (VGoal g)
+
+-- =============================================================================
+-- Traversal
+--
+-- Here begins the grand traversal of types.
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
 -- This function handles unification cases `t ~ u` where `u` starts with some
 -- instantiation variables. If `t` start with instantiation variables instead,
 -- pass it as `u` but pass `flip unify` as the third argument.
+-- -----------------------------------------------------------------------------
+
 unifyInstantiating :: Ty -> Ty -> (Ty -> Ty -> UnifyM Evid) -> UnifyM Evid
 unifyInstantiating t u unify =
   do t' <- flatten t
@@ -150,7 +189,6 @@ unifyInstantiating t u unify =
   where
     ---------------------------------------------------------------------------
     -- Universals
-    ---------------------------------------------------------------------------
 
     universals :: Ty -> Seq Inst -> Ty -> UnifyM Evid -- InstantiationStep
     universals (TForall _ Nothing _) _ _ =
@@ -163,7 +201,7 @@ unifyInstantiating t u unify =
     -- An explicit type argument without an initial forall is a unification
     -- failure.
     universals t is@(TyArg _ :<| _) u =
-      unificationFails t (TInst (toList is) u)
+      __unificationFails(t, (TInst (toList is) u))
     universals t@(TForall {}) is@(Unknown {} :<| Unknown {} :<| _) u =
       existentials t is u
     -- Defer instantiations of metavariables
@@ -180,9 +218,9 @@ unifyInstantiating t u unify =
             thens (TThen p t) = first (p :) (thens t)
             thens t           = ([], t)
             solve p =
-              do vr <- newRef Nothing
-                 require p vr
-                 return (PrArg (VGoal (Goal ("v", vr))))
+              do g <- newGoal "v"
+                 require p g
+                 return (PrArg (VGoal g))
     -- Defer instantiations where RHS is a metavarible---might later be
     -- instantiated with quantifiers or more instantiations.
     universals t@(TForall {}) is@(Unknown {} :<| _) u@(TUnif {}) =
@@ -214,7 +252,7 @@ unifyInstantiating t u unify =
       -- Don't actually know how this case is possible, but if we do get here
       -- we're out of ideas.
       | otherwise =
-        unificationFails t (TInst (toList is) u)
+        __unificationFails(t, TInst (toList is) u)
 
       where (qts, t') = univQuants t
             (qus, _) = univQuants u
@@ -222,7 +260,7 @@ unifyInstantiating t u unify =
             solveEmpty (Unknown n g) =
               writeRef (goalRef g) (Just [])
             solveEmpty _ =
-              unificationFails t (TInst (toList is) u)
+              __unificationFails(t, TInst (toList is) u)
 
             solve :: Int -> [Quant] -> [Ty] -> UnifyM ([Inst], [Ty])
             solve _ [] us =
@@ -231,10 +269,10 @@ unifyInstantiating t u unify =
               do u <- typeGoal' x k
                  first (TyArg u :) <$> solve n qs (u : us)
             solve n (QuThen p : qs) us =
-              do vr <- newRef Nothing
+              do g <- newGoal "v"
                  p' <- instantiate shiftNV n us p
-                 require p' vr
-                 first (PrArg (VGoal (Goal ("v", vr))) :) <$> solve n qs us
+                 require p' g
+                 first (PrArg (VGoal g) :) <$> solve n qs us
             solve _ _ _ = error "impossible, working on foralls"
 
             instantiate shift n us t =
@@ -244,7 +282,6 @@ unifyInstantiating t u unify =
 
     ---------------------------------------------------------------------------
     -- Existentials
-    ---------------------------------------------------------------------------
 
     existentials :: Ty -> Seq Inst -> Ty -> UnifyM Evid -- InstantiationStep
     existentials _ _ (TExists _ Nothing _) =
@@ -256,13 +293,13 @@ unifyInstantiating t u unify =
          existentials t is u'
     -- An explicit pack without an initial exists is a unification failure.
     existentials t is@(_ :|> TyPack _) u =
-      unificationFails t (TInst (toList is) u)
+      __unificationFails(t, TInst (toList is) u)
     -- Defer ambiguous packs
     existentials t is@(_ :|> Unknown {} :|> Unknown {}) u@(TExists {}) =
-      unificationFails t (TInst (toList is) u)
+      deferEq t (TInst (toList is) u)
     -- Defer packing of metavariables
     existentials t is u@(TUnif {}) =
-      unificationFails t (TInst (toList is) u)
+      deferEq t (TInst (toList is) u)
     -- If there's an instantiation before a pack, and there are existential
     -- predicates intervening, then pack them. This is also a weird corner case,
     -- and would arise with a type like `exists x. P x => exists y. ...`
@@ -274,14 +311,14 @@ unifyInstantiating t u unify =
             thens (TExistsP p t) = first (p :) (thens t)
             thens t              = ([], t)
             solve p =
-              do vr <- newRef Nothing
-                 require p vr
-                 return (PrPack (VGoal (Goal ("v", vr))))
+              do g <- newGoal "v"
+                 require p g
+                 return (PrPack (VGoal g))
     existentials t@(TUnif {}) is@(_ :|> Unknown {}) u@(TExists {}) =
-      unificationFails t (TInst (toList is) u)
+      deferEq t (TInst (toList is) u)
     existentials t is u
       | null qus, TForall {} <- t =
-        unificationFails t (TInst (toList is) u)
+        deferEq t (TInst (toList is) u)
       -- Fewer (but some!) exists-like quantifiers on the right than on the
       -- left. In this case, we fall back on trying to unify the left and
       -- right-hand side directly, after solving any remaining unification
@@ -306,7 +343,7 @@ unifyInstantiating t u unify =
       -- Don't actually know how this case is possible, but if we do get here
       -- we're out of ideas.
       | otherwise =
-        unificationFails t (TInst (toList is) u)
+        __unificationFails(t, TInst (toList is) u)
 
       where (qts, _) = existQuants t
             (qus, u') = existQuants u
@@ -314,7 +351,7 @@ unifyInstantiating t u unify =
             solveEmpty (Unknown n g) =
               writeRef (goalRef g) (Just [])
             solveEmpty _ =
-              unificationFails t (TInst (toList is) u)
+              __unificationFails(t, TInst (toList is) u)
 
             solve :: Int -> [Quant] -> [Ty] -> UnifyM ([Inst], [Ty])
             solve _ [] us =
@@ -323,10 +360,10 @@ unifyInstantiating t u unify =
               do u <- typeGoal' x k
                  first (TyPack u :) <$> solve n qs (u : us)
             solve n (QuExistsP p : qs) us =
-              do vr <- newRef Nothing
+              do g <- newGoal "v"
                  p' <- instantiate shiftNV n us p
-                 require p' vr
-                 first (PrPack (VGoal (Goal ("v", vr))) :) <$> solve n qs us
+                 require p' g
+                 first (PrPack (VGoal g) :) <$> solve n qs us
             solve _ _ _ = error "impossible, working on foralls"
 
             instantiate shift n us t =
@@ -335,108 +372,80 @@ unifyInstantiating t u unify =
                     m   = length us
 
 unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid
-unify0 (TVar i _) (TVar j _)
-  | i == j = return VEqRefl
+
+-------------------------------------------------------------------------------
+-- Unification variables
+-------------------------------------------------------------------------------
+
 unify0 (TUnif v) (TUnif w)
-  | uvShift v == uvShift w, goalRef (uvGoal v) == goalRef (uvGoal w) = return VEqRefl
--- These next cases are totally not ad hoc nonsense
+  | goalRef (uvGoal v) == goalRef (uvGoal w) = return VEqRefl
+-- Solve instantiations around identical types
 unify0 (TUnif v) (TInst [Unknown 0 (Goal (_, r))] (TUnif w))
   | v == w = do writeRef r (Just [])
                 return VEqRefl
 unify0 (TInst [Unknown 0 (Goal (_, r))] (TUnif w)) (TUnif v)
   | v == w = do writeRef r (Just [])
                 return VEqRefl
-unify0 actual t@(TUnif v@(UV n lref (Goal (uvar, r)) k)) =
-  do mt <- readRef r
+-- This case doesn't seem to trigger. I don't know that it's *wrong*, tho.
+-- unify0 (TInst [Unknown n i1] t) (TInst [Unknown n' i2] u)
+--   | n == n' && i1 == i2 = unify' t u
+unify0 actual t@(TUnif v) =
+  do mt <- readGoal (uvGoal v)
      case mt of
-       Just t -> unify' actual (shiftN 0 n t)
-       Nothing ->
-         do chk <- canUpdate r
-            if chk
-            then do mq <- solveUV v actual
-                    case mq of
-                      Nothing -> unificationFails actual t
-                      Just q  -> return q
-            else unificationFails t actual
-unify0 actual@(TUnif v@(UV n lref (Goal (uvar, r)) k)) expected =
-  do mt <- readRef r
+       Just t  -> unify' actual (shiftN 0 (uvShift v) t)
+       Nothing -> solveUVar v actual
+unify0 actual@(TUnif v) expected =
+  do mt <- readGoal (uvGoal v)
      case mt of
-       Just t -> unify' (shiftN 0 n t) expected
-       Nothing ->
-         do chk <- canUpdate r
-            if chk
-            then do mq <- solveUV v expected
-                    case mq of
-                      Nothing -> unificationFails actual expected
-                      Just q  -> return q
-            else unificationFails actual expected
-unify0 (TInst [Unknown n i1] t) (TInst [Unknown n' i2] u)
-  | n == n' && i1 == i2 = unify' t u
+       Just t  -> unify' (shiftN 0 (uvShift v) t) expected
+       Nothing -> solveUVar v expected
+
+--------------------------------------------------------------------------------
+-- Instantiations
+--------------------------------------------------------------------------------
+
 unify0 t u@(TInst {}) =
-  do mq <- try $ unifyInstantiating t u unify'
-     case mq of
-       Nothing -> requireEq t u
-       Just q  -> return q
+  unifyInstantiating t u unify'
 unify0 t@(TInst {}) u =
-  do mq <- try $ unifyInstantiating u t (flip unify')
-     case mq of
-       Nothing -> requireEq t u
-       Just q  -> return q
+  unifyInstantiating u t (flip unify')
+
+-------------------------------------------------------------------------------
+-- Type variables
+-------------------------------------------------------------------------------
+
+unify0 (TVar i _) (TVar j _)
+  | i == j = return VEqRefl
+unify0 (TVar i n) u
+  | not (isUVarApp u) =
+    solveTVar i n u
+unify0 t (TVar i n)
+  | not (isUVarApp t) =
+    solveTVar i n t
+
+--------------------------------------------------------------------------------
+-- Type constructors, of various forms and varieties
+--------------------------------------------------------------------------------
+
 unify0 TFun TFun = return VEqRefl
 unify0 (TThen pa ta) (TThen px tx) =
   VEqThen <$> unifyP pa px <*> unify' ta tx
 unify0 (TExistsP pa ta) (TExistsP px tx) =
   VEqExistsP <$> unifyP pa px <*> unify' ta tx
-unify0 t@(TApp {}) (u@(TApp {}))
-  | TUnif {} <- ft = requireEq t u
-  | TUnif {} <- fu = requireEq t u
-  | otherwise      =
-      do mq <- try $ checking $ unify' ft fu
-         case mq of
-           Nothing -> requireEq t u
-           Just q  ->
-             do qs <- zipWithM unify' ts us
-                return (foldl VEqApp q qs)
-  where (ft, ts) = spine t
-        (fu, us) = spine u
-unify0 (TApp (TMap fa) ra) (TRow []) =
-  do q <- unify' ra (TRow [])
-     return VEqMap
-unify0 (TApp (TMap fa) ra) (TRow xs@(tx:_)) =
-  do KFun kdom kcod <- kindOf fa
-     gs <- replicateM (length xs) (typeGoal' "t" kdom)
-     ls <- replicateM (length xs) (typeGoal' "l" KLabel)
-     q <- unify' ra (TRow (zipWith TLabeled ls gs))
-     qs <- sequence [unify' (TLabeled tl (TApp fa ta)) tx | (tl, ta, tx) <- zip3 ls gs xs]
-     return VEqMap  -- wrong
-unify0 (TRow []) (TApp (TMap fa) ra) =
-  do unify' (TRow []) ra
-     return VEqMap
-unify0 (TRow xs@(tx:_)) (TApp (TMap fa) ra) =
-  do KFun kdom kcod <- kindOf fa
-     gs <- replicateM (length xs) (typeGoal' "t" kdom)
-     ls <- replicateM (length xs) (typeGoal' "l" KLabel)
-     q <- unify' ra (TRow (zipWith TLabeled ls gs))
-     qs <- sequence [unify' (TLabeled tl (TApp fa ta)) tx | (tl, ta, tx) <- zip3 ls gs xs]
-     return VEqMap  -- wrong
 unify0 a@(TForall xa (Just ka) ta) x@(TForall xx (Just kx) tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
      then VEqForall <$> bindTy ka (unify' ta tx)
-     else do trace $ "1 incoming unification failure: " ++ show a ++ " ~/~ " ++ show x
-             unificationFails a x
+     else __unificationFails(a, x)
 unify0 a@(TExists xa (Just ka) ta) x@(TExists xx (Just kx) tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
      then VEqExists <$> bindTy ka (unify' ta tx)
-     else do trace $ "1a incoming unification failure: " ++ show a ++ " ~/~ " ++ show x
-             unificationFails a x
-unify0 a@(TLam xa (Just ka) ta) x@(TLam xx (Just kx) tx) =  -- Note: this case is missing from higher.pdf, also doubtful
+     else __unificationFails(a, x)
+unify0 a@(TLam xa (Just ka) ta) x@(TLam xx (Just kx) tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0
      then VEqLambda <$> bindTy ka (unify' ta tx)
-     else do trace $ "2 incoming unification failure: " ++ show a ++ " ~/~ " ++ show x
-             unificationFails a x
+     else __unificationFails(a, x)
 unify0 (TLab sa) (TLab sx)
   | sa == sx = return VEqRefl
 unify0 (TSing ta) (TSing tx) =
@@ -446,14 +455,19 @@ unify0 (TLabeled la ta) (TLabeled lx tx) =
 unify0 (TRow [t]) (TRow [u]) =
   do q <- unify' t u
      return (VEqRow [q])
-unify0 (TRow ra) (TRow rx)
+unify0 t@(TRow ra) u@(TRow rx)
   | length ra == length rx =
       do qs <- zipWithM unify' ra rx
          return (VEqRow qs)
+  | otherwise = __unificationFails(t, u)
 unify0 (TConApp Pi ra) (TConApp Pi rx) =
   VEqCon Pi <$> unify' ra rx
 unify0 (TConApp Sigma ra) (TConApp Sigma rx) =
   VEqCon Sigma <$> unify' ra rx
+-- When unifying mus, we choose the count that results in fewer remaining
+-- expansions. I think the idea here was to prevent some kind of
+-- unification/normalization loop that would keep resetting the count, but I
+-- hardly know if that is even possible...
 unify0 (TConApp (Mu count) f) (TConApp (Mu count') g) =
   VEqCon (Mu count'') <$> unify' f g where
     count'' = case (count, count') of
@@ -461,6 +475,83 @@ unify0 (TConApp (Mu count) f) (TConApp (Mu count') g) =
                 (Unexpanded, Expanded n) -> Expanded n
                 (Expanded m, Unexpanded) -> Expanded m
                 (Expanded m, Expanded n) -> Expanded (min m n)
+unify0 t0@(TConApp (TCUnif g) t) u =
+  do mk <- readGoal g
+     case mk of
+       Just k -> unify0 (TConApp k t) u
+       Nothing -> case u of
+                    TConApp k u' ->
+                       do writeGoal g k
+                          VEqCon k <$> unify0 t u'
+                    _ -> __unificationFails(t0, u)
+unify0 t u0@(TConApp (TCUnif g) u) =
+  do mk <- readGoal g
+     case mk of
+       Just k -> unify0 t (TConApp k u)
+       Nothing -> case t of
+                    TConApp k t' ->
+                       do writeGoal g k
+                          VEqCon k <$> unify0 t' u
+                    _ -> __unificationFails(t, u0)
+unify0 TString TString =
+  return VEqRefl
+unify0 a@(TMap f) x@(TMap g) =
+  do mq <- checkEq f g
+     case mq of
+       Just VEqRefl -> return VEqRefl
+       Just q       -> return (VEqMapCong q)
+       Nothing      -> do q' <- deferEq f g
+                          return (VEqMapCong q')
+-- Just because x - y ~ z - w, we don't actually know anything about x, y, z and
+-- w. We try a couple of options here---if we know that x ~ z or y ~ w, then we
+-- can fix the otherwise, but if those don't work then we can't make progress.
+unify0 t@(TCompl x y) u@(TCompl x' y') =
+  do mq <- checkEq x x'
+     case mq of
+       Just qx -> do qy <- unify' y y'
+                     return $ VEqComplCong qx qy
+       Nothing ->
+         do mq <- checkEq y y'
+            case mq of
+              Just qy -> do qx <- unify' x x'
+                            return $ VEqComplCong qx qy
+              Nothing -> deferEq t u
+unify0 t@(TCompl {}) u = deferEq t u
+unify0 t u@(TCompl {}) = deferEq t u
+
+---------------------------------------------------------------------------------
+-- Applications
+---------------------------------------------------------------------------------
+
+unify0 (TApp (TMap fa) ra) (TRow []) =
+  do q <- unify' ra (TRow [])
+     return VEqMap
+unify0 (TRow []) (TApp (TMap fa) ra) =
+  do unify' (TRow []) ra
+     return VEqMap
+unify0 (TApp (TMap fa) ra) (TRow xs@(tx:_)) =
+  do KFun kdom kcod <- kindOf fa
+     gs <- replicateM (length xs) (typeGoal' "t" kdom)
+     ls <- replicateM (length xs) (typeGoal' "l" KLabel)
+     q <- unify' ra (TRow (zipWith TLabeled ls gs))
+     qs <- sequence [unify' (TLabeled tl (TApp fa ta)) tx | (tl, ta, tx) <- zip3 ls gs xs]
+     return VEqMap  -- wrong
+unify0 (TRow xs@(tx:_)) (TApp (TMap fa) ra) =
+  do KFun kdom kcod <- kindOf fa
+     gs <- replicateM (length xs) (typeGoal' "t" kdom)
+     ls <- replicateM (length xs) (typeGoal' "l" KLabel)
+     q <- unify' ra (TRow (zipWith TLabeled ls gs))
+     qs <- sequence [unify' (TLabeled tl (TApp fa ta)) tx | (tl, ta, tx) <- zip3 ls gs xs]
+     return VEqMap  -- wrong
+unify0 t@(TApp {}) u@(TApp {}) =
+  do mq <- checkEq ft fu
+     case mq of
+       Nothing -> deferEq t u
+       Just q  ->
+         do qs <- zipWithM unify' ts us
+            return (foldl VEqApp q qs)
+  where (ft, ts) = spine t
+        (fu, us) = spine u
 unify0 t u
   | (TConApp (Mu count) f, ts) <- spine t, noHeadUnif u, Just count' <- decr count =
     unify' (foldl TApp f (TConApp (Mu count') f : ts)) u
@@ -468,73 +559,35 @@ unify0 t u
     unify' t (foldl TApp g (TConApp (Mu count') g : us))
   where noHeadUnif t
           | (TUnif _, _) <- spine t = False
-          | otherwise = True
+          | otherwise               = True
         decr (Expanded 0) = Nothing
         decr (Expanded n) = Just (Expanded (n - 1))
         decr Unexpanded   = Just (Expanded 20)
-unify0 t0@(TConApp (TCUnif g) t) u =
-  do mk <- readRef (goalRef g)
-     case mk of
-       Just k -> unify0 (TConApp k t) u
-       Nothing -> case u of
-                    TConApp k u' ->
-                       do writeRef (goalRef g) (Just k)
-                          VEqCon k <$> unify0 t u'
-                    _ -> do trace $ "7 incoming unification failure: " ++ show t0 ++ " ~/~ " ++ show u
-                            unificationFails t0 u
-unify0 t u0@(TConApp (TCUnif g) u) =
-  do mk <- readRef (goalRef g)
-     case mk of
-       Just k -> unify0 t (TConApp k u)
-       Nothing -> case t of
-                    TConApp k t' ->
-                       do writeRef (goalRef g) (Just k)
-                          VEqCon k <$> unify0 t' u
-                    _ -> do trace $ "7 incoming unification failure: " ++ show t ++ " ~/~ " ++ show u0
-                            unificationFails t u0
-unify0 TString TString =
-  return VEqRefl
+unify0 t@(TApp {}) u
+  | isUVarApp t = deferEq t u
+  | otherwise   = __unificationFails(t, u)
+  where (ft, _) = spine t
+unify0 t u@(TApp {})
+  | isUVarApp u = deferEq t u
+  | otherwise   = __unificationFails(t, u)
+  where (fu, _) = spine u
 
-unify0 a@(TMap f) x@(TMap g) =
-  do mq <- try $ checking $ unify' f g
-     case mq of
-       Just VEqRefl -> return (VEqRefl)  -- shouldn't this be handled by flattenV?
-       Just q       -> return (VEqMapCong q)
-       Nothing      -> do q' <- requireEq f g
-                          return (VEqMapCong q')
+--------------------------------------------------------------------------------
+-- We're out of tricks, so give up
+--------------------------------------------------------------------------------
 
-unify0 t@(TCompl x y) u@(TCompl x' y') =
-  do mq <- try $ checking $ unify' x x'
-     case mq of
-       Just qx -> do qy <- unify' y y'
-                     return $ VEqComplCong qx qy
-       Nothing ->
-         do mq <- try $ checking $ unify' y y'
-            case mq of
-              Just qy -> do qx <- unify' x x'
-                            return $ VEqComplCong qx qy
-              Nothing -> requireEq t u
-  -- checking $ do qx <- unify' x x'
-  --               qy <- unify' y y'
-  --               return (VEqComplCong qx qy)
-unify0 t@(TCompl {}) u = requireEq t u
-unify0 t u@(TCompl {}) = requireEq t u
-unify0 t u
-  | (not (null ts) && refinable ft) ||
-    (not (null us) && refinable fu) = requireEq t u
-  | otherwise =
-      do trace $ "5 incoming unification failure: " ++ renderString (ppr t) ++ " ~/~ " ++ renderString (ppr u)
-         unificationFails t u
-  where (ft, ts) = spine t
-        (fu, us) = spine u
-        refinable (TUnif {}) = True
-        refinable _          = False
+unify0 t u = __unificationFails(t, u)
+
+
+---------------------------------------------------------------------------------
+-- Unification: Predicates
+---------------------------------------------------------------------------------
 
 unifyP :: Pred -> Pred -> UnifyM Evid
 unifyP (PLeq y z) (PLeq y' z')        = VEqLeq <$> unify' y y' <*> unify' z z'
 unifyP (PPlus x y z) (PPlus x' y' z') = VEqPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'
 unifyP (PEq t u) (PEq t' u')          = VEqEq <$> unify' t t' <*> unify' u u'
 unifyP (PFold z) (PFold z')           = VEqFold <$> unify' z z'
-unifyP p q                            = unificationFails (p `TThen` TConApp Pi (TRow [])) (q `TThen` TConApp Pi (TRow []))
+unifyP p q                            = throwError (PredsDon'tUnify p q)
 
 

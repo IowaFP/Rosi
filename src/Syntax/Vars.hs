@@ -8,6 +8,10 @@ import Syntax.Common
 import Syntax.Terms
 import Syntax.Types
 
+-- =============================================================================
+-- Type variables
+-- =============================================================================
+
 class HasTyVars t where
   -- shiftNV vs j n t shifts variables, but *not uvars in `vs`*, at or above
   -- `j` up by `n`
@@ -182,6 +186,10 @@ instance HasTyVars Decl where
 
   subst = error "subst not implemented for declarations"
 
+-- =============================================================================
+-- Unification variables
+-- =============================================================================
+
 class HasUVars t where
   uvars :: MonadRef m => Level -> t -> m [UVar]
 
@@ -230,3 +238,23 @@ instance HasUVars Pred where
   uvars level (PLeq y z)    = uvars level y <.> uvars level z
   uvars level (PPlus x y z) = uvars level x <.> uvars level y <.> uvars level z
   uvars level (PFold z)     = uvars level z
+
+-- =============================================================================
+-- Evidence variables
+-- =============================================================================
+
+class HasEvVars t where
+  shiftEV :: Int -> Int -> t -> t
+
+instance HasEvVars Evid where
+  shiftEV j n = everywhere (mkT shiftVar) where
+    shiftVar (VVar i)
+      | i >= j = VVar (i + n)
+      | otherwise = VVar i
+    shiftVar v = v
+
+instance HasEvVars Ty where
+  shiftEV j n = everywhere (mkT (shiftEV @Evid j n))
+
+instance HasEvVars Term where
+  shiftEV j n = everywhere (id `extT` shiftEV @Evid j n `extT` shiftEV @Ty j n)

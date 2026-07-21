@@ -48,10 +48,10 @@ promoteN v@(UV n l' _ _) m t@(TVar i s) =
          | otherwise -> return Nothing
        -- Really don't think this should be possible...
        KBDefn _ u -> promoteN v m u
-promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k'))
-  | r == r' = return Nothing -- Occurs check
+promoteN v@(UV n l g _) m t@(TUnif v'@(UV n' l' g' k'))
+  | goalRef g == goalRef g' = return Nothing -- Occurs check
   | otherwise =
-    do mt <- readRef r'
+    do mt <- readGoal g'
        case mt of
          Just t' -> promoteN v m (shiftN 0 n' t')
          Nothing
@@ -60,10 +60,9 @@ promoteN v@(UV n l (Goal (_, r)) _) m t@(TUnif v'@(UV n' l' (Goal (uvar', r')) k
            | n' >= m + n && l >= l' ->
              return (Just $ TUnif (v' { uvShift = n' - n }))
            | otherwise ->
-             do r'' <- newRef Nothing
-                uvar'' <- fresh uvar'
-                let newT n = TUnif (UV n l (Goal (uvar'', r'')) k')
-                writeRef r' (Just (newT ((m + n) - n')))
+             do g'' <- newGoal (goalName g')
+                let newT n = TUnif (UV n l g'' k')
+                writeGoal g' (newT ((m + n) - n'))
                 return (Just (newT m))
 promoteN v _ TFun = return (Just TFun)
 promoteN v n (TThen p t) = liftM2 TThen <$> promoteP v n p <*> promoteN v n t
@@ -91,16 +90,15 @@ promoteN v@(UV n l _ _) m (TInst is t) = liftM2 TInst <$> promoteIs is <*> promo
         promoteI i@(PrArg v)  = return (Just [i])
         promoteI (TyPack t)   =liftM (singleton . TyPack) <$> promoteN v n t
         promoteI i@(PrPack v) = return (Just [i])
-        promoteI i@(Unknown n' g@(Goal (s, r))) =
-          do mis <- readRef r
+        promoteI i@(Unknown n' g) =
+          do mis <- readGoal g
              case mis of
                Just is -> promoteIs (shiftN 0 n' is)
                Nothing
                  | n' >= n   -> return (Just [Unknown (n' - n) g])
-                 | otherwise -> do r' <- newRef Nothing
-                                   s' <- fresh s
-                                   let newIs n = Unknown n (Goal (s', r'))
-                                   writeRef r (Just [newIs (n - n')])
+                 | otherwise -> do g' <- newGoal (goalName g)
+                                   let newIs n = Unknown n g'
+                                   writeGoal g [newIs (n - n')]
                                    return (Just [newIs 0])
 promoteN v n (TMapApp f) = liftM TMapApp <$> promoteN v n f
 promoteN v n t = error $ "promote: missing " ++ show t
@@ -127,5 +125,5 @@ solveUV v t =
        Just t' ->
          do trace ("1 promoted " ++ tString ++ " to " ++ renderString (ppr t'))
             trace ("1 instantiating " ++ goalName (uvGoal v) ++ "@" ++ show (uvLevel v) ++ " to " ++ renderString (ppr  t')) --  renderString (ppr t'))
-            writeRef (goalRef (uvGoal v)) (Just t')
+            writeGoal (uvGoal v) t'
             return (Just VEqRefl)

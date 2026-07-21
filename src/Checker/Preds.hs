@@ -1,4 +1,3 @@
-{-# LANGUAGE ParallelListComp #-}
 module Checker.Preds where
 
 import Control.Monad
@@ -15,53 +14,144 @@ import Checker.Normalize
 import Checker.Promote
 import Checker.Unify
 import Checker.Utils
+import Errors
 import Printer
 import Syntax
 
-import Errors
 import GHC.Stack
+
+(<|>) :: CheckM (Maybe a) -> CheckM (Maybe a) -> CheckM (Maybe a)
+m <|> n = maybe n (return . Just) =<< m
+
+infixr 2 <|>
+
+cond :: Monad m => m Bool -> m a -> m a -> m a
+cond b c a = do b' <- b
+                if b' then c else a
+
+suppose :: (Monad m, MonadPlus n) => m Bool -> m (n a) -> m (n a)
+suppose b c = cond b c (return mzero)
+
+defer :: Pred -> CheckM (Maybe Evid)
+defer p =
+  do g <- newGoal "g"
+     require p g
+     return (Just (VGoal g))
+
+typesEqual :: Ty -> Ty -> CheckM Bool
+typesEqual t u =
+  do q <- check [] t u
+     return (isRight q)
+
+expand :: [(Pred, Evid)] -> [(Pred, Evid)] -> CheckM [(Pred, Evid)]
+expand qs [] = return (reverse qs)
+expand qs (p : ps) =
+  do ps' <- expand1 p
+     ps'' <- concat <$> mapM (expand2 p) qs
+     let seen = map fst (qs ++ ps)
+         ps''' = filter ((`notElem` seen) . fst) (ps' ++ ps'')
+     trace ("Expanding " ++ renderString (ppr (fst p)) ++ " gives: " ++ intercalate ", " (map (renderString . ppr . fst) ps'''))
+     expand (p : qs) (ps''' ++ ps)
+  where
+    expand1 :: (Pred, Evid) -> CheckM [(Pred, Evid)]
+    expand1 (PPlus x y z, v)
+      | not (isComplement x) && not (isComplement y) =
+          return
+            [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v), (PEq x (TCompl z y), VEqPlusComplL v),
+             (PEq y (TCompl z x), VEqPlusComplR v)]
+      | otherwise =
+          return []
+    expand1 (PLeq x y, v) = return (compls ++ subrows)
+      where compls
+              | not (isComplement x) && not (isComplEvid v) = [(PLeq (TCompl y x) y, VComplLeq v)]
+              | otherwise                                   = []
+            subrows
+              | TRow fs <- x, length fs > 1, not (isLiteralRow y) =
+                let is = [0..length fs - 1]
+                    subsets = [filter (i /=) is | i <- is]
+                    evids = [(PLeq (TRow (map (fs !!) is)) y, VLeqTrans (VLeqSimple is) v) | is <- subsets, not (null is)]
+                in evids
+              | otherwise = []
+            isLiteralRow (TRow {}) = True
+            isLiteralRow _         = False
+            isComplEvid (VPlusLeqL {}) = True
+            isComplEvid (VPlusLeqR {}) = True
+            isComplEvid _              = False
+
+    expand1 (PEq x y, VEqSym {}) = return []
+    expand1 (PEq x y, v)         = return [(PEq y x, VEqSym v)]
+    expand1 (PFold _, _)         = return []
+
+    isComplement (TCompl {}) = True
+    isComplement _           = False
+
+    expand2 :: (Pred, Evid) -> (Pred, Evid) -> CheckM [(Pred, Evid)]
+    expand2 p@(PLeq {}, _) q@(PLeq {}, _) = return (oneWay p q ++ oneWay q p) where
+      oneWay (PLeq x y, v1) (PLeq z w, v2)
+        | y == z                         = [(PLeq x w, VLeqTrans v1 v2)]
+        | TMap f `TApp` z' <- z, y == z' = [(PLeq (TMap f `TApp` x) w, VLeqTrans (VLeqLiftL f v1) v2)]
+        | TMap f `TApp` y' <- y, y' == z = [(PLeq x (TMap f `TApp` w), VLeqTrans v1 (VLeqLiftL f v2))]
+      oneWay _ _ = []
+    expand2 (PPlus x y z, _) (PPlus x' y' z', _) =
+      align x x' y y' z z' <|> align x x' z z' y y' <|> align y y' z z' x x'
+      where
+        align x x' y y' z z' =
+          suppose (typesEqual x x') $
+          suppose (typesEqual y y') $
+             do mpreds <- unifyCollecting [] z z'
+                case mpreds of
+                  Left _   -> return []
+                  Right ps -> return [(p, VEqFunDep) | p <- ps]
+        m <|> n =
+          do xs <- m
+             if null xs then n else return xs
+
+    expand2 _ _ = return []
+
+pickEqns :: [(Pred, Evid)] -> [Eqn]
+pickEqns ps = go ps where
+  go []                                 = []
+  go ((PEq t u, VEqSym _) : ps)         = go ps
+  go ((PEq t u, VEqTrans _ _ ) : ps)    = go ps
+  go ((PEq t u, VEqPlusComplL _ ) : ps) = go ps
+  go ((PEq t u, VEqPlusComplR _ ) : ps) = go ps
+  go ((PEq t u, v) : ps)
+    | isTVarApp t                       = (t, (u, v)) : go ps
+    | isTVarApp u                       = (u, (t, v)) : go ps
+    | isUVarApp t                       = (t, (u, v)) : go ps
+    | isUVarApp u                       = (u, (t, v)) : go ps
+    | otherwise                         = go ps
+  go (_ : ps)                           = go ps
 
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
-  do trace $ "Solving: " ++ renderString (ppr p) ++ "\nin " ++ show (kctxt cin)
-     as' <- mapM (normalizeP [] <=< flatten) (pctxt cin)
-     unless (null as') $ trace ("Expanding " ++ show as')
-     let as'' = expandAll (zip as' [VVar i | i <- [0..]])
-     let eqns = pickEqns as''
-     unless (null as'') $ trace ("Expanded " ++ show as' ++ " to " ++ show as'')
+  do as' <- forM (pctxt cin) $ \(p, v) ->
+       do p' <- normalizeP [] =<< flatten p
+          return (p', v)
+     trace $ "Solving: " ++ renderString (ppr p) ++ "\nassuming: " ++ intercalate ", " (map (renderString . ppr . fst) as') ++ "\nin " ++ show (kctxt cin)
+     let eqns = pickEqns as'
      unless (null eqns) $ trace ("Found equations " ++ show eqns)
      p' <- normalizeP eqns =<< flatten p
      trace ("Normalized goal to " ++ renderString (ppr p'))
-     mv <- everything as'' p'
+     mv <- everything as' p'
      case mv of
        Just v  -> writeRef r (Just v) >> return True
        Nothing -> return False
 
   where
 
-  (<|>) :: CheckM (Maybe a) -> CheckM (Maybe a) -> CheckM (Maybe a)
-  m <|> n = maybe n (return . Just) =<< m
-
-  infixr 2 <|>
-
-  cond :: Monad m => m Bool -> m a -> m a -> m a
-  cond b c a = do b' <- b
-                  if b' then c else a
-
-  suppose :: Monad m => m Bool -> m (Maybe a) -> m (Maybe a)
-  suppose b c = cond b c (return Nothing)
-
-  pickEqns :: [(Pred, Evid)] -> [Eqn]
-  pickEqns ps = go ps where
-    go []                             = []
-    go ((PEq (TCompl z x) y, v) : ps) = (TCompl z x, (y, v)) : go ps
-    go (_ : ps)                       = go ps
-
   everything as p =
     do v <- byAssump as p <|> prim p <|> refl p <|> mapFunApp as p
        trace ("Solved " ++ renderString (ppr p) ++ " by " ++ show v)
        return v
+
+  byAssump as p = anyT matchDirect as <|> anyT matchIndirect as where
+    anyT t []       = return Nothing
+    anyT t (a : as) = t p a <|> anyT t as
+
+    matchDirect p q = matchLeqDirect p q <|> matchPlusDirect p q <|> matchEqDirect p q <|> matchFoldDirect p q
+    matchIndirect p q = matchLeqMap p q <|> matchLeqCompl p q <|> matchPlusMap p q <|> matchPlusLeq p q
 
   -- TODO: this shouldn't be necessary any longer, as labels are stored in sorted order??
   sameSet :: Eq a => [a] -> [a] -> Bool
@@ -70,27 +160,11 @@ solve (cin, p, r) =
   allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
   allM p xs = and <$> mapM p xs
 
-  typesEqual :: Ty -> Ty -> CheckM Bool
-  typesEqual t u =
-    do q <- check [] t u
-       return (isRight q)
-
-  sameAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM Bool
-  sameAssocs xs ys =
-    allM (\(xl, xt) ->
-      case lookup xl ys of
-        Nothing -> return False
-        Just yt ->
-          do xt' <- fst <$> normalize [] xt
-             yt' <- fst <$> normalize [] yt
-             trace $ "4 sameAssocs (" ++ show xt' ++ ") (" ++ show yt' ++ ")"
-             typesEqual xt' yt') xs
-
   forceAssocs :: Eq a => [(a, Ty)] -> [(a, Ty)] -> CheckM ()
   forceAssocs xs ys =
     mapM_ (\(xl, xt) ->
       case lookup xl ys of
-        Nothing -> error $ "internal: unifyAssocs called with unmatched assoc lists"
+        Nothing -> error "internal: unifyAssocs called with unmatched assoc lists"
         Just yt ->
           do q <- unify [] xt yt
              case q of
@@ -98,7 +172,9 @@ solve (cin, p, r) =
                Right _ -> return ()) xs
 
   matchLeqDirect, matchLeqMap, matchPlusDirect, matchPlusMap, matchEqDirect, matchFoldDirect, match :: HasCallStack => Pred -> (Pred, Evid) -> CheckM (Maybe Evid)
-  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchPlusDirect p q <|> matchPlusMap p q <|> matchEqDirect p q <|> matchFoldDirect p q
+  match p q = matchLeqDirect p q <|> matchLeqMap p q <|> matchLeqCompl p q
+           <|> matchPlusDirect p q <|> matchPlusMap p q <|> matchPlusLeq p q
+           <|> matchEqDirect p q <|> matchFoldDirect p q
 
   matchLeqDirect (PLeq y@(TRow es) z) (PLeq y'@(TRow es') z', v) =
     suppose (typesEqual z z') $
@@ -117,10 +193,12 @@ solve (cin, p, r) =
     return (Just v)
   matchLeqDirect _ _ = return Nothing
 
-  refl (PLeq x y) =
-    suppose (typesEqual x y) $
-    return (Just VLeqRefl)
-  refl _ = return Nothing
+  matchLeqCompl (PLeq (TCompl z x) y) (PLeq x' z', v) =
+    suppose (typesEqual z y) $
+    suppose (typesEqual z z') $
+    suppose (typesEqual x x') $
+      return (Just (VComplLeq v))
+  matchLeqCompl _ _ = return Nothing
 
   matchLeqMap p@(PLeq (TRow es) (TApp (TMap f) z)) q@(PLeq (TRow es') z', v) =
     suppose (typesEqual z z') $
@@ -134,7 +212,7 @@ solve (cin, p, r) =
   matchLeqMap _ _ = return Nothing
 
   matchPlusDirect p@(PPlus x y z) (q@(PPlus x' y' z'), v) =
-    (trace $ "mpd " ++ show p ++ ", " ++ show q) >>
+    trace ("mpd " ++ show p ++ ", " ++ show q) >>
     suppose (typesEqual z z')
       (suppose (typesEqual x x') (forceFD y y') <|>
        suppose (typesEqual y y') (forceFD x x') <|>
@@ -162,6 +240,27 @@ solve (cin, p, r) =
                  Left _ -> fundeps p
                  _      -> return (Just v)
   matchPlusDirect _ _ = return Nothing
+
+  matchPlusLeq p@(PPlus x y z) (q@(PLeq x' z'), v) =
+    matchPlusDirect p q0 <|> matchPlusDirect p q1 <|>
+    matchPlusMap p q0 <|> matchPlusMap p q1
+
+    where q0 = (PPlus x' (TCompl z' x') z', VPlusComplR v)
+          q1 = (PPlus (TCompl z' x') x' z', VPlusComplL v)
+    -- trace ("mpl " ++ renderString (parens (ppr p)) ++ " " ++ renderString (parens (ppr q))) >>
+    -- align x x' z z' y VPlusComplR <|> align y x' z z' x VPlusComplL
+    -- where align x x' z z' y k =
+    --         suppose (typesEqual x x') $
+    --         suppose (typesEqual z z') $
+    --           do forceFD y (TCompl z x)
+    --              return (Just (k v))
+    --       forceFD t t' =
+    --         do q <- unify [] t t'
+    --            case q of
+    --              Left _ -> fundeps p
+    --              _      -> return (Just v)
+  matchPlusLeq _ _ = return Nothing
+
 
   {-
 
@@ -191,7 +290,7 @@ solve (cin, p, r) =
     where align x y z x' y' z' v
             | TApp (TMap zf) zr <- z =
               suppose (typesEqual zr z') $
-              (case (x, x') of
+              case (x, x') of
                 (TRow xr, TRow xr')
                    | Just xs <- mapM splitLabel xr, Just xs' <- mapM splitLabel xr', sameSet (map fst xs) (map fst xs') ->
                        do forceAssocs xs (map (second (TApp zf)) xs')   -- Is this actually forced?
@@ -199,7 +298,7 @@ solve (cin, p, r) =
                           return (Just (VPlusLiftL zf v))
                    | otherwise -> trace ("mpm failed: " ++ show xr ++ ", " ++ show xr') >>
                                   return Nothing
-                _ -> return Nothing)
+                _ -> return Nothing
             | otherwise = return Nothing
 
           forceFD t t' =
@@ -226,53 +325,6 @@ solve (cin, p, r) =
 
   fundeps p = throwError (ErrTypeMismatchFD p)
 
-  expand1 :: (Pred, Evid) -> [(Pred, Evid)]
-  expand1 (PPlus x y z, v)
-    | not (isComplement x) && not (isComplement y) =
-        [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v), (PEq x (TCompl z y), VEqPlusComplL v),
-         (PEq y (TCompl z x), VEqPlusComplR v)]
-    | otherwise =
-        []
-  expand1 (PLeq x y, v) = compls ++ subrows
-    where compls
-            | not (isComplement x) = [(PLeq (TCompl y x) y, VComplLeq v), (PPlus x (TCompl y x) y, VPlusComplR v), (PPlus (TCompl y x) x y, VPlusComplL v)]
-            | otherwise            = []
-          subrows
-            | TRow fs <- x, length fs > 1, not (isLiteralRow y) =
-              let is = [0..length fs - 1]
-                  subsets = [filter (i /=) is | i <- is]
-                  evids = [(PLeq (TRow (map (fs !!) is)) y, VLeqTrans (VLeqSimple is) v) | is <- subsets, not (null is)]
-              in evids
-            | otherwise = []
-          isLiteralRow (TRow {}) = True
-          isLiteralRow _         = False
-  expand1 (PEq x y, VEqSym {}) = []
-  expand1 (PEq x y, v) = [(PEq y x, VEqSym v)]
-  expand1 (PFold _, _) = []
-
-  isComplement (TCompl {}) = True
-  isComplement _           = False
-
-  expand2 :: (Pred, Evid) -> (Pred, Evid) -> [(Pred, Evid)]
-  expand2 p@(PLeq {}, _) q@(PLeq {}, _) = oneWay p q ++ oneWay q p where
-    oneWay (PLeq x y, v1) (PLeq z w, v2)
-      | y == z                         = [(PLeq x w, VLeqTrans v1 v2)]
-      | TMap f `TApp` z' <- z, y == z' = [(PLeq (TMap f `TApp` x) w, VLeqTrans (VLeqLiftL f v1) v2)]
-      | TMap f `TApp` y' <- y, y' == z = [(PLeq x (TMap f `TApp` w), VLeqTrans v1 (VLeqLiftL f v2))]
-    oneWay _ _ = []
-  expand2 _ _ = []
-
-  expandAll :: [(Pred, Evid)] -> [(Pred, Evid)]
-  expandAll = go [] where
-    go qs [] = reverse qs
-    go qs (p : ps) =
-      go (p : qs) (ps' ++ ps) where
-      seen = map fst (qs ++ ps)
-      ps' = filter ((`notElem` seen) . fst) (expand1 p ++ concatMap (expand2 p) qs)
-
-  byAssump [] p       = return Nothing
-  byAssump (a : as) p = match p a <|> byAssump as p
-
   force p t u =
     do q <- unify [] t u
        case q of
@@ -298,7 +350,7 @@ solve (cin, p, r) =
           align (Right i, TLabeled _ t) = force p t u where TLabeled _ u = y !! i
           align _                       = error "attemped to align unlabeled type"
   prim p@(PPlus (TRow x) y (TRow z))
-    | Just xs <- mapM splitConcreteLabel x, Just zs <- mapM splitConcreteLabel z, Just is <- mapM (flip elemIndex (map fst zs)) (map fst xs) =
+    | Just xs <- mapM splitConcreteLabel x, Just zs <- mapM splitConcreteLabel z, Just is <- mapM (flip elemIndex (map fst zs) . fst) xs =
         do forceAssocs xs (map (zs !!) is)
            let js = [j | j <- [0..length zs - 1], j `notElem` is]
                ys = map (uncurry (TLabeled . TLab) . (zs !!)) js
@@ -310,10 +362,10 @@ solve (cin, p, r) =
            force p y (TRow ys)
            return (Just (VPlusSimple (go 0 0)))
   prim p@(PPlus x (TRow y) (TRow z))
-    | Just ys <- mapM splitConcreteLabel y, Just zs <- mapM splitConcreteLabel z, Just js <- mapM (flip elemIndex (map fst zs)) (map fst ys) =
+    | Just ys <- mapM splitConcreteLabel y, Just zs <- mapM splitConcreteLabel z, Just js <- mapM (flip elemIndex (map fst zs) . fst) ys =
         do forceAssocs ys (map (zs !!) js)
            let is = [i | i <- [0..length zs - 1], i `notElem` js]
-               xs = (map (uncurry (TLabeled . TLab) . (zs !!)) is)
+               xs = map (uncurry (TLabeled . TLab) . (zs !!)) is
                go n m
                  | n >= length zs = []
                  | Just j <- elemIndex n js = Right j : go (n + 1) m
@@ -322,7 +374,7 @@ solve (cin, p, r) =
            force p x (TRow xs)
            return (Just (VPlusSimple (go 0 0)))
   prim p@(PPlus (TRow x) (TRow y) z)
-    | Just xs <- mapM splitConcreteLabel x, Just ys <- mapM splitConcreteLabel y, all (`notElem` map fst xs) (map fst ys), all (`notElem` map fst ys) (map fst xs) =
+    | Just xs <- mapM splitConcreteLabel x, Just ys <- mapM splitConcreteLabel y, all ((`notElem` map fst xs) . fst) ys, all ((`notElem` map fst ys) . fst) xs =
         let zs = sortOn fst (xs ++ ys)
             pick k =
               case (elemIndex k (map fst xs), elemIndex k (map fst ys)) of
@@ -336,9 +388,9 @@ solve (cin, p, r) =
   prim p@(PEq t u) =
     do result <- unifyProductive [] t u
        case result of
-         Productive v       -> return (Just v)
-         Unproductive       -> return Nothing
-         UnificationFails _ -> throwError (ErrTypeMismatchPred p t u)
+         Right v           -> return (Just v)
+         Left Unproductive -> return Nothing
+         Left _            -> throwError (ErrTypeMismatchPred p t u)
   prim p@(PFold (TRow xs)) =
     return (Just (VFold (length xs)))
   prim p@(PFold (TApp (TMap f) z)) =
@@ -355,12 +407,10 @@ solve (cin, p, r) =
     where tyAppFrom (TApp f e) = Just (f, e)
           tyAppFrom _          = Nothing
 
-  defer :: Pred -> CheckM (Maybe Evid)
-  defer p =
-    do r <- newRef Nothing
-       require p r
-       name <- fresh "g"
-       return (Just (VGoal (Goal (name, r))))
+  refl (PLeq x y) =
+    suppose (typesEqual x y) $
+    return (Just VLeqRefl)
+  refl _ = return Nothing
 
   mapFunApp as p@(PLeq (TRow []) (TApp (TMap f) z)) =
     fmap (VLeqLiftL f) <$> defer (PLeq (TRow []) z)
@@ -413,15 +463,15 @@ guesses prs =
 
   guessInstInst, guessInst, guessAppApp, guessApp :: Guesser
 
-  guessInstInst pr@(tcin, PEq (TInst [Unknown {}, Unknown _ (Goal (s, r))] _) _, _) =
+  guessInstInst pr@(tcin, PEq (TInst [Unknown {}, Unknown _ g] _) _, _) =
     Just $
-    do trace $ unwords ["guessing", s, ":= {}"]
-       writeRef r (Just [])
+    do trace $ unwords ["guessing", goalName g, ":= {}"]
+       writeGoal g []
        return [pr]
-  guessInstInst pr@(tcin, PEq _ (TInst [Unknown {}, Unknown _ (Goal (s, r))] _), v) =
+  guessInstInst pr@(tcin, PEq _ (TInst [Unknown {}, Unknown _ g] _), v) =
     Just $
-    do trace $ unwords ["guessing", s, ":= {}"]
-       writeRef r (Just [])
+    do trace $ unwords ["guessing", goalName g, ":= {}"]
+       writeGoal g []
        return [pr]
   guessInstInst _ = Nothing
 
@@ -430,14 +480,14 @@ guesses prs =
     | TInst [Unknown {}] _ <- t, TForall {} <- u = Just $ guessInstantiation u t
     where -- There is a lot of similarity with the code in unifyInstantiating here...
           -- Assuming t starts with quantifiers, `u` starts with unknown instantiation
-          guessInstantiation t (TInst [Unknown n (Goal (s, r))] u) =
+          guessInstantiation t (TInst [Unknown n g] u) =
             do xs' <- mapM fresh xs
                refs <- replicateM (length xs) (newRef Nothing)
                l <- theLevel
                let us = [TUnif (UV 0 l (Goal (x, r)) k) | x <- xs' | r <- refs | k <- ks ]
-               writeRef r (Just (map TyArg us))
+               writeGoal g (map TyArg us)
                t''' <- instantiate t us
-               trace $ unlines [ unwords ["guessing", s, ":=", show us]
+               trace $ unlines [ unwords ["guessing", goalName g, ":=", show us]
                                , unwords ["refined goal to", show (PEq t''' u)] ]
                return [(tcin, PEq t''' u, v)]  -- TODO: is `v` here actually a solution to the original problem?
 
@@ -460,12 +510,11 @@ guesses prs =
 
   guessMapLeq pr@(tcin, PLeq (TApp (TMap f) y) (TApp (TMap f') z), v)
     | f == f' = Just $
-      do r1 <- newRef Nothing
-         v1 <- fresh "v"
-         writeRef v (Just (VLeqLiftL f (VGoal (Goal (v1, r1)))))
+      do g <- newGoal "v"
+         writeRef v (Just (VLeqLiftL f (VGoal g)))
          trace $ unlines [ "guessing " ++ show (PLeq (TApp (TMap f) y) (TApp (TMap f') z))
                          , "by reducing to " ++ show (PLeq y z) ]
-         return [(tcin, PLeq y z, r1)]
+         return [(tcin, PLeq y z, goalRef g)]
   guessMapLeq _ = Nothing
 
   guessingRefinement tf ta uf ua =
@@ -479,12 +528,10 @@ guesses prs =
   guessAppApp (tcin, PEq (TApp tf ta) (TApp uf ua), v) =
     Just $
     do trace $ guessingRefinement tf ta uf ua
-       r1 <- newRef Nothing
-       r2 <- newRef Nothing
-       v1 <- fresh "v"
-       v2 <- fresh "v"
-       writeRef v (Just (VEqApp (VGoal (Goal (v1, r1))) (VGoal (Goal (v2, r2)))))
-       return [(tcin, PEq tf uf, r1), (tcin, PEq ta ua, r2)]
+       g1 <- newGoal "g"
+       g2 <- newGoal "g"
+       writeRef v (Just (VEqApp (VGoal g1) (VGoal g2)))
+       return [(tcin, PEq tf uf, goalRef g1), (tcin, PEq ta ua, goalRef g2)]
   guessAppApp _ = Nothing
 
   guessApp pr@(tcin, PEq t0 u0, v)
@@ -529,7 +576,7 @@ guesses prs =
       | n < m = return (TVar n s)
       | otherwise = return (TVar (n + 1) s)
     walk x u m (TUnif v) =
-      do mt <- readRef (goalRef (uvGoal v))
+      do mt <- readGoal (uvGoal v)
          case mt of
            Nothing -> return (TUnif v { uvShift = uvShift v + 1 })
            Just t  -> walk x u m (shiftN 0 (uvShift v) t)
@@ -555,7 +602,7 @@ guesses prs =
       walkI (TyPack t) = singleton . TyPack <$> walk x u m t
       walkI (PrPack v) = return [PrPack v]
       walkI (Unknown n g) =
-        do mis <- readRef (goalRef g)
+        do mis <- readGoal g
            case mis of
              Nothing  -> return [Unknown n g]
              Just is' -> walkIs (shiftN 0 n is')
@@ -594,9 +641,6 @@ solverLoop makeGuesses ps =
 
 andSolve :: Bool -> CheckM a -> CheckM a
 andSolve makeGuesses m =
-  -- censor (const (TCOut [])) $
-      -- Not sure why this should be here; the `collect` below should do the
-      -- same, and `solverLoop` shouldn't leave any problems in the output
   do (x, goals) <- collect m
      remaining <- solverLoop makeGuesses goals
      if null remaining
@@ -607,7 +651,8 @@ notEntailed :: [Problem] -> CheckM a
 notEntailed problems = throwError . ErrNotEntailed =<< mapM mkError problems
   where mkError (cin, p, _) =
           do p' <- flatten p
-             ps' <- mapM flatten (pctxt cin)
+             ps' <- sequence [flatten p | (p, VVar _) <- pctxt cin]
+            --  (flatten . fst) (pctxt cin)
              return (p', ps')
 
 

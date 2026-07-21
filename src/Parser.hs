@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE ParallelListComp   #-}
 {- HLINT ignore "Fuse foldr/map" -}
 module Parser where
 
@@ -180,6 +179,7 @@ qidentifier  = do xs <- many (try namespace)
 
 -- we support all operator chars supported by Idris 2 ( ":+-*\\/=.?|&><!@$%^~#" )
 -- See (https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#data-types)
+operatorChars :: String
 operatorChars = ":+-*\\/=.?|&><!@$%^~#"
 
 isOperatorChar = (`elem` operatorChars)
