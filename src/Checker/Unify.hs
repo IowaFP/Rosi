@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Checker.Unify (module Checker.Unify) where
 
 import Control.Monad
@@ -18,6 +19,8 @@ import Printer
 import Syntax
 
 import GHC.Stack
+
+#define __unificationFails(t, u) do { trace (show __LINE__ ++ " incoming unification failure " ++ renderString (ppr t) ++ " ~/~ " ++ renderString (ppr u)); unificationFails t u}
 
 {--
 
@@ -214,7 +217,8 @@ unifyInstantiating t u unify =
       -- Don't actually know how this case is possible, but if we do get here
       -- we're out of ideas.
       | otherwise =
-        unificationFails t (TInst (toList is) u)
+        do trace $ "4 incoming unification failure " ++ renderString (ppr t) ++ " ~ " ++ renderString (ppr (TInst (toList is) u))
+           unificationFails t (TInst (toList is) u)
 
       where (qts, t') = univQuants t
             (qus, _) = univQuants u
@@ -259,10 +263,12 @@ unifyInstantiating t u unify =
       unificationFails t (TInst (toList is) u)
     -- Defer ambiguous packs
     existentials t is@(_ :|> Unknown {} :|> Unknown {}) u@(TExists {}) =
-      unificationFails t (TInst (toList is) u)
+      -- unificationFails t (TInst (toList is) u)
+      requireEq t (TInst (toList is) u)
     -- Defer packing of metavariables
     existentials t is u@(TUnif {}) =
-      unificationFails t (TInst (toList is) u)
+      -- unificationFails t (TInst (toList is) u)
+      requireEq t (TInst (toList is) u)
     -- If there's an instantiation before a pack, and there are existential
     -- predicates intervening, then pack them. This is also a weird corner case,
     -- and would arise with a type like `exists x. P x => exists y. ...`
@@ -278,10 +284,12 @@ unifyInstantiating t u unify =
                  require p vr
                  return (PrPack (VGoal (Goal ("v", vr))))
     existentials t@(TUnif {}) is@(_ :|> Unknown {}) u@(TExists {}) =
-      unificationFails t (TInst (toList is) u)
+      -- unificationFails t (TInst (toList is) u)
+      requireEq t (TInst (toList is) u)
     existentials t is u
       | null qus, TForall {} <- t =
-        unificationFails t (TInst (toList is) u)
+        -- unificationFails t (TInst (toList is) u)
+        requireEq t (TInst (toList is) u)
       -- Fewer (but some!) exists-like quantifiers on the right than on the
       -- left. In this case, we fall back on trying to unify the left and
       -- right-hand side directly, after solving any remaining unification
@@ -338,7 +346,7 @@ unify0 :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify0 (TVar i _) (TVar j _)
   | i == j = return VEqRefl
 unify0 (TUnif v) (TUnif w)
-  | uvShift v == uvShift w, goalRef (uvGoal v) == goalRef (uvGoal w) = return VEqRefl
+  | goalRef (uvGoal v) == goalRef (uvGoal w) = return VEqRefl
 -- These next cases are totally not ad hoc nonsense
 unify0 (TUnif v) (TInst [Unknown 0 (Goal (_, r))] (TUnif w))
   | v == w = do writeRef r (Just [])
@@ -373,32 +381,23 @@ unify0 actual@(TUnif v@(UV n lref (Goal (uvar, r)) k)) expected =
 unify0 (TInst [Unknown n i1] t) (TInst [Unknown n' i2] u)
   | n == n' && i1 == i2 = unify' t u
 unify0 t u@(TInst {}) =
-  do mq <- try $ unifyInstantiating t u unify'
-     case mq of
-       Nothing -> requireEq t u
-       Just q  -> return q
+  unifyInstantiating t u unify'
+  -- do mq <- try $ unifyInstantiating t u unify'
+  --    case mq of
+  --      Nothing -> requireEq t u
+  --      Just q  -> return q
 unify0 t@(TInst {}) u =
-  do mq <- try $ unifyInstantiating u t (flip unify')
-     case mq of
-       Nothing -> requireEq t u
-       Just q  -> return q
+  unifyInstantiating u t (flip unify')
+  -- do mq <- try $ unifyInstantiating u t (flip unify')
+  --    case mq of
+  --      Nothing -> requireEq t u
+  --      Just q  -> return q
 unify0 TFun TFun = return VEqRefl
 unify0 (TThen pa ta) (TThen px tx) =
   VEqThen <$> unifyP pa px <*> unify' ta tx
 unify0 (TExistsP pa ta) (TExistsP px tx) =
   VEqExistsP <$> unifyP pa px <*> unify' ta tx
-unify0 t@(TApp {}) (u@(TApp {}))
-  | TUnif {} <- ft = requireEq t u
-  | TUnif {} <- fu = requireEq t u
-  | otherwise      =
-      do mq <- try $ checking $ unify' ft fu
-         case mq of
-           Nothing -> requireEq t u
-           Just q  ->
-             do qs <- zipWithM unify' ts us
-                return (foldl VEqApp q qs)
-  where (ft, ts) = spine t
-        (fu, us) = spine u
+
 unify0 (TApp (TMap fa) ra) (TRow []) =
   do q <- unify' ra (TRow [])
      return VEqMap
@@ -419,6 +418,27 @@ unify0 (TRow xs@(tx:_)) (TApp (TMap fa) ra) =
      q <- unify' ra (TRow (zipWith TLabeled ls gs))
      qs <- sequence [unify' (TLabeled tl (TApp fa ta)) tx | (tl, ta, tx) <- zip3 ls gs xs]
      return VEqMap  -- wrong
+unify0 t@(TApp {}) (u@(TApp {}))
+  | TUnif {} <- ft = requireEq t u
+  | TUnif {} <- fu = requireEq t u
+  | otherwise      =
+      do mq <- try $ checking $ unify' ft fu
+         case mq of
+           Nothing -> requireEq t u
+           Just q  ->
+             do qs <- zipWithM unify' ts us
+                return (foldl VEqApp q qs)
+  where (ft, ts) = spine t
+        (fu, us) = spine u
+unify0 t@(TApp {}) u
+  | isUVarApp t = requireEq t u
+  | otherwise   = __unificationFails(t, u) -- unificationFails t u
+  where (ft, _) = spine t
+unify0 t u@(TApp {})
+  | isUVarApp u = requireEq t u
+  | otherwise   = unificationFails t u
+  where (fu, _) = spine u
+
 unify0 a@(TForall xa (Just ka) ta) x@(TForall xx (Just kx) tx) =
   do ksUnify <- unifyK ka kx
      if ksUnify == Just 0

@@ -378,7 +378,7 @@ instance Printable InfixDesugaringError where
 renderString :: RDoc ann -> String
 renderString doc =
   unsafePerformIO $
-  do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = False, printInstantiations = True, printIndices = True})
+  do d <- runReaderT doc (PO {level = 0, printKinds = False, printMaps = True, printInstantiations = True, printIndices = True})
      return (P.renderString (P.layoutPretty (P.LayoutOptions P.Unbounded) d))
 
 

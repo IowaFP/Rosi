@@ -209,6 +209,12 @@ spine (TApp f t) = (f', ts ++ [t])
   where (f', ts) = spine f
 spine t = (t, [])
 
+isUVarApp :: Ty -> Bool
+isUVarApp (TUnif {}) = True
+isUVarApp (TApp f t) = isUVarApp f
+isUVarApp (TMap f)   = isUVarApp f
+isUVarApp _          = False
+
 --------------------------------------------------------------------------------
 -- Evidence
 --------------------------------------------------------------------------------
