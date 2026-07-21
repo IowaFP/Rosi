@@ -357,10 +357,9 @@ solve (cin, p, r) =
 
   defer :: Pred -> CheckM (Maybe Evid)
   defer p =
-    do r <- newRef Nothing
-       require p r
-       name <- fresh "g"
-       return (Just (VGoal (Goal (name, r))))
+    do g <- newGoal "g"
+       require p g
+       return (Just (VGoal g))
 
   mapFunApp as p@(PLeq (TRow []) (TApp (TMap f) z)) =
     fmap (VLeqLiftL f) <$> defer (PLeq (TRow []) z)
@@ -413,15 +412,15 @@ guesses prs =
 
   guessInstInst, guessInst, guessAppApp, guessApp :: Guesser
 
-  guessInstInst pr@(tcin, PEq (TInst [Unknown {}, Unknown _ (Goal (s, r))] _) _, _) =
+  guessInstInst pr@(tcin, PEq (TInst [Unknown {}, Unknown _ g] _) _, _) =
     Just $
-    do trace $ unwords ["guessing", s, ":= {}"]
-       writeRef r (Just [])
+    do trace $ unwords ["guessing", goalName g, ":= {}"]
+       writeGoal g []
        return [pr]
-  guessInstInst pr@(tcin, PEq _ (TInst [Unknown {}, Unknown _ (Goal (s, r))] _), v) =
+  guessInstInst pr@(tcin, PEq _ (TInst [Unknown {}, Unknown _ g] _), v) =
     Just $
-    do trace $ unwords ["guessing", s, ":= {}"]
-       writeRef r (Just [])
+    do trace $ unwords ["guessing", goalName g, ":= {}"]
+       writeGoal g []
        return [pr]
   guessInstInst _ = Nothing
 
@@ -430,14 +429,14 @@ guesses prs =
     | TInst [Unknown {}] _ <- t, TForall {} <- u = Just $ guessInstantiation u t
     where -- There is a lot of similarity with the code in unifyInstantiating here...
           -- Assuming t starts with quantifiers, `u` starts with unknown instantiation
-          guessInstantiation t (TInst [Unknown n (Goal (s, r))] u) =
+          guessInstantiation t (TInst [Unknown n g] u) =
             do xs' <- mapM fresh xs
                refs <- replicateM (length xs) (newRef Nothing)
                l <- theLevel
                let us = [TUnif (UV 0 l (Goal (x, r)) k) | x <- xs' | r <- refs | k <- ks ]
-               writeRef r (Just (map TyArg us))
+               writeGoal g (map TyArg us)
                t''' <- instantiate t us
-               trace $ unlines [ unwords ["guessing", s, ":=", show us]
+               trace $ unlines [ unwords ["guessing", goalName g, ":=", show us]
                                , unwords ["refined goal to", show (PEq t''' u)] ]
                return [(tcin, PEq t''' u, v)]  -- TODO: is `v` here actually a solution to the original problem?
 
@@ -460,12 +459,11 @@ guesses prs =
 
   guessMapLeq pr@(tcin, PLeq (TApp (TMap f) y) (TApp (TMap f') z), v)
     | f == f' = Just $
-      do r1 <- newRef Nothing
-         v1 <- fresh "v"
-         writeRef v (Just (VLeqLiftL f (VGoal (Goal (v1, r1)))))
+      do g <- newGoal "v"
+         writeRef v (Just (VLeqLiftL f (VGoal g)))
          trace $ unlines [ "guessing " ++ show (PLeq (TApp (TMap f) y) (TApp (TMap f') z))
                          , "by reducing to " ++ show (PLeq y z) ]
-         return [(tcin, PLeq y z, r1)]
+         return [(tcin, PLeq y z, goalRef g)]
   guessMapLeq _ = Nothing
 
   guessingRefinement tf ta uf ua =
@@ -479,12 +477,10 @@ guesses prs =
   guessAppApp (tcin, PEq (TApp tf ta) (TApp uf ua), v) =
     Just $
     do trace $ guessingRefinement tf ta uf ua
-       r1 <- newRef Nothing
-       r2 <- newRef Nothing
-       v1 <- fresh "v"
-       v2 <- fresh "v"
-       writeRef v (Just (VEqApp (VGoal (Goal (v1, r1))) (VGoal (Goal (v2, r2)))))
-       return [(tcin, PEq tf uf, r1), (tcin, PEq ta ua, r2)]
+       g1 <- newGoal "g"
+       g2 <- newGoal "g"
+       writeRef v (Just (VEqApp (VGoal g1) (VGoal g2)))
+       return [(tcin, PEq tf uf, goalRef g1), (tcin, PEq ta ua, goalRef g2)]
   guessAppApp _ = Nothing
 
   guessApp pr@(tcin, PEq t0 u0, v)
@@ -529,7 +525,7 @@ guesses prs =
       | n < m = return (TVar n s)
       | otherwise = return (TVar (n + 1) s)
     walk x u m (TUnif v) =
-      do mt <- readRef (goalRef (uvGoal v))
+      do mt <- readGoal (uvGoal v)
          case mt of
            Nothing -> return (TUnif v { uvShift = uvShift v + 1 })
            Just t  -> walk x u m (shiftN 0 (uvShift v) t)
@@ -555,7 +551,7 @@ guesses prs =
       walkI (TyPack t) = singleton . TyPack <$> walk x u m t
       walkI (PrPack v) = return [PrPack v]
       walkI (Unknown n g) =
-        do mis <- readRef (goalRef g)
+        do mis <- readGoal g
            case mis of
              Nothing  -> return [Unknown n g]
              Just is' -> walkIs (shiftN 0 n is')

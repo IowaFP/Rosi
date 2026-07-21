@@ -1,10 +1,8 @@
 module Syntax.Types where
 
-import Control.Monad.IO.Class
-import Data.Bifunctor         (first)
-import Data.Generics          hiding (Fixity (..), GT, TyCon)
-import Data.IORef
-import Data.Sequence          hiding (singleton)
+import Data.Bifunctor (first)
+import Data.Generics  hiding (Fixity (..), GT, TyCon)
+import Data.Sequence
 
 import Syntax.Common
 
@@ -110,37 +108,7 @@ funTy = TApp . TApp TFun
 
 infixr 5 `funTy`
 
-(<||>) :: Applicative m => m Bool -> m Bool -> m Bool
-(<||>) = liftA2 (||)
 
-isXType :: MonadIO m => Ty -> m Bool
-isXType (TVar {})       = return False
-isXType (TUnif uv)      = maybe (return False) isXType =<< liftIO (readIORef (goalRef (uvGoal uv)))
-isXType TFun            = return False
-isXType (TForall _ _ t) = isXType t
-isXType (TThen p t)     = isXPred p <||> isXType t
-isXType (TExists _ _ t) = isXType t
-isXType (TExistsP p t)  = isXPred p <||> isXType t
-isXType (TLam _ _ t)    = isXType t
-isXType (TApp t u)      = isXType t <||> isXType u
-isXType (TLab {})       = return False
-isXType (TSing t)       = isXType t
-isXType (TLabeled l t)  = isXType l <||> isXType t
-isXType (TRow ts)       = or <$> mapM isXType ts
-isXType (TConApp _ t)   = isXType t
-isXType (TMap t)        = isXType t
-isXType (TCompl y z)    = isXType y <||> isXType z
-isXType TString         = return False
-isXType (TInst is t)    = return True
-isXType (TMapApp t)     = isXType t
-isXType (TPlus x y)     = isXType x <||> isXType y
-isXType (TConOrd _ _ t) = isXType t
-
-isXPred :: MonadIO m => Pred -> m Bool
-isXPred (PLeq x y)    = isXType x <||> isXType y
-isXPred (PPlus x y z) = isXType x <||> isXType y <||> isXType z
-isXPred (PEq t u)     = isXType t <||> isXType u
-isXPred (PFold z)     = isXType z
 
 label, labeled :: Ty -> Maybe Ty
 concreteLabel :: Ty -> Maybe String

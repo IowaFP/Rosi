@@ -152,8 +152,8 @@ normalize eqns t@(TInst {}) =
         normI (PrArg v)  = return [(PrArg v, VEqRefl)]
         normI (TyPack t) = singleton . first TyPack <$> normalize eqns t
         normI (PrPack v) = return [(PrPack v, VEqRefl)]
-        normI i@(Unknown n (Goal (s, r))) =
-          do minsts <- readRef r
+        normI i@(Unknown n g) =
+          do minsts <- readGoal g
              case minsts of
                Nothing -> return [(i, VEqRefl)]
                Just is -> concat <$> mapM normI is

@@ -20,24 +20,24 @@ trace s = liftIO $
   do b <- readIORef traceKindInference
      when b $ putStrLn s
 
-bindRef :: MonadCheck m => Goal Kind -> Maybe Kind -> m ()
-bindRef (Goal (_, r)) Nothing =
-  writeRef r Nothing
-bindRef (Goal (s, r)) (Just k) =
+bindRef :: MonadCheck m => Goal Kind -> Kind -> m ()
+bindRef g k =
   do b <- check k
      if b
-     then writeRef r (Just k)
-     else error $ "rejecting binding " ++ s ++ " +-> " ++ renderString (ppr k)
+     then writeGoal g k
+     else error $ "rejecting binding " ++ goalName g ++ " +-> " ++ renderString (ppr k)
   where check KType = return True
         check KLabel = return True
         check (KRow k) = check k
         check (KFun k1 k2) = (&&) <$> check k1 <*> check k2
-        check (KUnif (Goal (_, r')))
-          | r == r' = return False
-          | otherwise = do k' <- readRef r'
-                           case k' of
-                             Just k'' -> check k''
-                             Nothing  -> return True
+        check (KUnif g')
+          | goalRef g == goalRef g' =
+              return False
+          | otherwise               =
+              do k' <- readGoal g'
+                 case k' of
+                   Just k'' -> check k''
+                   Nothing  -> return True
 
   -- Note: just returning a `Ty` here out of convenience; it's always an exactly the input `Ty`.
 expectK :: MonadCheck m => Ty -> Kind -> Kind -> m Ty
@@ -60,8 +60,8 @@ unifyK k l =
      k' <- open k
      l' <- open l
      unifyK' k' l'
-  where open k@(KUnif (Goal (_, r))) =
-          do mk <- readRef r
+  where open k@(KUnif g) =
+          do mk <- readGoal g
              case mk of
                Just k' -> open k'
                Nothing -> return k
@@ -73,11 +73,11 @@ unifyK' (KUnif (Goal (_, r))) (KUnif (Goal (_, s)))
   | r == s = return (Just 0)
 unifyK' (KUnif g@(Goal (uvar, r))) expected =
   do trace $ "binding " ++ show uvar ++ " +-> " ++ show expected
-     bindRef g (Just expected)
+     bindRef g expected
      return (Just 0)
 unifyK' actual (KUnif g@(Goal (uvar, r))) =
   do trace $ "binding " ++ show uvar ++ " +-> " ++ show actual
-     bindRef g (Just actual)
+     bindRef g actual
      return (Just 0)
 unifyK' (KRow rActual) (KRow rExpected) = unifyK rActual rExpected
 unifyK' (KRow rActual) kExpected = ((1+) <$>) <$> unifyK rActual kExpected
@@ -143,10 +143,10 @@ implicitConstraints topLevel t expected =
             | otherwise = partition (isFree [0..length bs - 1] . fst) pairs
          (ps, uvs) = unzip here
          t3 = shiftNV uvs 0 (length uvs) (foldr TThen t2 ps)
-         insts = [(goalRef (uvGoal v), Just (TVar i [s, ""])) | (v, i) <- zip (reverse uvs) [0..], let s = goalName (uvGoal v)]
+         insts = [(uvGoal v, TVar i [s, ""]) | (v, i) <- zip (reverse uvs) [0..], let s = goalName (uvGoal v)]
          t4 = rebind (zip xs (map Just ks') ++ [(x, Just k) | v <- uvs, let x = goalName (uvGoal v), let k = uvKind v]) t3
      tell there
-     mapM_ (uncurry writeRef) insts
+     mapM_ (uncurry writeGoal) insts
      return t4
   where (binders, rebind)
           | TExists {} <- t = (existsBinders, rebindExists)
@@ -230,7 +230,7 @@ checkTy0 (TConApp Pi r) expected = TConApp Pi <$> checkTy r (KRow expected)
 checkTy0 (TConApp Sigma r) expected = TConApp Sigma <$> checkTy r (KRow expected)
 checkTy0 (TConApp (Mu count) f) expected = TConApp (Mu count) <$> checkTy f (KFun expected expected)
 checkTy0 (TConApp (TCUnif g) t) expected =
-  do mk <- readRef (goalRef g)
+  do mk <- readGoal g
      case mk of
        Just k  -> checkTy0 (TConApp k t) expected
        Nothing -> fail "don't know how to kind check unknown constructor application"
@@ -251,8 +251,8 @@ checkTy0 t@(TCompl r0 r1) expected =
      expectK t (KRow k) expected
      r0' <- checkTy r0 (KRow k)
      r1' <- checkTy r1 (KRow k)
-     v <- newRef Nothing
-     require (PLeq r1' r0') v
+     g <- newGoal "q"
+     require (PLeq r1' r0') g
      return (TCompl r0' r1')
 checkTy0 TString expected =
   expectK TString KType expected
