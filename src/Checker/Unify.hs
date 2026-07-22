@@ -59,7 +59,7 @@ unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either (Ty, Ty) Evi
 unify eqns actual expected =
   do trace ("1 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      m <- mark
-     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
+     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) False) (eqns, undefined)
      case result of
        Right q ->
          do tell (TCOut preds [])
@@ -71,7 +71,7 @@ unify eqns actual expected =
 check eqns actual expected =
   do trace ("2 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      m <- mark
-     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) (Just [])) eqns
+     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) True) (eqns, undefined)
      case result of
        Right q ->
          do tell (TCOut preds [])
@@ -85,7 +85,7 @@ data ProductiveUnification = Productive Evid | Unproductive | UnificationFails (
 unifyProductive eqns actual expected =
   do trace ("3 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      m <- mark
-     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) Nothing) eqns
+     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ runUnifyM $ unify' actual expected) False) (eqns, undefined)
      case result of
        Right q ->
          do q' <- flatten q
@@ -104,7 +104,7 @@ checking :: UnifyM t -> UnifyM t
 checking m =
   do s <- get
      bracket
-       (put (Just []))
+       (put True)
        m
        (put s)
 
@@ -116,8 +116,8 @@ requireEq t u =
        -- the types exactly align. If we've gotten this far, then we already
        -- know the equation isn't solved by updating one of the local uvars, so
        -- no need to check...
-       Just _ -> __unificationFails(t, u)
-       Nothing ->
+       True  -> __unificationFails(t, u)
+       False ->
          do g <- newGoal "q"
             require (PEq t u) g
             return (VGoal g)

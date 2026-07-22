@@ -14,6 +14,7 @@ import Data.IORef
 import GHC.Stack
 import System.IO.Unsafe     (unsafePerformIO)
 
+import Data.Typeable        (cast)
 import Errors
 import Printer              hiding (level)
 import Syntax
@@ -137,20 +138,34 @@ emptyTCIn = TCIn [] [] [] 0 id
 -- Tracking updates
 -- ==============================================================================
 
+data Creation where
+  C :: Typeable a => IORef a -> Creation
+
+sameRef :: Typeable a => IORef a -> Creation -> Bool
+sameRef r (C r') =
+  case cast r' of
+    Nothing  -> False
+    Just r'' -> r == r''
+
 data Update where
   U :: IORef a -> a -> Update
-
-type Mark = Int
 
 perform :: MonadIO m => Update -> m ()
 perform (U ref val) = liftIO $ writeIORef ref val
 
-data TCSt = TCSt { updates :: [(Mark, [Update])], next :: Int }
+type Mark = Int
+
+data TCSt = TCSt { references :: [(Mark, [Creation], [Update])], next :: Int }
+
+pushCreation :: Typeable a => IORef a -> TCSt -> TCSt
+pushCreation v st
+  | [] <- references st = st
+  | (m, cs, us) : rest <- references st = st { references = (m, C v : cs, us) : rest }
 
 pushUpdate :: IORef a -> a -> TCSt -> TCSt
 pushUpdate v x st
-  | [] <- updates st = st
-  | (m, us) : rest <- updates st = st { updates = (m, U v x : us) : rest}
+  | [] <- references st = st
+  | (m, cs, us) : rest <- references st = st { references = (m, cs, U v x : us) : rest }
 
 emptyTCSt :: TCSt
 emptyTCSt = TCSt [] 0
@@ -313,14 +328,14 @@ instance MonadCheck CheckM where
 
   mark = do st <- get
             let m = next st
-            put (st { updates = (m, []) : updates st, next = next st + 1})
+            put (st { references = (m, [], []) : references st, next = next st + 1})
             return m
 
-  reset m = gets updates >>= resetLoop where
+  reset m = gets references >>= resetLoop where
     resetLoop [] =
-      do modify (\st -> st { updates = [] })
+      do modify (\st -> st { references = [] })
          return ()
-    resetLoop ((m', us) : rest) =
+    resetLoop ((m', _, us) : rest) =
       do mapM_ perform us
          when (m /= m') $ resetLoop rest
 
@@ -344,21 +359,20 @@ upLevel m = do l <- theLevel
 
 type Eqn = (Ty, (Ty, Evid))
 
-type UR = [Eqn]
-type US = Maybe [Dynamic]
+data AtomicHandler =
+  AH { onTVar :: Int -> QName -> Ty -> UnifyM Evid
+     , onUVar :: UVar -> Ty -> UnifyM Evid }
+
+type UR = ([Eqn], AtomicHandler)
 type UW = [(TCIn, Pred, IORef (Maybe Evid))]
-newtype UnifyM a = UM { runUnifyM :: ExceptT (Ty, Ty) (StateT US (WriterT UW (ReaderT UR CheckM))) a }
-  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO, MonadState US)
+newtype UnifyM a = UM { runUnifyM :: ExceptT (Ty, Ty) (StateT Bool (WriterT UW (ReaderT UR CheckM))) a }
+  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO, MonadState Bool)
 
 liftToUnifyM :: CheckM a -> UnifyM a
 liftToUnifyM = UM . lift . lift . lift . lift
 
 instance MonadRef UnifyM where
-  newRef v = UM $ ExceptT $ StateT $ \checking -> WriterT (body checking) where
-    body Nothing = do r <- lift (newRef v)
-                      return ((Right r, Nothing), [])
-    body (Just rs) = do r <- lift (newRef v)
-                        return ((Right r, Just (toDyn r : rs)), [])
+  newRef = liftToUnifyM . newRef
   readRef = liftToUnifyM . readRef
   writeRef r v = liftToUnifyM (writeRef r v)
 
@@ -381,15 +395,17 @@ instance MonadCheck UnifyM where
   fresh = liftToUnifyM . fresh
 
 canUpdate :: Typeable a => IORef a -> UnifyM Bool
-canUpdate r = UM (ExceptT $ StateT $ \checking -> WriterT (body checking)) where
-  body Nothing   = return ((Right True, Nothing), [])
-  body (Just rs) = return ((Right (any ok rs), Just rs), [])
-  ok dr = case fromDynamic dr of
-            Just r' -> r == r'
-            Nothing -> False
+canUpdate r =
+  do checking <- get
+     if checking
+     then do epochs <- liftToUnifyM (gets references)
+             case epochs of
+               []               -> return True
+               ((_, cs, _) : _) -> return (any (sameRef r) cs)
+     else return True
 
 theEqns :: UnifyM [Eqn]
-theEqns = UM ask
+theEqns = UM (asks fst)
 
 unificationFails :: Ty -> Ty -> UnifyM a
 unificationFails actual expected = UM (throwError (actual, expected))

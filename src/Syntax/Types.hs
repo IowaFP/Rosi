@@ -108,8 +108,6 @@ funTy = TApp . TApp TFun
 
 infixr 5 `funTy`
 
-
-
 label, labeled :: Ty -> Maybe Ty
 concreteLabel :: Ty -> Maybe String
 
