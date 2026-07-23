@@ -361,15 +361,28 @@ type Eqn = (Ty, (Ty, Evid))
 
 data AtomicHandler =
   AH { onTVar :: Int -> QName -> Ty -> UnifyM Evid
-     , onUVar :: UVar -> Ty -> UnifyM Evid }
+     , onUVar :: UVar -> Ty -> UnifyM Evid
+     , onEq   :: Ty -> Ty -> UnifyM Evid }
 
 type UR = ([Eqn], AtomicHandler)
-type UW = [(TCIn, Pred, IORef (Maybe Evid))]
-newtype UnifyM a = UM { runUnifyM :: ExceptT (Ty, Ty) (StateT Bool (WriterT UW (ReaderT UR CheckM))) a }
-  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO, MonadState Bool)
+type UW = [Problem]
+newtype UnifyM a = UM { unUnifyM :: ExceptT (Ty, Ty) (WriterT UW (ReaderT UR CheckM)) a }
+  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO)
 
 liftToUnifyM :: CheckM a -> UnifyM a
-liftToUnifyM = UM . lift . lift . lift . lift
+liftToUnifyM = UM . lift . lift . lift
+
+runUnifyM :: UnifyM a -> [Eqn] -> AtomicHandler -> CheckM (Either (Ty, Ty) a)
+runUnifyM m eqns hs =
+  do x <- mark
+     (result, preds) <- runReaderT (runWriterT $ runExceptT $ unUnifyM m) (eqns, hs)
+     case result of
+       Right q ->
+         do tell (TCOut preds [])
+            return (Right q)
+       Left err ->
+         do reset x
+            return (Left err)
 
 instance MonadRef UnifyM where
   newRef = liftToUnifyM . newRef
@@ -379,7 +392,7 @@ instance MonadRef UnifyM where
 
 instance MonadReader TCIn UnifyM where
   ask = liftToUnifyM ask
-  local f r = UM $ ExceptT $ StateT $ \checking -> WriterT $ ReaderT $ \eqns -> local f (runReaderT (runWriterT (runStateT (runExceptT (runUnifyM r)) checking)) eqns)
+  local f r = UM $ ExceptT $ WriterT $ ReaderT $ \eqns -> local f (runReaderT (runWriterT (runExceptT (unUnifyM r))) eqns)
 
 instance MonadCheck UnifyM where
   require p g =
@@ -394,18 +407,23 @@ instance MonadCheck UnifyM where
 
   fresh = liftToUnifyM . fresh
 
-canUpdate :: Typeable a => IORef a -> UnifyM Bool
-canUpdate r =
-  do checking <- get
-     if checking
-     then do epochs <- liftToUnifyM (gets references)
-             case epochs of
-               []               -> return True
-               ((_, cs, _) : _) -> return (any (sameRef r) cs)
-     else return True
-
 theEqns :: UnifyM [Eqn]
 theEqns = UM (asks fst)
+
+solveTVar :: Int -> QName -> Ty -> UnifyM Evid
+solveTVar i n u = UM $ do h <- asks (onTVar . snd)
+                          unUnifyM (h i n u)
+
+solveUVar :: UVar -> Ty -> UnifyM Evid
+solveUVar v u = UM $ do h <- asks (onUVar . snd)
+                        unUnifyM (h v u)
+
+deferEq :: Ty -> Ty -> UnifyM Evid
+deferEq t u = UM $ do h <- asks (onEq . snd)
+                      unUnifyM (h t u)
+
+withHandler :: AtomicHandler -> UnifyM a -> UnifyM a
+withHandler h m = UM (local (second (const h)) (unUnifyM m))
 
 unificationFails :: Ty -> Ty -> UnifyM a
 unificationFails actual expected = UM (throwError (actual, expected))
@@ -417,10 +435,3 @@ unificationFails actual expected = UM (throwError (actual, expected))
 try :: UnifyM a -> UnifyM (Maybe a)
 try (UM body) =
   UM $ either (const Nothing) Just <$> tryError body
-
-bracket :: UnifyM () -> UnifyM a -> UnifyM () -> UnifyM a
-bracket (UM before) (UM body) (UM after) =
-  UM $ do before
-          z <- body `catchError` (\e -> do after; throwError e)
-          after
-          return z
