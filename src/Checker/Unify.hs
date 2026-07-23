@@ -3,9 +3,7 @@ module Checker.Unify (module Checker.Unify) where
 
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Reader
 import Control.Monad.State
-import Control.Monad.Writer
 import Data.Bifunctor       (first)
 import Data.Foldable
 import Data.Sequence        (Seq ((:<|), (:|>)))
@@ -15,8 +13,10 @@ import Checker.Normalize
 import Checker.Promote
 import Checker.Types        hiding (trace)
 import Checker.Utils
+import Errors
 import Printer
 import Syntax
+
 
 import GHC.Stack
 
@@ -55,7 +55,7 @@ types). How bad are the error messages?
 
 --}
 
-unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either (Ty, Ty) Evid)
+unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either UnificationError Evid)
 unify eqns actual expected =
   do trace ("1 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      runUnifyM (unify' actual expected) eqns unifyingH
@@ -64,29 +64,41 @@ check eqns actual expected =
   do trace ("2 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      runUnifyM (unify' actual expected) eqns checkingH
 
-data ProductiveUnification = Productive Evid | Unproductive | UnificationFails (Ty, Ty)
+-- data ProductiveUnification = Productive Evid | Unproductive | UnificationFails UnificationError
 
-unifyProductive :: [Eqn] -> Ty -> Ty -> CheckM ProductiveUnification
+unifyProductive :: [Eqn] -> Ty -> Ty -> CheckM (Either UnificationError Evid)
 unifyProductive eqns actual expected =
   do trace ("3 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     m <- mark
-     (result, preds) <- runReaderT (runWriterT $ runExceptT $ unUnifyM $ unify' actual expected) (eqns, unifyingH)
-     case result of
-       Right q ->
-         do q' <- flatten q
-            case q' of
-              VGoal _ ->
-                do reset m
-                   return Unproductive
-              _ ->
-                do tell (TCOut preds [])
-                   return (Productive q')
-       Left err ->
-         do reset m
-            return  (UnificationFails err)
+     runUnifyM (productive =<< unify' actual expected) eqns unifyingH
 
-checking :: UnifyM t -> UnifyM t
-checking = withHandler checkingH
+  --    m <- mark
+  --    (result, preds) <- runReaderT (runWriterT $ runExceptT $ unUnifyM $ unify' actual expected) (eqns, unifyingH)
+  --    case result of
+  --      Right q ->
+  --        do q' <- flatten q
+  --           case q' of
+  --             VGoal _ ->
+  --               do reset m
+  --                  return Unproductive
+  --             _ ->
+  --               do tell (TCOut preds [])
+  --                  return (Productive q')
+  --      Left err ->
+  --        do reset m
+  --           return  (UnificationFails err)
+
+productive :: Evid -> UnifyM Evid
+productive q =
+  do q' <- flatten q
+     case q' of
+       VGoal _ ->
+         throwError Unproductive
+       _ ->
+         return q'
+
+checkEq :: Ty -> Ty -> UnifyM (Maybe Evid)
+checkEq t u = try $ withHandler checkingH $ unify' t u
+  where try m = either (const Nothing) Just <$> tryError m
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify' actual expected =
@@ -478,7 +490,7 @@ unify0 t u0@(TConApp (TCUnif g) u) =
 unify0 TString TString =
   return VEqRefl
 unify0 a@(TMap f) x@(TMap g) =
-  do mq <- try $ checking $ unify' f g
+  do mq <- checkEq f g
      case mq of
        Just VEqRefl -> return VEqRefl
        Just q       -> return (VEqMapCong q)
@@ -488,12 +500,12 @@ unify0 a@(TMap f) x@(TMap g) =
 -- w. We try a couple of options here---if we know that x ~ z or y ~ w, then we
 -- can fix the otherwise, but if those don't work then we can't make progress.
 unify0 t@(TCompl x y) u@(TCompl x' y') =
-  do mq <- try $ checking $ unify' x x'
+  do mq <- checkEq x x'
      case mq of
        Just qx -> do qy <- unify' y y'
                      return $ VEqComplCong qx qy
        Nothing ->
-         do mq <- try $ checking $ unify' y y'
+         do mq <- checkEq y y'
             case mq of
               Just qy -> do qx <- unify' x x'
                             return $ VEqComplCong qx qy
@@ -526,7 +538,7 @@ unify0 (TRow xs@(tx:_)) (TApp (TMap fa) ra) =
      qs <- sequence [unify' (TLabeled tl (TApp fa ta)) tx | (tl, ta, tx) <- zip3 ls gs xs]
      return VEqMap  -- wrong
 unify0 t@(TApp {}) u@(TApp {}) =
-  do mq <- try $ checking $ unify' ft fu
+  do mq <- checkEq ft fu
      case mq of
        Nothing -> deferEq t u
        Just q  ->

@@ -15,7 +15,8 @@ import Checker.Preds
 import Checker.Types              hiding (collect, trace)
 import Checker.Unify
 import Checker.Utils
-import Errors
+import Errors                     hiding (Unproductive)
+import Errors                     qualified as E
 import Printer
 import Syntax
 
@@ -25,13 +26,18 @@ expectT m actual expected =
   do trace ("expect (" ++ renderString (ppr actual) ++ ") (" ++ renderString (ppr expected) ++ ")")
      b <- typeErrorContext (ErrContextTerm m . ErrContextTyEq actual expected) $ unify [] actual expected
      case b of
-       Left (actual', expected') -> typeMismatch m actual expected actual' expected'
-       Right q                   -> flatten q
-
-typeMismatch :: Term -> Ty -> Ty -> Ty -> Ty -> CheckM a
-typeMismatch m actual expected actual' expected' =
-  do [actual0, expected0, actual'0, expected'0] <- mapM flatten [actual, expected, actual', expected']
-     typeError (ErrContextTerm m $ ErrTypeMismatch actual0 expected0 actual'0 expected'0)
+       Left (TypesDon'tUnify actual' expected') -> typeMismatch actual' expected'
+       Left (PredsDon'tUnify actual' expected') -> predMismatch actual' expected'
+       Left E.Unproductive                      -> error "shouldn't be asking for productive unification"
+       Left (UErrOther s)                       -> fail s
+       Right q                                  -> flatten q
+  where typeMismatch actual' expected' =
+          do [actual0, expected0, actual'0, expected'0] <- mapM flatten [actual, expected, actual', expected']
+             typeError (ErrContextTerm m $ ErrTypeMismatch actual0 expected0 actual'0 expected'0)
+        predMismatch actual' expected' =
+          do [actual0, expected0] <- mapM flatten [actual, expected]
+             [actual'0, expected'0] <- mapM flatten [actual', expected']
+             typeError (ErrContextTerm m $ ErrPredMismatch actual0 expected0 actual'0 expected'0)
 
 wrap :: Evid -> Term -> Term
 wrap VEqRefl t = t

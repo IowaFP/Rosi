@@ -366,13 +366,13 @@ data AtomicHandler =
 
 type UR = ([Eqn], AtomicHandler)
 type UW = [Problem]
-newtype UnifyM a = UM { unUnifyM :: ExceptT (Ty, Ty) (WriterT UW (ReaderT UR CheckM)) a }
-  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO)
+newtype UnifyM a = UM { unUnifyM :: ExceptT UnificationError (WriterT UW (ReaderT UR CheckM)) a }
+  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO, MonadError UnificationError)
 
 liftToUnifyM :: CheckM a -> UnifyM a
 liftToUnifyM = UM . lift . lift . lift
 
-runUnifyM :: UnifyM a -> [Eqn] -> AtomicHandler -> CheckM (Either (Ty, Ty) a)
+runUnifyM :: UnifyM a -> [Eqn] -> AtomicHandler -> CheckM (Either UnificationError a)
 runUnifyM m eqns hs =
   do x <- mark
      (result, preds) <- runReaderT (runWriterT $ runExceptT $ unUnifyM m) (eqns, hs)
@@ -426,12 +426,9 @@ withHandler :: AtomicHandler -> UnifyM a -> UnifyM a
 withHandler h m = UM (local (second (const h)) (unUnifyM m))
 
 unificationFails :: Ty -> Ty -> UnifyM a
-unificationFails actual expected = UM (throwError (actual, expected))
+unificationFails actual expected = throwError (TypesDon'tUnify actual expected)
 
 -- -----------------------------------------------------------------------------
 -- Run a unification, converting underlying failures into `Nothing`s. This is
 -- solely used for now to check term equality within other unifications.
 
-try :: UnifyM a -> UnifyM (Maybe a)
-try (UM body) =
-  UM $ either (const Nothing) Just <$> tryError body

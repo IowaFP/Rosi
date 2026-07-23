@@ -15,10 +15,10 @@ import Checker.Normalize
 import Checker.Promote
 import Checker.Unify
 import Checker.Utils
+import Errors
 import Printer
 import Syntax
 
-import Errors
 import GHC.Stack
 
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
@@ -298,7 +298,7 @@ solve (cin, p, r) =
           align (Right i, TLabeled _ t) = force p t u where TLabeled _ u = y !! i
           align _                       = error "attemped to align unlabeled type"
   prim p@(PPlus (TRow x) y (TRow z))
-    | Just xs <- mapM splitConcreteLabel x, Just zs <- mapM splitConcreteLabel z, Just is <- mapM (flip elemIndex (map fst zs)) (map fst xs) =
+    | Just xs <- mapM splitConcreteLabel x, Just zs <- mapM splitConcreteLabel z, Just is <- mapM (flip elemIndex (map fst zs) . fst) xs =
         do forceAssocs xs (map (zs !!) is)
            let js = [j | j <- [0..length zs - 1], j `notElem` is]
                ys = map (uncurry (TLabeled . TLab) . (zs !!)) js
@@ -310,10 +310,10 @@ solve (cin, p, r) =
            force p y (TRow ys)
            return (Just (VPlusSimple (go 0 0)))
   prim p@(PPlus x (TRow y) (TRow z))
-    | Just ys <- mapM splitConcreteLabel y, Just zs <- mapM splitConcreteLabel z, Just js <- mapM (flip elemIndex (map fst zs)) (map fst ys) =
+    | Just ys <- mapM splitConcreteLabel y, Just zs <- mapM splitConcreteLabel z, Just js <- mapM (flip elemIndex (map fst zs) . fst) ys =
         do forceAssocs ys (map (zs !!) js)
            let is = [i | i <- [0..length zs - 1], i `notElem` js]
-               xs = (map (uncurry (TLabeled . TLab) . (zs !!)) is)
+               xs = map (uncurry (TLabeled . TLab) . (zs !!)) is
                go n m
                  | n >= length zs = []
                  | Just j <- elemIndex n js = Right j : go (n + 1) m
@@ -336,9 +336,9 @@ solve (cin, p, r) =
   prim p@(PEq t u) =
     do result <- unifyProductive [] t u
        case result of
-         Productive v       -> return (Just v)
-         Unproductive       -> return Nothing
-         UnificationFails _ -> throwError (ErrTypeMismatchPred p t u)
+         Right v           -> return (Just v)
+         Left Unproductive -> return Nothing
+         Left _            -> throwError (ErrTypeMismatchPred p t u)
   prim p@(PFold (TRow xs)) =
     return (Just (VFold (length xs)))
   prim p@(PFold (TApp (TMap f) z)) =
