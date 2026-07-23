@@ -27,7 +27,7 @@ solve (cin, p, r) =
   do trace $ "Solving: " ++ renderString (ppr p) ++ "\nin " ++ show (kctxt cin)
      as' <- mapM (normalizeP [] <=< flatten) (pctxt cin)
      unless (null as') $ trace ("Expanding " ++ show as')
-     let as'' = expandAll (zip as' [VVar i | i <- [0..]])
+     as'' <- expandAll (zip as' [VVar i | i <- [0..]])
      let eqns = pickEqns as''
      unless (null as'') $ trace ("Expanded " ++ show as' ++ " to " ++ show as'')
      unless (null eqns) $ trace ("Found equations " ++ show eqns)
@@ -90,7 +90,7 @@ solve (cin, p, r) =
   forceAssocs xs ys =
     mapM_ (\(xl, xt) ->
       case lookup xl ys of
-        Nothing -> error $ "internal: unifyAssocs called with unmatched assoc lists"
+        Nothing -> error "internal: unifyAssocs called with unmatched assoc lists"
         Just yt ->
           do q <- unify [] xt yt
              case q of
@@ -134,7 +134,7 @@ solve (cin, p, r) =
   matchLeqMap _ _ = return Nothing
 
   matchPlusDirect p@(PPlus x y z) (q@(PPlus x' y' z'), v) =
-    (trace $ "mpd " ++ show p ++ ", " ++ show q) >>
+    trace ("mpd " ++ show p ++ ", " ++ show q) >>
     suppose (typesEqual z z')
       (suppose (typesEqual x x') (forceFD y y') <|>
        suppose (typesEqual y y') (forceFD x x') <|>
@@ -191,7 +191,7 @@ solve (cin, p, r) =
     where align x y z x' y' z' v
             | TApp (TMap zf) zr <- z =
               suppose (typesEqual zr z') $
-              (case (x, x') of
+              case (x, x') of
                 (TRow xr, TRow xr')
                    | Just xs <- mapM splitLabel xr, Just xs' <- mapM splitLabel xr', sameSet (map fst xs) (map fst xs') ->
                        do forceAssocs xs (map (second (TApp zf)) xs')   -- Is this actually forced?
@@ -199,7 +199,7 @@ solve (cin, p, r) =
                           return (Just (VPlusLiftL zf v))
                    | otherwise -> trace ("mpm failed: " ++ show xr ++ ", " ++ show xr') >>
                                   return Nothing
-                _ -> return Nothing)
+                _ -> return Nothing
             | otherwise = return Nothing
 
           forceFD t t' =
@@ -226,14 +226,15 @@ solve (cin, p, r) =
 
   fundeps p = throwError (ErrTypeMismatchFD p)
 
-  expand1 :: (Pred, Evid) -> [(Pred, Evid)]
+  expand1 :: (Pred, Evid) -> CheckM [(Pred, Evid)]
   expand1 (PPlus x y z, v)
     | not (isComplement x) && not (isComplement y) =
-        [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v), (PEq x (TCompl z y), VEqPlusComplL v),
-         (PEq y (TCompl z x), VEqPlusComplR v)]
+        return
+          [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v), (PEq x (TCompl z y), VEqPlusComplL v),
+           (PEq y (TCompl z x), VEqPlusComplR v)]
     | otherwise =
-        []
-  expand1 (PLeq x y, v) = compls ++ subrows
+        return []
+  expand1 (PLeq x y, v) = return (compls ++ subrows)
     where compls
             | not (isComplement x) = [(PLeq (TCompl y x) y, VComplLeq v), (PPlus x (TCompl y x) y, VPlusComplR v), (PPlus (TCompl y x) x y, VPlusComplL v)]
             | otherwise            = []
@@ -246,29 +247,42 @@ solve (cin, p, r) =
             | otherwise = []
           isLiteralRow (TRow {}) = True
           isLiteralRow _         = False
-  expand1 (PEq x y, VEqSym {}) = []
-  expand1 (PEq x y, v) = [(PEq y x, VEqSym v)]
-  expand1 (PFold _, _) = []
+  expand1 (PEq x y, VEqSym {}) = return []
+  expand1 (PEq x y, v)         = return [(PEq y x, VEqSym v)]
+  expand1 (PFold _, _)         = return []
 
   isComplement (TCompl {}) = True
   isComplement _           = False
 
-  expand2 :: (Pred, Evid) -> (Pred, Evid) -> [(Pred, Evid)]
-  expand2 p@(PLeq {}, _) q@(PLeq {}, _) = oneWay p q ++ oneWay q p where
+  expand2 :: (Pred, Evid) -> (Pred, Evid) -> CheckM [(Pred, Evid)]
+  expand2 p@(PLeq {}, _) q@(PLeq {}, _) = return (oneWay p q ++ oneWay q p) where
     oneWay (PLeq x y, v1) (PLeq z w, v2)
       | y == z                         = [(PLeq x w, VLeqTrans v1 v2)]
       | TMap f `TApp` z' <- z, y == z' = [(PLeq (TMap f `TApp` x) w, VLeqTrans (VLeqLiftL f v1) v2)]
       | TMap f `TApp` y' <- y, y' == z = [(PLeq x (TMap f `TApp` w), VLeqTrans v1 (VLeqLiftL f v2))]
     oneWay _ _ = []
-  expand2 _ _ = []
+  -- expand2 (PPlus x y z, _) (PPlus x' y' z', _) =
+  --   suppose (typesEqual x x') $
+  --   suppose (typesEqual y y') $
+  --     do qs <- unifyCollecting [] z z'
+  --        undefined
+  expand2 _ _ = return []
 
-  expandAll :: [(Pred, Evid)] -> [(Pred, Evid)]
+  expandAll :: [(Pred, Evid)] -> CheckM [(Pred, Evid)]
   expandAll = go [] where
-    go qs [] = reverse qs
+    go :: [(Pred, Evid)] -> [(Pred, Evid)] -> CheckM [(Pred, Evid)]
+    go qs [] = return (reverse qs)
     go qs (p : ps) =
-      go (p : qs) (ps' ++ ps) where
-      seen = map fst (qs ++ ps)
-      ps' = filter ((`notElem` seen) . fst) (expand1 p ++ concatMap (expand2 p) qs)
+      do ps' <- expand1 p
+         ps'' <- concat <$> mapM (expand2 p) qs
+         let seen = map fst (qs ++ ps)
+             ps''' = filter ((`notElem` seen) . fst) (ps' ++ ps'')
+         go (p : qs) (ps''' ++ ps)
+
+
+      -- go (p : qs) (ps' ++ ps) where
+      -- seen = map fst (qs ++ ps)
+      -- ps' = filter ((`notElem` seen) . fst) (expand1 p ++ concatMap (expand2 p) qs)
 
   byAssump [] p       = return Nothing
   byAssump (a : as) p = match p a <|> byAssump as p
@@ -322,7 +336,7 @@ solve (cin, p, r) =
            force p x (TRow xs)
            return (Just (VPlusSimple (go 0 0)))
   prim p@(PPlus (TRow x) (TRow y) z)
-    | Just xs <- mapM splitConcreteLabel x, Just ys <- mapM splitConcreteLabel y, all (`notElem` map fst xs) (map fst ys), all (`notElem` map fst ys) (map fst xs) =
+    | Just xs <- mapM splitConcreteLabel x, Just ys <- mapM splitConcreteLabel y, all ((`notElem` map fst xs) . fst) ys, all ((`notElem` map fst ys) . fst) xs =
         let zs = sortOn fst (xs ++ ys)
             pick k =
               case (elemIndex k (map fst xs), elemIndex k (map fst ys)) of
@@ -590,9 +604,6 @@ solverLoop makeGuesses ps =
 
 andSolve :: Bool -> CheckM a -> CheckM a
 andSolve makeGuesses m =
-  -- censor (const (TCOut [])) $
-      -- Not sure why this should be here; the `collect` below should do the
-      -- same, and `solverLoop` shouldn't leave any problems in the output
   do (x, goals) <- collect m
      remaining <- solverLoop makeGuesses goals
      if null remaining

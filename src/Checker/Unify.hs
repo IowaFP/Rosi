@@ -4,6 +4,7 @@ module Checker.Unify (module Checker.Unify) where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Control.Monad.Writer
 import Data.Bifunctor       (first)
 import Data.Foldable
 import Data.Sequence        (Seq ((:<|), (:|>)))
@@ -58,46 +59,45 @@ types). How bad are the error messages?
 unify, check :: HasCallStack => [Eqn] -> Ty -> Ty -> CheckM (Either UnificationError Evid)
 unify eqns actual expected =
   do trace ("1 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     runUnifyM (unify' actual expected) eqns unifyingH
+     runUnifyM (unify' actual expected) eqns unifying
 
 check eqns actual expected =
   do trace ("2 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     runUnifyM (unify' actual expected) eqns checkingH
-
--- data ProductiveUnification = Productive Evid | Unproductive | UnificationFails UnificationError
+     runUnifyM (unify' actual expected) eqns checking
 
 unifyProductive :: [Eqn] -> Ty -> Ty -> CheckM (Either UnificationError Evid)
 unifyProductive eqns actual expected =
   do trace ("3 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
-     runUnifyM (productive =<< unify' actual expected) eqns unifyingH
-
-  --    m <- mark
-  --    (result, preds) <- runReaderT (runWriterT $ runExceptT $ unUnifyM $ unify' actual expected) (eqns, unifyingH)
-  --    case result of
-  --      Right q ->
-  --        do q' <- flatten q
-  --           case q' of
-  --             VGoal _ ->
-  --               do reset m
-  --                  return Unproductive
-  --             _ ->
-  --               do tell (TCOut preds [])
-  --                  return (Productive q')
-  --      Left err ->
-  --        do reset m
-  --           return  (UnificationFails err)
+     runUnifyM (productive =<< unify' actual expected) eqns unifying
 
 productive :: Evid -> UnifyM Evid
 productive q =
   do q' <- flatten q
      case q' of
-       VGoal _ ->
-         throwError Unproductive
-       _ ->
-         return q'
+       VGoal _ -> throwError Unproductive
+       _       -> return q'
+
+unifyCollecting :: [Eqn] -> Ty -> Ty -> CheckM (Either UnificationError (Evid, [Eqn]))
+unifyCollecting eqns actual expected =
+  do trace ("4 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
+     result <- runUnifyM (collect (unify' actual expected)) eqns collecting
+     case result of
+       Left errs     -> return (Left errs)
+       Right (q, ps) -> return (Right (q, equationsFrom ps))
+  where collect :: UnifyM a -> UnifyM (a, [Problem])
+        collect = censor (const []) . listen
+
+        equationsFrom :: [Problem] -> [Eqn]
+        equationsFrom ((_, PEq t@(TVar {}) u, _) : ps)  = (t, (u, VEqFunDep)) : equationsFrom ps
+        equationsFrom ((_, PEq t u@(TVar {}), _) : ps)  = (u, (t, VEqFunDep)) : equationsFrom ps
+        equationsFrom ((_, PEq t@(TUnif {}) u, _) : ps) = (t, (u, VEqFunDep)) : equationsFrom ps
+        equationsFrom ((_, PEq t u@(TUnif {}), _) : ps) = (u, (t, VEqFunDep)) : equationsFrom ps
+        equationsFrom (_ : ps)                          = equationsFrom ps
+        equationsFrom []                                = []
+
 
 checkEq :: Ty -> Ty -> UnifyM (Maybe Evid)
-checkEq t u = try $ withHandler checkingH $ unify' t u
+checkEq t u = try $ withHandler checking $ unify' t u
   where try m = either (const Nothing) Just <$> tryError m
 
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
@@ -105,7 +105,7 @@ unify' actual expected =
   do eqns <- theEqns
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected
-     trace ("4 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
+     trace ("5 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
      let f = case q of
                VEqRefl -> id
                _       -> VEqTrans q
@@ -121,9 +121,9 @@ unify' actual expected =
 -- override the behavior of "atomic" unification problems
 -- =============================================================================
 
-unifyingH, checkingH :: AtomicHandler
+unifying, checking, collecting :: AtomicHandler
 
-unifyingH = AH onTVar onUVar onEq where
+unifying = AH onTVar onUVar onEq where
   onTVar i n u =
     __unificationFails(TVar i n, u)
   onUVar v u =
@@ -136,7 +136,7 @@ unifyingH = AH onTVar onUVar onEq where
        require (PEq t u) g
        return (VGoal g)
 
-checkingH = AH onTVar onUVar onEq where
+checking = AH onTVar onUVar onEq where
   onTVar i n u =
     __unificationFails(TVar i n, u)
   onUVar v u =
@@ -155,7 +155,21 @@ checkingH = AH onTVar onUVar onEq where
   onEq t u =
     __unificationFails(t, u)
 
+collecting = AH onTVar onUVar onEq where
+  onTVar i n u =
+    do q <- onEq (TVar i n) u
+       addEqn (TVar i n, (u, q))
+       return q
 
+  onUVar v u =
+    do q <- onEq (TUnif v) u
+       addEqn (TUnif v, (u, q))
+       return q
+
+  onEq t u =
+    do g <- newGoal "q"
+       require (PEq t u) g
+       return (VGoal g)
 
 -- =============================================================================
 -- Traversal
@@ -582,6 +596,6 @@ unifyP (PLeq y z) (PLeq y' z')        = VEqLeq <$> unify' y y' <*> unify' z z'
 unifyP (PPlus x y z) (PPlus x' y' z') = VEqPlus <$> unify' x x' <*> unify' y y' <*> unify' z z'
 unifyP (PEq t u) (PEq t' u')          = VEqEq <$> unify' t t' <*> unify' u u'
 unifyP (PFold z) (PFold z')           = VEqFold <$> unify' z z'
-unifyP p q                            = __unificationFails(p `TThen` TConApp Pi (TRow []), q `TThen` TConApp Pi (TRow []))
+unifyP p q                            = throwError (PredsDon'tUnify p q)
 
 

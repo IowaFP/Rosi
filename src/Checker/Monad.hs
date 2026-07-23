@@ -364,18 +364,19 @@ data AtomicHandler =
      , onUVar :: UVar -> Ty -> UnifyM Evid
      , onEq   :: Ty -> Ty -> UnifyM Evid }
 
-type UR = ([Eqn], AtomicHandler)
+type UR = AtomicHandler
+type US = [Eqn]
 type UW = [Problem]
-newtype UnifyM a = UM { unUnifyM :: ExceptT UnificationError (WriterT UW (ReaderT UR CheckM)) a }
-  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO, MonadError UnificationError)
+newtype UnifyM a = UM { unUnifyM :: ExceptT UnificationError (StateT US (WriterT UW (ReaderT UR CheckM))) a }
+  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter UW, MonadIO, MonadError UnificationError, MonadState US)
 
 liftToUnifyM :: CheckM a -> UnifyM a
-liftToUnifyM = UM . lift . lift . lift
+liftToUnifyM = UM . lift . lift . lift . lift
 
 runUnifyM :: UnifyM a -> [Eqn] -> AtomicHandler -> CheckM (Either UnificationError a)
 runUnifyM m eqns hs =
   do x <- mark
-     (result, preds) <- runReaderT (runWriterT $ runExceptT $ unUnifyM m) (eqns, hs)
+     (result, preds) <- runReaderT (runWriterT $ evalStateT (runExceptT $ unUnifyM m) eqns) hs
      case result of
        Right q ->
          do tell (TCOut preds [])
@@ -389,10 +390,9 @@ instance MonadRef UnifyM where
   readRef = liftToUnifyM . readRef
   writeRef r v = liftToUnifyM (writeRef r v)
 
-
 instance MonadReader TCIn UnifyM where
   ask = liftToUnifyM ask
-  local f r = UM $ ExceptT $ WriterT $ ReaderT $ \eqns -> local f (runReaderT (runWriterT (runExceptT (unUnifyM r))) eqns)
+  local f r = UM $ ExceptT $ StateT $ \eqns -> WriterT $ ReaderT $ \hs -> local f (runReaderT (runWriterT (runStateT (runExceptT (unUnifyM r)) eqns)) hs)
 
 instance MonadCheck UnifyM where
   require p g =
@@ -408,27 +408,25 @@ instance MonadCheck UnifyM where
   fresh = liftToUnifyM . fresh
 
 theEqns :: UnifyM [Eqn]
-theEqns = UM (asks fst)
+theEqns = get
+
+addEqn :: Eqn -> UnifyM ()
+addEqn q = modify (q:)
 
 solveTVar :: Int -> QName -> Ty -> UnifyM Evid
-solveTVar i n u = UM $ do h <- asks (onTVar . snd)
+solveTVar i n u = UM $ do h <- asks onTVar
                           unUnifyM (h i n u)
 
 solveUVar :: UVar -> Ty -> UnifyM Evid
-solveUVar v u = UM $ do h <- asks (onUVar . snd)
+solveUVar v u = UM $ do h <- asks onUVar
                         unUnifyM (h v u)
 
 deferEq :: Ty -> Ty -> UnifyM Evid
-deferEq t u = UM $ do h <- asks (onEq . snd)
+deferEq t u = UM $ do h <- asks onEq
                       unUnifyM (h t u)
 
 withHandler :: AtomicHandler -> UnifyM a -> UnifyM a
-withHandler h m = UM (local (second (const h)) (unUnifyM m))
+withHandler h m = UM (local (const h) (unUnifyM m))
 
 unificationFails :: Ty -> Ty -> UnifyM a
 unificationFails actual expected = throwError (TypesDon'tUnify actual expected)
-
--- -----------------------------------------------------------------------------
--- Run a unification, converting underlying failures into `Nothing`s. This is
--- solely used for now to check term equality within other unifications.
-

@@ -236,6 +236,8 @@ data Evid =
   | VEqApp Evid Evid | VEqLabeled Evid Evid | VEqRow [Evid] | VEqSing Evid
   | VEqCon TyCon Evid | VEqMapCong Evid | VEqComplCong Evid Evid
   | VEqLeq Evid Evid | VEqPlus Evid Evid Evid | VEqEq Evid Evid | VEqFold Evid
+  -- Functional dependencies
+  | VEqFunDep
   --
   -- Fold proofs
   --
