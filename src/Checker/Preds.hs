@@ -54,9 +54,14 @@ solve (cin, p, r) =
 
   pickEqns :: [(Pred, Evid)] -> [Eqn]
   pickEqns ps = go ps where
-    go []                             = []
-    go ((PEq (TCompl z x) y, v) : ps) = (TCompl z x, (y, v)) : go ps
-    go (_ : ps)                       = go ps
+    go []                                 = []
+    go ((PEq t u, VEqSym _) : ps)         = go ps
+    go ((PEq t u, VEqTrans _ _ ) : ps)    = go ps
+    go ((PEq t u, VEqPlusComplL _ ) : ps) = go ps
+    go ((PEq t u, VEqPlusComplR _ ) : ps) = go ps
+    go ((PEq t u, v) : ps)                = (t, (u, v)) : go ps
+    -- go ((PEq (TCompl z x) y, v) : ps) = (TCompl z x, (y, v)) : go ps
+    go (_ : ps)                           = go ps
 
   everything as p =
     do v <- byAssump as p <|> prim p <|> refl p <|> mapFunApp as p
