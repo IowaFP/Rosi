@@ -321,11 +321,10 @@ mapType =
      return (foldr (const TMap) t us)
 
 labeledTy =
-  do t <- labTy
-     case t of
-       TLabeled _ _ -> return t
-       _            -> unexpected (Label $ fromList "unlabeled type")
-
+  do ls <- some atype
+     symbol ":="
+     u <- ty
+     return [TLabeled l u | l <- ls]
 
 tcon = choice [ ordered (string "Pi") Pi
               , ordered (string "Sigma") Sigma
@@ -342,7 +341,7 @@ atype :: Parser Ty
 atype = choice [ TLab <$> lexeme lidentifier
                , TSing <$> (char '#' >> atype)
                , tcon <*> atype
-               , TRow <$> braces (commaSep labeledTy)
+               , TRow <$> braces (concat <$> commaSep labeledTy)
                , TString <$ reserved "String"
                , TVar (-1) <$> lexeme qidentifier
                , do ts <- parens (commaSep ty)

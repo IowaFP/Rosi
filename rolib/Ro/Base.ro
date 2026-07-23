@@ -86,7 +86,7 @@ pack f x = x
 -- The Bool type
 
 type Bool : *
-type Bool = Sigma { 'True := Unit, 'False := Unit }
+type Bool = Sigma { 'True 'False := Unit }
 
 True : Bool
 True = 'True: tt

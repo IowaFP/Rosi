@@ -141,9 +141,9 @@ dnaw1 = \l f g x. (f | g) (l: x)
 Unlabeling is used in writing individual cases of a variant eliminator. Given a Boolean type defined as:
 ```
 type Bool : *
-type Bool = Sigma { 'True := Unit, 'False := Unit}
+type Bool = Sigma {'True 'False := Unit}
 ```
-We could write the inversion function as:
+(This is syntactic sugar for the row `{'True := Unit, 'False := Unit}`.) We could write the inversion function as:
 ```
 not : Bool -> Bool
 not = (\b. 'False: (b / 'True))
@@ -350,7 +350,7 @@ The grammar of types is given by
     t ::= x             Type variables and constants
        |  t -> t        Functions
        |  'l            Label constants (l is any alphanumeric string)
-       |  {l1 := t1, ..., ln := tn}
+       |  {l11 ... l1n := t1, ..., ln1 .. lnk := tn}
                         Rows
        |  Pi t          Record types
        |  Sigma t       Variant types
