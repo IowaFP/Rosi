@@ -8,6 +8,7 @@ import Control.Monad.Reader  (runReaderT)
 import Control.Monad.State
 import Data.Bifunctor        (first, second)
 import Data.IORef
+import Data.List
 import Data.List.Split
 import Data.Semigroup        ()
 import Data.String
@@ -29,13 +30,13 @@ import Scope
 import Syntax
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
-                   , doPrintHelpMessage
+                   , doPrintHelpMessage, doShowProgress
                    , doTraceKindInference, doTraceInference
                    , doTraceEvaluation, doPrintTyped, printOkay
                    , doPrintKinds, doPrintMaps, doPrintInstantiations, doPrintIndices :: Bool }
 
 emptyFlags :: Flags
-emptyFlags = Flags [] [] [] False False False False False False False False False False
+emptyFlags = Flags [] [] [] False False False False False False False False False False False
 
 interpretFlags = foldl (flip ($)) emptyFlags
 
@@ -49,6 +50,7 @@ options = [ Option [] [] (ReqArg (\s f -> f { inputs = inputs f ++ [s]}) "FILE")
           , Option ['K'] ["trace-kind-inference"] (NoArg (\f -> f { doTraceKindInference = True })) "generate trace output in kind inference"
           , Option ['T'] ["trace-type-inference"] (NoArg (\f -> f { doTraceInference = True })) "generate trace output in type inference"
           , Option ['E'] ["trace-evaluation"] (NoArg (\f -> f { doTraceEvaluation = True })) "generate trace output from evaluation"
+          , Option [] ["show-progress"] (NoArg (\f -> f {doShowProgress = True })) "show progress in type checking"
           , Option [] ["print-kinds"] (NoArg (\f -> f { doPrintKinds = True })) "print kind information"
           , Option [] ["print-maps"] (NoArg (\f -> f { doPrintMaps = True })) "print maps explicitly"
           , Option [] ["print-instantiations"] (NoArg (\f -> f { doPrintInstantiations = True })) "print instantiations explicitly"
@@ -105,8 +107,8 @@ main = do nowArgs <- getArgs
           writeIORef traceKindInference (doTraceKindInference flags)
           writeIORef traceTypeInference (doTraceInference flags)
           writeIORef E.traceEvaluation (doTraceEvaluation flags)
-          when (doTraceInference flags || doTraceEvaluation flags) $
-            hSetBuffering stdout LineBuffering
+          when (doShowProgress flags || doTraceInference flags || doTraceEvaluation flags) $
+            hSetBuffering stdout NoBuffering
           decls <- parseChasing (imports flags) (inputs flags)
           scoped <- reportErrors flags $ runScopeM $ scopeProg decls
           deOpped <- reportErrors flags $ desugarInfix scoped
@@ -119,7 +121,9 @@ main = do nowArgs <- getArgs
           when (printOkay flags) $ putStrLn "okay"
   where
     goCheck :: Flags -> KCtxt -> PCtxt -> TCtxt -> [Decl] -> IO [(QName, Ty, [Pred], Term)]
-    goCheck _ _ _ _ [] = return []
+    goCheck flags _ _ _ [] =
+      do when (doShowProgress flags) $ putStr ('\r' : replicate 80 ' ' ++ "\r")
+         return []
     goCheck flags d p g (TyDecl x k t : ds) =
       do t' <- flatten . fst =<< reportErrors flags =<< runCheckM' d p g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
            -- Shouldn't be any holes in types...
@@ -127,7 +131,10 @@ main = do nowArgs <- getArgs
     goCheck flags d p g (TyDecl {} : ds) =
       goCheck flags d p g ds
     goCheck flags d p g (TmDecl v mt te _ : ds) =
-      do (te', ty', holes) <-
+      do when (doShowProgress flags) $
+           let s = intercalate "." (reverse v)
+           in putStr ("\r" ++ s ++ replicate (80 - length s) ' ')
+         (te', ty', holes) <-
            case mt of
              Nothing ->
                do ((te', ty), holes) <- reportErrors flags =<< runCheckM' d p g (typeErrorContext (ErrContextDefn v . ErrContextTerm te) $ checkTop te Nothing)
