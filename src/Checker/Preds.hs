@@ -21,13 +21,82 @@ import Syntax
 
 import GHC.Stack
 
+expand :: [(Pred, Evid)] -> CheckM [(Pred, Evid)]
+expand = go []
+  where
+    go :: [(Pred, Evid)] -> [(Pred, Evid)] -> CheckM [(Pred, Evid)]
+    go qs [] = return (reverse qs)
+    go qs (p : ps) =
+      do ps' <- expand1 p
+         ps'' <- concat <$> mapM (expand2 p) qs
+         let seen = map fst (qs ++ ps)
+             ps''' = filter ((`notElem` seen) . fst) (ps' ++ ps'')
+         go (p : qs) (ps''' ++ ps)
+
+    expand1 :: (Pred, Evid) -> CheckM [(Pred, Evid)]
+    expand1 (PPlus x y z, v)
+      | not (isComplement x) && not (isComplement y) =
+          return
+            [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v), (PEq x (TCompl z y), VEqPlusComplL v),
+             (PEq y (TCompl z x), VEqPlusComplR v)]
+      | otherwise =
+          return []
+    expand1 (PLeq x y, v) = return (compls ++ subrows)
+      where compls
+              | not (isComplement x) = [(PLeq (TCompl y x) y, VComplLeq v), (PPlus x (TCompl y x) y, VPlusComplR v), (PPlus (TCompl y x) x y, VPlusComplL v)]
+              | otherwise            = []
+            subrows
+              | TRow fs <- x, length fs > 1, not (isLiteralRow y) =
+                let is = [0..length fs - 1]
+                    subsets = [filter (i /=) is | i <- is]
+                    evids = [(PLeq (TRow (map (fs !!) is)) y, VLeqTrans (VLeqSimple is) v) | is <- subsets, not (null is)]
+                in evids
+              | otherwise = []
+            isLiteralRow (TRow {}) = True
+            isLiteralRow _         = False
+    expand1 (PEq x y, VEqSym {}) = return []
+    expand1 (PEq x y, v)         = return [(PEq y x, VEqSym v)]
+    expand1 (PFold _, _)         = return []
+
+    isComplement (TCompl {}) = True
+    isComplement _           = False
+
+    expand2 :: (Pred, Evid) -> (Pred, Evid) -> CheckM [(Pred, Evid)]
+    expand2 p@(PLeq {}, _) q@(PLeq {}, _) = return (oneWay p q ++ oneWay q p) where
+      oneWay (PLeq x y, v1) (PLeq z w, v2)
+        | y == z                         = [(PLeq x w, VLeqTrans v1 v2)]
+        | TMap f `TApp` z' <- z, y == z' = [(PLeq (TMap f `TApp` x) w, VLeqTrans (VLeqLiftL f v1) v2)]
+        | TMap f `TApp` y' <- y, y' == z = [(PLeq x (TMap f `TApp` w), VLeqTrans v1 (VLeqLiftL f v2))]
+      oneWay _ _ = []
+    -- expand2 (PPlus x y z, _) (PPlus x' y' z', _) =
+    --   suppose (typesEqual x x') $
+    --   suppose (typesEqual y y') $
+    --     do qs <- unifyCollecting [] z z'
+    --        undefined
+    expand2 _ _ = return []
+
+pickEqns :: [(Pred, Evid)] -> [Eqn]
+pickEqns ps = go ps where
+  go []                                 = []
+  go ((PEq t u, VEqSym _) : ps)         = go ps
+  go ((PEq t u, VEqTrans _ _ ) : ps)    = go ps
+  go ((PEq t u, VEqPlusComplL _ ) : ps) = go ps
+  go ((PEq t u, VEqPlusComplR _ ) : ps) = go ps
+  go ((PEq t u, v) : ps)
+    | isTVarApp t                       = (t, (u, v)) : go ps
+    | isTVarApp u                       = (u, (t, v)) : go ps
+    | isUVarApp t                       = (t, (u, v)) : go ps
+    | isUVarApp u                       = (u, (t, v)) : go ps
+    | otherwise                         = go ps
+  go (_ : ps)                           = go ps
+
 solve :: HasCallStack => (TCIn, Pred, IORef (Maybe Evid)) -> CheckM Bool
 solve (cin, p, r) =
   local (const cin) $
   do trace $ "Solving: " ++ renderString (ppr p) ++ "\nin " ++ show (kctxt cin)
      as' <- mapM (normalizeP [] <=< flatten) (pctxt cin)
      unless (null as') $ trace ("Expanding " ++ show as')
-     as'' <- expandAll (zip as' [VVar i | i <- [0..]])
+     as'' <- expand (zip as' [VVar i | i <- [0..]])
      let eqns = pickEqns as''
      unless (null as'') $ trace ("Expanded " ++ show as' ++ " to " ++ show as'')
      unless (null eqns) $ trace ("Found equations " ++ show eqns)
@@ -51,17 +120,6 @@ solve (cin, p, r) =
 
   suppose :: Monad m => m Bool -> m (Maybe a) -> m (Maybe a)
   suppose b c = cond b c (return Nothing)
-
-  pickEqns :: [(Pred, Evid)] -> [Eqn]
-  pickEqns ps = go ps where
-    go []                                 = []
-    go ((PEq t u, VEqSym _) : ps)         = go ps
-    go ((PEq t u, VEqTrans _ _ ) : ps)    = go ps
-    go ((PEq t u, VEqPlusComplL _ ) : ps) = go ps
-    go ((PEq t u, VEqPlusComplR _ ) : ps) = go ps
-    go ((PEq t u, v) : ps)                = (t, (u, v)) : go ps
-    -- go ((PEq (TCompl z x) y, v) : ps) = (TCompl z x, (y, v)) : go ps
-    go (_ : ps)                           = go ps
 
   everything as p =
     do v <- byAssump as p <|> prim p <|> refl p <|> mapFunApp as p
@@ -230,64 +288,6 @@ solve (cin, p, r) =
   -- question to self: why do I have both the `fundeps` error and the `force` error?
 
   fundeps p = throwError (ErrTypeMismatchFD p)
-
-  expand1 :: (Pred, Evid) -> CheckM [(Pred, Evid)]
-  expand1 (PPlus x y z, v)
-    | not (isComplement x) && not (isComplement y) =
-        return
-          [(PLeq x z, VPlusLeqL v), (PLeq y z, VPlusLeqR v), (PEq x (TCompl z y), VEqPlusComplL v),
-           (PEq y (TCompl z x), VEqPlusComplR v)]
-    | otherwise =
-        return []
-  expand1 (PLeq x y, v) = return (compls ++ subrows)
-    where compls
-            | not (isComplement x) = [(PLeq (TCompl y x) y, VComplLeq v), (PPlus x (TCompl y x) y, VPlusComplR v), (PPlus (TCompl y x) x y, VPlusComplL v)]
-            | otherwise            = []
-          subrows
-            | TRow fs <- x, length fs > 1, not (isLiteralRow y) =
-              let is = [0..length fs - 1]
-                  subsets = [filter (i /=) is | i <- is]
-                  evids = [(PLeq (TRow (map (fs !!) is)) y, VLeqTrans (VLeqSimple is) v) | is <- subsets, not (null is)]
-              in evids
-            | otherwise = []
-          isLiteralRow (TRow {}) = True
-          isLiteralRow _         = False
-  expand1 (PEq x y, VEqSym {}) = return []
-  expand1 (PEq x y, v)         = return [(PEq y x, VEqSym v)]
-  expand1 (PFold _, _)         = return []
-
-  isComplement (TCompl {}) = True
-  isComplement _           = False
-
-  expand2 :: (Pred, Evid) -> (Pred, Evid) -> CheckM [(Pred, Evid)]
-  expand2 p@(PLeq {}, _) q@(PLeq {}, _) = return (oneWay p q ++ oneWay q p) where
-    oneWay (PLeq x y, v1) (PLeq z w, v2)
-      | y == z                         = [(PLeq x w, VLeqTrans v1 v2)]
-      | TMap f `TApp` z' <- z, y == z' = [(PLeq (TMap f `TApp` x) w, VLeqTrans (VLeqLiftL f v1) v2)]
-      | TMap f `TApp` y' <- y, y' == z = [(PLeq x (TMap f `TApp` w), VLeqTrans v1 (VLeqLiftL f v2))]
-    oneWay _ _ = []
-  -- expand2 (PPlus x y z, _) (PPlus x' y' z', _) =
-  --   suppose (typesEqual x x') $
-  --   suppose (typesEqual y y') $
-  --     do qs <- unifyCollecting [] z z'
-  --        undefined
-  expand2 _ _ = return []
-
-  expandAll :: [(Pred, Evid)] -> CheckM [(Pred, Evid)]
-  expandAll = go [] where
-    go :: [(Pred, Evid)] -> [(Pred, Evid)] -> CheckM [(Pred, Evid)]
-    go qs [] = return (reverse qs)
-    go qs (p : ps) =
-      do ps' <- expand1 p
-         ps'' <- concat <$> mapM (expand2 p) qs
-         let seen = map fst (qs ++ ps)
-             ps''' = filter ((`notElem` seen) . fst) (ps' ++ ps'')
-         go (p : qs) (ps''' ++ ps)
-
-
-      -- go (p : qs) (ps' ++ ps) where
-      -- seen = map fst (qs ++ ps)
-      -- ps' = filter ((`notElem` seen) . fst) (expand1 p ++ concatMap (expand2 p) qs)
 
   byAssump [] p       = return Nothing
   byAssump (a : as) p = match p a <|> byAssump as p

@@ -181,6 +181,12 @@ isUVarApp (TApp f t) = isUVarApp f
 isUVarApp (TMap f)   = isUVarApp f
 isUVarApp _          = False
 
+isTVarApp :: Ty -> Bool
+isTVarApp (TVar {})  = True
+isTVarApp (TApp f t) = isTVarApp f
+isTVarApp (TMap f)   = isTVarApp f
+isTVarApp _          = False
+
 --------------------------------------------------------------------------------
 -- Evidence
 --------------------------------------------------------------------------------
