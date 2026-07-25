@@ -1,7 +1,9 @@
 module Syntax.Vars where
 
+import Data.Generics
 import Data.List
 
+import Control.Monad
 import Syntax.Common
 import Syntax.Terms
 import Syntax.Types
@@ -134,15 +136,14 @@ instance HasTyVars Insts where
            Just is -> concat <$> mapM substI is
 
 instance HasTyVars Pred where
+
   shiftNV vs j n (PEq t u)     = PEq (shiftNV vs j n t) (shiftNV vs j n u)
   shiftNV vs j n (PLeq y z)    = PLeq (shiftNV vs j n y) (shiftNV vs j n z)
   shiftNV vs j n (PPlus x y z) = PPlus (shiftNV vs j n x) (shiftNV vs j n y) (shiftNV vs j n z)
   shiftNV vs j n (PFold z)     = PFold (shiftNV vs j n z)
 
-  isFree ns (PEq t u)     = isFree ns t || isFree ns u
-  isFree ns (PLeq y z)    = isFree ns y || isFree ns z
-  isFree ns (PPlus x y z) = isFree ns x || isFree ns y || isFree ns z
-  isFree ns (PFold z)     = isFree ns z
+
+  isFree ns = everything (||) (mkQ False (isFree @Ty ns))
 
   subst v t (PEq u u')    = PEq <$> subst v t u <*> subst v t u'
   subst v t (PLeq y z)    = PLeq <$> subst v t y <*> subst v t z
@@ -175,8 +176,7 @@ instance HasTyVars Term where
   subst = error "subst not implemented for terms"
 
 instance HasTyVars Decl where
-  shiftNV vs j n (TyDecl x k t)     = TyDecl x k (shiftNV vs j n t)
-  shiftNV vs j n (TmDecl x mt m fx) = TmDecl x (shiftNV vs j n <$> mt) (shiftNV vs j n m) fx
+  shiftNV vs j n = everywhere (id `extT` shiftNV @Ty vs j n `extT` shiftNV @Term vs j n)
 
   isFree = error "isFree not implemented for declarations"
 
@@ -185,50 +185,48 @@ instance HasTyVars Decl where
 class HasUVars t where
   uvars :: MonadRef m => Level -> t -> m [UVar]
 
-cat :: [UVar] -> [UVar] -> [UVar]
-cat ts us = ts ++ filter (\u -> all (different u) ts) us where
-  different t u = goalRef (uvGoal t) /= goalRef (uvGoal u)
+(<.>) :: (Monad m, Eq a) => m [a] -> m [a] -> m [a]
+(<.>) = liftM2 union
 
 instance HasUVars Ty where
-  uvars _ (TVar {}) = return []
+  uvars _ (TVar {}) = return empty
   uvars level (TUnif v@(UV { uvLevel = uvl, uvGoal = Goal (_, r) })) =
     do mt <- readRef r
        case mt of
          Just t -> uvars level t
          Nothing
-           | uvl >= level -> return [v]
-           | otherwise    -> return []
-  uvars _ TFun = return []
-  uvars level (TThen p t) = cat <$> uvars level p <*> uvars level t
-  uvars level (TExistsP p t) = cat <$> uvars level p <*> uvars level t
+           | uvl >= level -> return (singleton v)
+           | otherwise    -> return empty
+  uvars _ TFun = return empty
+  uvars level (TThen p t) = uvars level p <.> uvars level t
+  uvars level (TExistsP p t) = uvars level p <.> uvars level t
   uvars level (TForall _ _ t) = uvars level t
   uvars level (TExists _ _ t) = uvars level t
   uvars level (TLam _ _ t) = uvars level t
-  uvars level (TApp t u) = cat <$> uvars level t <*> uvars level u
-  uvars _ (TLab {}) = return []
+  uvars level (TApp t u) = uvars level t <.> uvars level u
+  uvars _ (TLab {}) = return empty
   uvars level (TSing t) = uvars level t
-  uvars level (TLabeled l t) = cat <$> uvars level l <*> uvars level t
-  uvars level (TRow ts) = foldl cat [] <$> mapM (uvars level) ts
+  uvars level (TLabeled l t) = uvars level l <.> uvars level t
+  uvars level (TRow ts) = foldl union empty <$> mapM (uvars level) ts
   uvars level (TConApp k t) = uvars level t
   uvars level (TMap t) = uvars level t
-  uvars level (TInst is t) = cat <$> uvars level is <*> uvars level t where
-
+  uvars level (TInst is t) = uvars level is <.> uvars level t
   uvars level (TMapApp t) = uvars level t
-  uvars _ TString = return []
-  uvars level (TCompl t1 t2) = cat <$> uvars level t1 <*> uvars level t2
+  uvars _ TString = return empty
+  uvars level (TCompl t1 t2) = uvars level t1 <.> uvars level t2
   uvars level (TPlus _ _) = error "uvars: TPlus should be desugared by now"
   uvars level (TConOrd _ _ _) = error "uvars: TConOrd should be desugared by now"
 
 instance HasUVars [Inst] where
-  uvars level is = foldl cat [] <$> mapM iuvars is where
+  uvars level is = foldl union empty <$> mapM iuvars is where
     iuvars (TyArg t)    = uvars level t
-    iuvars (PrArg {})   = return []
+    iuvars (PrArg {})   = return empty
     iuvars (TyPack t)   = uvars level t
-    iuvars (PrPack {})  = return []
-    iuvars (Unknown {}) = return []
+    iuvars (PrPack {})  = return empty
+    iuvars (Unknown {}) = return empty
 
 instance HasUVars Pred where
-  uvars level (PEq t u)     = cat <$> uvars level t <*> uvars level u
-  uvars level (PLeq y z)    = cat <$> uvars level y <*> uvars level z
-  uvars level (PPlus x y z) = cat <$> (cat <$> uvars level x <*> uvars level y) <*> uvars level z
+  uvars level (PEq t u)     = uvars level t <.> uvars level u
+  uvars level (PLeq y z)    = uvars level y <.> uvars level z
+  uvars level (PPlus x y z) = uvars level x <.> uvars level y <.> uvars level z
   uvars level (PFold z)     = uvars level z

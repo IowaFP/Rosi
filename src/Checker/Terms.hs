@@ -7,7 +7,7 @@ import Control.Monad.Writer.Class
 import Data.Bifunctor
 import Data.Generics              (everywhereM, mkM)
 import Data.IORef
-import Data.List                  (intercalate)
+import Data.List                  (intercalate, union)
 
 import Checker.Monad
 import Checker.Normalize
@@ -348,7 +348,7 @@ generalize topLevel e =
      let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
      unless (null ungeneralizable) $ notEntailed ungeneralizable
      tell (TCOut (map (\(cin, p, evar) -> (cin { pctxt = pctxt cin ++ pctxt tcin }, p, evar)) psThere) [])
-     genVars <- foldl cat [] <$> ((:) <$> uvars level t <*> mapM (uvars level . fst) generalizable)
+     genVars <- foldl union [] <$> ((:) <$> uvars level t <*> mapM (uvars level . fst) generalizable)
      fixInsts t
      t' <- shiftNV genVars 0 (length genVars) <$> flatten t
      e'' <- shiftNV genVars 0 (length genVars) <$> flatten e'

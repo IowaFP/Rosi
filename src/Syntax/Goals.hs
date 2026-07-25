@@ -98,12 +98,13 @@ instance HasGoals Insts where
            Just is -> flatten (shiftNV [] 0 n is)
 
 instance HasGoals Term where
-  flatten = everywhereM (mkM flattenInsts) <=<
-            everywhereM (mkM (flatten @Ty)) <=<
-            everywhereM (mkM (flatten @Pred)) <=<
-            everywhereM (mkM (flatten @Kind)) <=<
-            everywhereM (mkM (flatten @Evid)) <=<
-            everywhereM (mkM (flatten @TyCon))
+  flatten = everywhereM (pure
+                  `extM` flattenInsts
+                  `extM` flatten @Ty
+                  `extM` flatten @Pred
+                  `extM` flatten @Kind
+                  `extM` flatten @Evid
+                  `extM` flatten @TyCon)
     where
       (f <=< g) x = g x >>= f
       flattenInsts (EInst m is) =

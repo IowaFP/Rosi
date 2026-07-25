@@ -27,7 +27,7 @@ import Interp.Erased         as E
 import Parser
 import Printer
 import Scope
-import Syntax
+import Syntax                hiding ((<.>))
 
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doPrintHelpMessage, doShowProgress
