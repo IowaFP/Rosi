@@ -7,11 +7,14 @@
 -- - Row and Bounded Polymorphism via Disjoint Polymorphism. Ningning Xie, Bruno Oliveira, Xuan Bi, Tom Schrijvers, ECOOP 2020
 --   https://xnning.github.io/papers/row-bounded.pdf
 --
+-- Alex's note:
 -- Tang et al show that full record and variant subtyping cannot embed into rank-1 row
 -- polymorphism. This should not apply to Rosi, which permits higher rank polymorphism.
 -- Let's confirm this suspicion.
+
+-- Tristan:
 -- Actually, what Tang et al show is that there is no "type-only" encodiing of full record and variant subtyping into a target calculus with row and presence polymorphism,
--- however, they are able to achieve a translation from a source calculus with rank 2 records and full subtyping (lambda full <=,records-2) into a target calculus with records and rank-1 row polymorphism (lambda rho-1, records),
+-- however, they are able to achieve a translation from a source calculus with "rank 2" records and full subtyping (lambda full <=,records-2) into a target calculus with records and rank-1 row polymorphism (lambda rho-1, records),
 -- and  a translation from a source calculus with rank 1-variants and full subtyping (lambda full <=, variants-1) to the same target calculus (lambda rho-1, records),
 -- and from its extension with rank 2 variants(lambda full <=, variants-2) to a tc with rank 1 presence polymorphism (lambda theta-1, variants)
 -- These are achieved by erasing type instantiations and relying on rank-1 row polymorphism's decidable type inference.
