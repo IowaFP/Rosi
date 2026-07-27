@@ -18,7 +18,7 @@ import System.Directory
 import System.Environment
 import System.Exit           (exitFailure, exitSuccess)
 import System.FilePath
-import System.IO             (BufferMode (..), hPutStrLn, hSetBuffering, stderr, stdout)
+import System.IO             (BufferMode (..), hPutStr, hPutStrLn, hSetBuffering, stderr, stdout)
 
 import Checker
 import DesugarInfix          (desugarInfix)
@@ -107,8 +107,10 @@ main = do nowArgs <- getArgs
           writeIORef traceKindInference (doTraceKindInference flags)
           writeIORef traceTypeInference (doTraceInference flags)
           writeIORef E.traceEvaluation (doTraceEvaluation flags)
-          when (doShowProgress flags || doTraceInference flags || doTraceEvaluation flags) $
+          when (doTraceInference flags || doTraceEvaluation flags) $
             hSetBuffering stdout NoBuffering
+          when (doShowProgress flags) $
+            hSetBuffering stderr NoBuffering
           decls <- parseChasing (imports flags) (inputs flags)
           scoped <- reportErrors flags $ runScopeM $ scopeProg decls
           deOpped <- reportErrors flags $ desugarInfix scoped
@@ -122,7 +124,7 @@ main = do nowArgs <- getArgs
   where
     goCheck :: Flags -> KCtxt -> PCtxt -> TCtxt -> [Decl] -> IO [(QName, Ty, [Pred], Term)]
     goCheck flags _ _ _ [] =
-      do when (doShowProgress flags) $ putStr ('\r' : replicate 80 ' ' ++ "\r")
+      do when (doShowProgress flags) $ hPutStr stderr ('\r' : replicate 80 ' ' ++ "\r")
          return []
     goCheck flags d p g (TyDecl x k t : ds) =
       do t' <- flatten . fst =<< reportErrors flags =<< runCheckM' d p g (typeErrorContext (ErrContextDefn x . ErrContextType t) $ toCheckM (implicitConstraints True t k))
@@ -133,7 +135,7 @@ main = do nowArgs <- getArgs
     goCheck flags d p g (TmDecl v mt te _ : ds) =
       do when (doShowProgress flags) $
            let s = intercalate "." (reverse v)
-           in putStr ("\r" ++ s ++ replicate (80 - length s) ' ')
+           in hPutStr stderr ("\r" ++ s ++ replicate (80 - length s) ' ')
          (te', ty', holes) <-
            case mt of
              Nothing ->
