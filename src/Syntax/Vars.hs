@@ -179,8 +179,10 @@ instance HasTyVars Term where
 
   subst = error "subst not implemented for terms"
 
-instance HasTyVars Decl where
-  shiftNV vs j n = everywhere (id `extT` shiftNV @Ty vs j n `extT` shiftNV @Term vs j n)
+instance HasTyVars [Decl] where
+  shiftNV vs j n []                      = []
+  shiftNV vs j n (TyDecl q k t : ds)     = TyDecl q k (shiftNV vs j n t) : shiftNV vs (j + 1) n ds
+  shiftNV vs j n (TmDecl q mt e mf : ds) = TmDecl q (shiftNV vs j n <$> mt) (shiftNV vs j n e) mf : shiftNV vs j n ds
 
   isFree = error "isFree not implemented for declarations"
 

@@ -42,8 +42,11 @@ kindOf (TConApp Sigma r) =
   do KRow k <- kindOf r  -- TODO: what if pattern matching fails?
      return k
 kindOf (TConApp (Mu _) f)=
-  do KFun k _ <- kindOf f
-     return k
+  do kf <- kindOf f
+     case kf of
+       KFun k _ -> return k
+       k        -> error $ "Unexpected kind " ++ show k ++ " for argument of Mu"
+
 kindOf (TConApp (TCUnif g) t) =
   do mk <- readRef (goalRef g)
      case mk of

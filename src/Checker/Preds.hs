@@ -116,6 +116,7 @@ pickEqns ps = go ps where
   go ((PEq t u, VEqPlusComplL _ ) : ps) = go ps
   go ((PEq t u, VEqPlusComplR _ ) : ps) = go ps
   go ((PEq t u, v) : ps)
+    | t == u                            = go ps
     | isTVarApp t                       = (t, (u, v)) : go ps
     | isTVarApp u                       = (u, (t, v)) : go ps
     | isUVarApp t                       = (t, (u, v)) : go ps
@@ -332,14 +333,14 @@ solve (cin, p, r) =
          Right _ -> return ()
 
   prim p@(PLeq (TRow y) (TRow z))
-    | Just yd <- mapM concreteLabel y, Just zd <- mapM concreteLabel z =
+    | Just yd <- mapM label y, Just zd <- mapM label z =
       do case sequence [elemIndex e zd | e <- yd] of
            Nothing -> return Nothing
            Just is ->
              do mapM_ (\(i, TLabeled _ t) -> let TLabeled _ u = z !! i in force p t u) (zip is y)
                 return (Just (VLeqSimple is))
   prim (PPlus (TRow x) (TRow y) (TRow z))
-    | Just xd <- mapM concreteLabel x, Just yd <- mapM concreteLabel y, Just zd <- mapM concreteLabel z
+    | Just xd <- mapM label x, Just yd <- mapM label y, Just zd <- mapM label z
     , length xd + length yd == length zd, sameSet (xd ++ yd) zd =
         case sequence [(Left <$> elemIndex e xd) `mplus` (Right <$> elemIndex e yd) | e <- zd] of
           Nothing -> return Nothing

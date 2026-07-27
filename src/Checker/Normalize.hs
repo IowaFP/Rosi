@@ -15,7 +15,6 @@ import GHC.Stack
 normalize' :: (HasCallStack, MonadCheck m) => [Eqn] -> Ty -> m (Ty, Evid)
 normalize' eqns t =
   do (u, q) <- normalize eqns t
-     theKCtxt <- asks kctxt
      case q of
        VEqRefl -> return (u, q)
        _       -> do trace $ "normalize (" ++ renderString (ppr t) ++ ") -->* (" ++ renderString (ppr u) ++ ")"
@@ -161,6 +160,10 @@ normalize eqns (TThen p t) =
   do p' <- normalizeP eqns p
      (t', q) <- normalize eqns t
      return (TThen p' t', VEqThen VEqRefl q)
+normalize eqns (TExistsP p t) =
+  do p' <- normalizeP eqns p
+     (t', q) <- normalize eqns t
+     return (TExistsP p' t', VEqExistsP VEqRefl q)
 -- TODO: remaining homomorphic cases
 normalize eqns t = return (t, VEqRefl)
 

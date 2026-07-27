@@ -170,6 +170,7 @@ instance HasGoals Evid where
     where countUp [] _       = True
           countUp (i : is) j = i == j && countUp is (j + 1)
   flatten (VEqThen v1 v2) = foldBinary VEqThen <$> flatten v1 <*> flatten v2
+  flatten (VEqExistsP v1 v2) = foldBinary VEqExistsP <$> flatten v1 <*> flatten v2
   flatten (VEqLambda v) = foldUnary VEqLambda <$> flatten v
   flatten (VEqForall v) = foldUnary VEqForall <$> flatten v
   flatten (VEqExists v) = foldUnary VEqExists <$> flatten v

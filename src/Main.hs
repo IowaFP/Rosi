@@ -143,15 +143,16 @@ main = do nowArgs <- getArgs
                   return (te', ty', holes)
          te'' <- flatten te'
          reportHoles flags holes
+         let unpackExistential =
+               let (existentials, (assumed, t')) = second existsQuals $ existsBinders ty'
+                   d' = [KBVar k 0 | (_, Just k) <- existentials] ++ d
+                   p' = [(p, VVar i) | p <- assumed | i <- [0..]] ++ shiftPC (length assumed) p
+                   g' = (v, t') : g
+               in ((v, ty', assumed, te'') :) <$> goCheck flags d' p' g' (shiftN 0 (length existentials) ds)
          case ty' of
-           TExists {} ->
-             let (existentials, (assumed, t')) = second existsQuals $ existsBinders ty'
-                 d' = [KBVar k 0 | (_, Just k) <- existentials] ++ d
-                 p' = [(p, VVar i) | p <- assumed | i <- [0..]] ++ shiftPC (length assumed) p
-                 g' = (v, t') : g
-             in ((v, ty', assumed, te'') :) <$> goCheck flags d' p' g' (map (shiftN 0 (length existentials)) ds)
-           _ ->
-             ((v, ty', [], te'') :) <$> goCheck flags d p ((v, ty') : g) ds
+           TExists {}  -> unpackExistential
+           TExistsP {} -> unpackExistential
+           _           -> ((v, ty', [], te'') :) <$> goCheck flags d p ((v, ty') : g) ds
 
     goEvalE :: Env -> [(QName, Ty, [Pred], Term)] -> IO [(QName, Value)]
     goEvalE _ [] = return []

@@ -95,9 +95,10 @@ checkEq t u = try $ withHandler checking $ unify' t u
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify' actual expected =
   do eqns <- theEqns
+     trace ("5 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected
-     trace ("5 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
+     trace ("6 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
      let f = case q of
                VEqRefl -> id
                _       -> VEqTrans q
@@ -181,6 +182,7 @@ unifyInstantiating t u unify =
      u' <- flatten u
 
      let (uis, u'') = insts u'
+     trace $ "7 " ++ renderString (ppr t') ++ " " ++ show (toList uis) ++ " " ++ renderString (ppr u'')
      case (t', u') of
        (TInst [Unknown _ g] t'', TInst [Unknown _ g'] u'')
          | goalRef g == goalRef g' -> unify t'' u''
@@ -227,6 +229,8 @@ unifyInstantiating t u unify =
       existentials t is u
     universals t is u
       | null qts, TExists {} <- u =
+        existentials t is u
+      | null qts, TExistsP {} <- u =
         existentials t is u
       -- Fewer (but some!) forall-like quantifiers on the left than on the
       -- right. In this case, we fall back on trying to unify the left and
