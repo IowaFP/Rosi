@@ -358,7 +358,7 @@ generalize topLevel e =
           remaining <- solverLoop topLevel psHere
           trace $ "Solver simplified " ++ show [p | (_, p, _) <- psHere] ++ " to " ++ show [p | (_, p, _) <- remaining]
           return (level, t, e', remaining, psThere)
-     let (generalizable, ungeneralizable) = splitGeneralizable (kctxt tcin) remaining
+     let (generalizable, ungeneralizable) = splitGeneralizable tcin remaining
      unless (null ungeneralizable) $ notEntailed ungeneralizable
      tell (TCOut psThere [])
      genVars <- foldl union [] <$> ((:) <$> uvars level t <*> mapM (uvars level . fst) generalizable)
@@ -384,11 +384,12 @@ generalize topLevel e =
              then return (here, pr : there)
              else return (pr : here, there)
 
-        splitGeneralizable :: KCtxt -> [Problem] -> ([(Pred, IORef (Maybe Evid))], [Problem])
+        splitGeneralizable :: TCIn -> [Problem] -> ([(Pred, IORef (Maybe Evid))], [Problem])
         splitGeneralizable _ [] = ([], [])
         splitGeneralizable now (pr@(cin, p, evar) : ps)
-          | null (pctxt cin) && length now == length (kctxt cin) = ((p, evar) : gen, notGen)
-          | otherwise                                            = (gen, pr : notGen)
+          | length (pctxt now) == length (pctxt cin)
+          , length (kctxt now) == length (kctxt cin) = ((p, evar) : gen, notGen)
+          | otherwise                                = (gen, pr : notGen)
           where (gen, notGen) = splitGeneralizable now ps
 
         generalizeVars :: [UVar] -> CheckM [String]
