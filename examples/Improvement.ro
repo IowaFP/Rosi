@@ -1,0 +1,41 @@
+import Ro.Base
+
+foo : x ~ y => x -> y
+foo = id
+
+bar : x + y ~ z1, x + y ~ z2 => Pi x -> Pi y -> Pi z1 -> Pi z2
+bar x y z = z
+
+bar1 : x + y1 ~ z, x + y2 ~ z => Pi x -> Pi z -> Pi y1 -> Pi y2
+bar1 x y z = z
+
+bar2 : x1 + y ~ z, x2 + y ~ z => Pi y -> Pi z -> Pi x1 -> Pi x2
+bar2 x y z = z
+
+--
+
+type ReallyUnit : * -> *
+type ReallyUnit f = exists. f ~ Unit => f
+
+reallyUnit : ReallyUnit Unit
+reallyUnit = tt
+
+revealReallyUnit : ReallyUnit t -> t
+revealReallyUnit x = x
+
+revealReallyUnit' : ReallyUnit t -> t
+revealReallyUnit' x = tt
+
+--
+
+type Really : * -> *
+type Really t = exists u. t ~ u => t
+
+reallyUnit' : Really Unit
+reallyUnit' = tt
+
+revealReally : Really Unit -> Unit
+revealReally x = x
+
+revealReally' : Really t -> t
+revealReally' x = x

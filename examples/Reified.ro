@@ -1,0 +1,19 @@
+import Ro.Base
+
+type ROrdF : (R[*] -> R[*]) -> R[*] -> R[*]
+type ROrdF rec z =
+  { 'Empty := exists. z ~ {} => Unit
+  , 'Single := exists l t. z ~ {l := t} => #l
+  , 'Append := exists x y. x + y ~ z => (Sigma (rec x), Sigma (rec y))
+  }
+
+type ROrd : R[*] -> *
+type ROrd z = Sigma (Mu ROrdF z)
+
+-- foldrec : forall z. ROrd z -> (forall l t. #l -> t -> a) -> (a -> a -> a) -> a -> Pi z -> a
+-- foldrec @z = fix (\foldrec @z (row : ROrd z) single append empty rec. match row
+--   ( 'Empty: u -> empty
+--   | 'Single: l -> (\(l : exists l t. z ~ {l := t} => #l). single l rec.l) l
+--   | 'Append: p -> (\(p : exists x y : R[*]. x + y ~ z => (ROrd x, ROrd y)).
+--       ?) p
+--   )) @z
