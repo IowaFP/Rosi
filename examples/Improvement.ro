@@ -1,4 +1,4 @@
-import Ro.Base
+import Ro.Base, Data.Tuple, Data.Nat
 
 foo : x ~ y => x -> y
 foo = id
@@ -44,8 +44,8 @@ revealReally' x = x
 
 type ExpF : (* -> *) -> (* -> *)
 type ExpF rec a = Sigma { 'Const := a,
-                          'Sum   := exists. a ~ Nat => (rec a, rec a) }
-
+                          'Sum   := exists. a ~ Nat => (rec a, rec a),
+                          'If    := (rec Bool, rec a, rec a) }
 
 type Exp : * -> *
 type Exp = Mu ExpF
@@ -53,7 +53,7 @@ type Exp = Mu ExpF
 eval : Exp a -> a
 eval @a = fix (\eval.
     'Const: x -> x
-  | 'Sum: (p : exists. a ~ Nat => (Exp a, Exp a)) -> add (eval p.'1) (eval p.'2)
+  | 'Sum: p -> (\(p : exists. a ~ Nat => (Exp a, Exp a)). add (eval p.'1) (eval p.'2)) p
   )
 
 exp1 : Exp Bool
@@ -62,8 +62,47 @@ exp1 = 'Const: True
 exp2 : Exp Nat
 exp2 = 'Sum: (pair ('Const: 1) ('Const: 2))
 
+-- val1 : Bool
+-- val1 = eval exp1
+
+-- val2 : Nat
+-- val2 = eval exp2
+--
+
+type ExpF : (* -> *) -> (* -> *)
+type ExpF rec a = Sigma { 'Const := a,
+                          'Sum   := exists. a ~ Nat => (rec a, rec a) }
+
+
+type Exp : * -> *
+type Exp = Mu ExpF
+
+type EvalBody : *
+type EvalBody = (forall a. Exp a -> a) -> (forall a. Exp a -> a)
+
+evalBody : EvalBody
+evalBody eval @a =
+    'Const: x -> x
+  | 'Sum: (p : exists. a ~ Nat => (Exp a, Exp a)) -> add (eval p.'1) (eval p.'2)
+  | 'If: p -> if (eval p.'1) (eval p.'2) (eval p.'3)
+
+eval : Exp a -> a
+eval = fix evalBody
+
+exp1 : Exp Bool
+exp1 = 'Const: True
+
+exp2 : Exp Nat
+exp2 = 'Sum: ('Const: 1, 'Const: 2)
+
+exp3 : Exp Nat
+exp3 = 'If: ('Const: True, 'Const: 1, 'Const: 2)
+
 val1 : Bool
 val1 = eval exp1
 
 val2 : Nat
 val2 = eval exp2
+
+val3 : Nat
+val3 = eval exp3

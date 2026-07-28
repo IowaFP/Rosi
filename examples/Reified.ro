@@ -1,19 +1,121 @@
-import Ro.Base
+import Ro.Base, Data.Nat
 
-type ROrdF : (R[*] -> R[*]) -> R[*] -> R[*]
+-- type ROrdF : (R[*] -> R[*]) -> R[*] -> R[*]
+-- type ROrdF rec z =
+--   { 'Empty := exists. z ~ {} => Unit
+--   , 'Single := exists l t. z ~ {l := t} => #l
+--   , 'Append := exists x y. x + y ~ z => (Sigma (rec x), Sigma (rec y))
+--   }
+
+type ROrdF : (R[*] -> *) -> R[*] -> *
 type ROrdF rec z =
-  { 'Empty := exists. z ~ {} => Unit
-  , 'Single := exists l t. z ~ {l := t} => #l
-  , 'Append := exists x y. x + y ~ z => (Sigma (rec x), Sigma (rec y))
-  }
+  Sigma { 'Empty := exists. z ~ {} => Unit
+        , 'Single := exists l t. z ~ {l := t} => #l
+        , 'Append := exists x y. x + y ~ z => (rec x, rec y)
+        }
+
 
 type ROrd : R[*] -> *
-type ROrd z = Sigma (Mu ROrdF z)
+type ROrd z = Mu ROrdF z
 
--- foldrec : forall z. ROrd z -> (forall l t. #l -> t -> a) -> (a -> a -> a) -> a -> Pi z -> a
--- foldrec @z = fix (\foldrec @z (row : ROrd z) single append empty rec. match row
---   ( 'Empty: u -> empty
---   | 'Single: l -> (\(l : exists l t. z ~ {l := t} => #l). single l rec.l) l
---   | 'Append: p -> (\(p : exists x y : R[*]. x + y ~ z => (ROrd x, ROrd y)).
---       ?) p
---   )) @z
+type FoldRec : *
+type FoldRec = forall z a. ROrd z -> (forall t. {l := t} < z => #l -> t -> a) -> (a -> a -> a) -> a -> Pi z -> a
+
+foldrecBody : FoldRec -> FoldRec
+foldrecBody foldrec @z row single append empty record = match row
+  ( 'Empty: u ->
+      empty
+  | 'Single: (l : exists l t. z ~ {l := t} => #l) ->
+      single l record.l
+  | 'Append: (p : exists x y. x + y ~ z => (ROrd x, ROrd y)) ->
+      append (foldrec p.'1 single append empty (prj record)) (foldrec p.'2 single append empty (prj record))
+  )
+
+foldrec : FoldRec
+foldrec = fix foldrecBody
+
+--
+
+eqP' : ROrd z -> Pi (Eq z) -> Eq (Pi z)
+eqP' row d r = foldrec row (\l x. d.l r.l x) and True
+
+r1 : ROrd {'A := t, 'B := u}
+r1 = 'Append: ('Single: 'A, 'Single: 'B)
+
+v1 = eqP' r1 (every eqBool) ('A := True, 'B := False) ('A := True, 'B := False)
+v2 = eqP' r1 (every eqBool) ('A := True, 'B := True) ('A := True, 'B := False)
+
+next : Cmp -> Cmp -> Cmp
+next = 'EQ: u -> id
+     | 'LT: u -> const ('LT: u)
+     | 'GT: u -> const ('GT: u)
+
+lexico : ROrd z -> Pi (Compare z) -> Compare (Pi z)
+lexico row d r = foldrec row (\l x. d.l r.l x) next LT
+
+r2 : ROrd {'A := t, 'B := u}
+r2 = 'Append: ('Single: 'B, 'Single: 'A)
+
+c : ROrd {'A := Nat, 'B := Nat} -> Compare (Pi {'A := Nat, 'B := Nat})
+c row r1 r2 = lexico row (every compN) r1 r2
+
+m1 : Pi {'A := Nat, 'B := Nat}
+m1 = ('A := 1, 'B := 2)
+
+m2 : Pi {'A := Nat, 'B := Nat}
+m2 = ('A := 2, 'B := 1)
+
+v3 = c r1 m1 m2
+v4 = c r2 m1 m2
+
+--
+
+type RenamingF : (R[*] -> R[*] -> *) -> (R[*] -> R[*] -> *)
+type RenamingF rec y z =
+  Sigma { 'Empty  := exists. y ~ {}, z ~ {} => (),
+          'Single := exists k l t. y ~ {k := t}, z ~ {l := t} => (#k, #l),
+          'Append := exists w w' x x'. w + x ~ y, w' + x' ~ z => (rec w w', rec x x')
+        }
+
+type Renaming : R[*] -> R[*] -> *
+type Renaming = Mu RenamingF
+
+type RenameP : *
+type RenameP = forall y z. Renaming y z -> Pi y -> Pi z
+
+renamePBody : RenameP -> RenameP
+renamePBody renameP @y @z renaming r = match renaming
+  ( 'Empty: (u : exists. y ~ {}, z ~ {} => Unit) ->
+      r
+  | 'Single: (p : exists k l t. y ~ {k := t}, z ~ {l := t} => (#k, #l)) ->
+      (p.'2 := sel r (p.'1))
+  | 'Append: (p : exists w w' x x'. w + x ~ y, w' + x' ~ z => (Renaming w w', Renaming x x')) ->
+      (renameP p.'1 (prj r) ++ renameP p.'2 (prj r))
+  )
+
+renameP : RenameP
+renameP = fix renamePBody
+
+type RenameS : *
+type RenameS = forall y z. Renaming y z -> Sigma y -> Sigma z
+
+renameSBody : RenameS -> RenameS
+renameSBody renameS @y @z renaming v = match renaming
+  ( 'Empty: (u : exists. y ~ {}, z ~ {} => Unit) -> v
+  | 'Single: (p : exists k l t. y ~ {k := t}, z ~ {l := t} => (#k, #l)) ->
+      match v (case p.'1 (con p.'2))
+  | 'Append: (p : exists w w' x x'. w + x ~ y, w' + x' ~ z => (Renaming w w', Renaming x x')) ->
+      (inj . renameS p.'1 | inj . renameS p.'2) v
+  )
+
+renameS : RenameS
+renameS = fix renameSBody
+
+--
+
+ren1 : Renaming {'A := Bool, 'B := Unit} {'A := Unit, 'C := Bool}
+ren1 = 'Append: ('Single: ('A, 'C), 'Single: ('B, 'A))
+
+v5 = renameP ren1 ('A := True, 'B := tt)
+v6a = renameS ren1 ('A: True)
+v6b = renameS ren1 ('B: tt)
