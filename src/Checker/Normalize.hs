@@ -120,13 +120,13 @@ normalize eqns (TConApp (Mu count) z) =
   do (z', q) <- normalize eqns z
      return (TConApp (Mu count) z', VEqCon (Mu count) q)
 normalize eqns (TForall x (Just k) t) =
-  do (t', q) <- bindTy k (normalize eqns t)
+  do (t', q) <- bindTy k (normalize (map (shiftEqn 0 1) eqns) t)
      return (TForall x (Just k) t', VEqForall q)
 normalize eqns (TExists x (Just k) t) =
-  do (t', q) <- bindTy k (normalize eqns t)
+  do (t', q) <- bindTy k (normalize (map (shiftEqn 0 1) eqns) t)
      return (TExists x (Just k) t', VEqExists q)
 normalize eqns ty@(TLam x (Just k) t) =
-  do (t',  q1) <- bindTy k (normalize eqns t)
+  do (t',  q1) <- bindTy k (normalize (map (shiftEqn 0 1) eqns) t)
      let (t'', q2) = etaContract (TLam x (Just k) t')
      return (t'', VEqTrans (VEqLambda q1) q2)
 normalize eqns (TMap t) =

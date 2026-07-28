@@ -146,8 +146,8 @@ main = do nowArgs <- getArgs
          let unpackExistential =
                let (existentials, (assumed, t')) = second existsQuals $ existsBinders ty'
                    d' = [KBVar k 0 | (_, Just k) <- existentials] ++ d
-                   p' = [(p, VVar i) | p <- assumed | i <- [0..]] ++ shiftPC (length assumed) p
-                   g' = (v, t') : g
+                   p' = [(p, VVar i) | p <- assumed | i <- [0..]] ++ map (first (shiftN 0 (length existentials))) (shiftPC (length assumed) p)
+                   g' = (v, t') : shiftE (length existentials) g
                in ((v, ty', assumed, te'') :) <$> goCheck flags d' p' g' (shiftN 0 (length existentials) ds)
          case ty' of
            TExists {}  -> unpackExistential

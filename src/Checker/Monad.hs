@@ -126,8 +126,8 @@ lookupV _ []           = error "lookupV: index out of range"
 lookupV 0 ((_, t) : _) = t
 lookupV n (_ : ts)     = lookupV (n - 1) ts
 
-shiftE :: TCtxt -> TCtxt
-shiftE = map (second (shiftN 0 1))
+shiftE :: Int -> TCtxt -> TCtxt
+shiftE n = map (second (shiftN 0 n))
 
 shiftPC :: Int -> PCtxt -> PCtxt
 shiftPC n = map (second (shiftEV 0 n))
@@ -199,10 +199,10 @@ class (Monad m, MonadFail m, MonadRef m, MonadIO m, MonadReader TCIn m) => Monad
   -----------------------------------------------------------------------------
 
   bindTy :: Kind -> m a -> m a
-  bindTy k = local (\env -> env { kctxt = KBVar k (level env) : kctxt env, tctxt = shiftE (tctxt env), pctxt = map (first (shiftN 0 1)) (pctxt env) })
+  bindTy k = local (\env -> env { kctxt = KBVar k (level env) : kctxt env, tctxt = shiftE 1 (tctxt env), pctxt = map (first (shiftN 0 1)) (pctxt env) })
 
   defineTy :: Kind -> Ty -> m a -> m a
-  defineTy k t = local (\env -> env { kctxt = KBDefn k t : kctxt env, tctxt = shiftE (tctxt env), level = level env + 1 })
+  defineTy k t = local (\env -> env { kctxt = KBDefn k t : kctxt env, tctxt = shiftE 1 (tctxt env), level = level env + 1 })
 
   bind :: String -> Ty -> m a -> m a
   bind x t m =
@@ -361,6 +361,9 @@ upLevel m = do l <- theLevel
 -- =============================================================================
 
 type Eqn = (Ty, (Ty, Evid))
+
+shiftEqn :: Int -> Int -> Eqn -> Eqn
+shiftEqn j n (t, (u, q)) = (shiftN j n t, (shiftN j n u, q))
 
 data AtomicHandler =
   AH { onTVar :: Int -> QName -> Ty -> UnifyM Evid
