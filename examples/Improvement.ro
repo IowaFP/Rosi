@@ -39,3 +39,30 @@ revealReally x = x
 
 revealReally' : Really t -> t
 revealReally' x = x
+
+--
+
+type ExpF : (* -> *) -> (* -> *)
+type ExpF rec a = Sigma { 'Const := a,
+                          'Sum   := exists. a ~ Nat => (rec a, rec a) }
+
+type Exp : * -> *
+type Exp = Mu ExpF
+
+eval : Exp a -> a
+eval @a = fix (\eval.
+    'Const: x -> x
+  | 'Sum: p -> (\(p : exists. a ~ Nat => (Exp a, Exp a)). add (eval p.'1) (eval p.'2)) p
+  )
+
+exp1 : Exp Bool
+exp1 = 'Const: True
+
+exp2 : Exp Nat
+exp2 = 'Sum: (pair ('Const: 1) ('Const: 2))
+
+val1 : Bool
+val1 = eval exp1
+
+val2 : Nat
+val2 = eval exp2

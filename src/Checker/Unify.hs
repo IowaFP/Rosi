@@ -232,6 +232,8 @@ unifyInstantiating t u unify =
         existentials t is u
       | null qts, TExistsP {} <- u =
         existentials t is u
+      | null qts, TUnif {} <- u =
+        existentials t is u
       -- Fewer (but some!) forall-like quantifiers on the left than on the
       -- right. In this case, we fall back on trying to unify the left and
       -- right-hand side directly, after solving any remaining unification

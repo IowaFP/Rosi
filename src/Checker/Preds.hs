@@ -7,7 +7,7 @@ import Data.Bifunctor
 import Data.Either                (isRight)
 import Data.IORef
 import Data.List
-import Data.Maybe                 (catMaybes)
+import Data.Maybe
 
 import Checker.Monad
 import Checker.Normalize
@@ -443,7 +443,15 @@ type Guesser = Problem -> Maybe Guess
 
 guesses :: [Problem] -> CheckM [Guess]
 guesses prs =
-  concat <$> mapM guessAt [0..length prs - 1]
+  do prs' <- forM prs $ \(tcin, p, v) ->
+               local (const tcin) $
+               do p' <- flatten =<< normalizeP [] p
+                  return (tcin, p', v)
+     return [wrapGuess (dropAt i prs) $ local (const tcin) $ guess
+            | guesser <- guessers
+            , (pr@(tcin, p, v), i) <- zip prs' [0..]
+            , guess <- maybeToList (guesser pr)]
+
   where
 
   dropAt 0 (x : xs) = xs
@@ -452,17 +460,10 @@ guesses prs =
 
   wrapGuess prs = fmap (++ prs)
 
-  guessAt :: Int -> CheckM [Guess]
-  guessAt i =
-    do p' <- local (const tcin) (flatten =<< normalizeP [] p)
-       let tries = catMaybes $ map ($ (tcin, p', v)) guessers
-       return (map (wrapGuess (dropAt i prs) . local (const tcin)) tries)
-    where (tcin, p, v) = prs !! i
-
   guessers :: [Guesser]
-  guessers = [guessInstInst, guessInst, guessAppApp, guessApp, guessMapLeq]
+  guessers = [guessInstInst, guessExistsInst, guessForallInst, guessAppApp, guessApp, guessMapLeq]
 
-  guessInstInst, guessInst, guessAppApp, guessApp :: Guesser
+  guessInstInst, guessExistsInst, guessForallInst, guessAppApp, guessApp :: Guesser
 
   guessInstInst pr@(tcin, PEq (TInst [Unknown {}, Unknown _ g] _) _, _) =
     Just $
@@ -476,7 +477,18 @@ guesses prs =
        return [pr]
   guessInstInst _ = Nothing
 
-  guessInst pr@(tcin, PEq t u, v)
+  guessExistsInst pr@(tcin, PEq t u, v)
+    | TInst (Unknown _ g : is) t' <- t, notExistential t', notUniversal u = Just $ writeGoal g [] >> return [pr]
+    | TInst (Unknown _ g : is) u' <- u, notExistential u', notUniversal t = Just $ writeGoal g [] >> return [pr]
+    where notExistential (TExists {})  = False
+          notExistential (TExistsP {}) = False
+          notExistential _             = True
+          notUniversal (TForall {}) = False
+          notUniversal (TThen {})   = False
+          notUniversal _            = True
+  guessExistsInst _ = Nothing
+
+  guessForallInst pr@(tcin, PEq t u, v)
     | TInst [Unknown {}] _ <- u, TForall {} <- t = Just $ guessInstantiation t u
     | TInst [Unknown {}] _ <- t, TForall {} <- u = Just $ guessInstantiation u t
     where -- There is a lot of similarity with the code in unifyInstantiating here...
@@ -485,11 +497,11 @@ guesses prs =
             do xs' <- mapM fresh xs
                refs <- replicateM (length xs) (newRef Nothing)
                l <- theLevel
-               let us = [TUnif (UV 0 l (Goal (x, r)) k) | x <- xs' | r <- refs | k <- ks ]
+               let us = [TUnif (UV n l (Goal (x, r)) k) | x <- xs' | r <- refs | k <- ks ]
                writeGoal g (map TyArg us)
                t''' <- instantiate t us
                trace $ unlines [ unwords ["guessing", goalName g, ":=", show us]
-                               , unwords ["refined goal to", show (PEq t''' u)] ]
+                               , unwords ["refined goal to", renderString (ppr $ PEq t''' u)] ]
                return [(tcin, PEq t''' u, v)]  -- TODO: is `v` here actually a solution to the original problem?
 
             where (qus, t') = univQuants t
@@ -507,7 +519,7 @@ guesses prs =
                   instantiate _ _ = error "can't instantiate non-forall types"
           guessInstantiation _ _ =
             error "can't guess instantiation of non-instantiation types"
-  guessInst _ = Nothing
+  guessForallInst _ = Nothing
 
   guessMapLeq pr@(tcin, PLeq (TApp (TMap f) y) (TApp (TMap f') z), v)
     | f == f' = Just $
