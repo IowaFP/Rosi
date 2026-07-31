@@ -80,3 +80,24 @@ prof : Object {'title := String, 'first := String, 'last := String, 'office := S
 prof = ('title := "Dr", 'first := "Garrett", 'last := "Morris", 'office := "1E Jessup Hall")
 
 name' = formalName prof
+
+-- Branching and existentials
+
+type Branch : L -> * -> R[*] -> *
+type Branch l t z = exists. {l := t} < z => Pi z
+
+type EitherOf : L -> L -> * -> R[*] -> *
+type EitherOf k l t z =
+  Sigma { 'Left  := Branch k t z,
+          'Right := Branch l t z }
+
+-- oops : EitherOf 'A 'B Unit t -> Unit
+-- oops = 'Left: r  -> r.'A
+--      | 'Right: r -> r.'B
+
+oops : EitherOf 'A 'B Unit t -> Unit
+oops @t = 'Left:  (r : Branch 'A Unit t) -> r.'A
+        | 'Right: (r : Branch 'B Unit t) -> r.'B
+
+whoops = (oops ('Left: ('A := tt, 'B := 0)), oops ('Right: ('A := 0, 'B := tt)))
+

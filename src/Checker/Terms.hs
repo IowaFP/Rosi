@@ -131,7 +131,6 @@ checkTerm0 e0@(EExLam xs _ y mt m) expected
           checkTerm (shiftN 0 (length existentials) m) (shiftN 0 (length xs' + length existentials) tcod))
   | Just t <- mt =
     do tdom <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
-       trace $ "!! declared type: " ++ renderString (ppr t) ++ ", normalized type: " ++ renderString (ppr tdom)
        tcod <- expectedGoal "cod"
        xs' <- mapM addKinds xs
        q <- expectT e0 (tdom `funTy` tcod) expected

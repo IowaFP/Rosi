@@ -95,10 +95,10 @@ checkEq t u = try $ withHandler checking $ unify' t u
 unify' :: HasCallStack => Ty -> Ty -> UnifyM Evid
 unify' actual expected =
   do eqns <- theEqns
-     trace ("5 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
+    --  trace ("5 (" ++ renderString (ppr actual) ++ ") ~ (" ++ renderString (ppr expected) ++ ")")
      (actual', q) <- normalize eqns actual
      (expected', q') <- normalize eqns expected
-     trace ("6 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
+    --  trace ("6 (" ++ renderString (ppr actual') ++ ") ~ (" ++ renderString (ppr expected') ++ ")")
      let f = case q of
                VEqRefl -> id
                _       -> VEqTrans q

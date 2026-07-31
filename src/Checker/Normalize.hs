@@ -17,7 +17,7 @@ normalize' eqns t =
   do (u, q) <- normalize eqns t
      case q of
        VEqRefl -> return (u, q)
-       _       -> do trace $ "normalize (" ++ renderString (ppr t) ++ ") -->* (" ++ renderString (ppr u) ++ ")"
+       _       -> do -- trace $ "normalize (" ++ renderString (ppr t) ++ ") -->* (" ++ renderString (ppr u) ++ ")"
                      return (u, q)
 
 etaContract :: Ty -> (Ty, Evid)

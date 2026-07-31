@@ -368,10 +368,21 @@ pr = choice [ do reserved "Fold"
 --     ++ ?
 --     := /
 
--- data TermBinder =
---     BForall String (Maybe Kind)
---   | BExists [(String, Maybe Kind)] String (Maybe Ty)
---   | BArrow String (Maybe Ty)
+existentialBinder :: Parser ([(String, Maybe Kind)], String, Maybe Ty)
+existentialBinder =
+  do xs <- concat <$> many existentialTyVars
+     y  <- lexeme identifier
+     t  <- optional (colon >> ty)
+     return (xs, y, t)
+  where
+    existentialTyVars =
+      choice
+        [ singleton . (, Nothing) <$> lexeme (string "@!" >> identifier)
+        , parens $ do xs <- some (lexeme (string "@!" >> identifier))
+                      k  <- colon >> kind
+                      return (map (, Just k) xs)
+        ]
+
 
 
 termLamBinders :: Parser [Term -> Term]
@@ -387,20 +398,9 @@ termLamBinders =
       parens $ do xs <- some (lexeme (char '@' >> identifier))
                   t <- colon >> kind
                   return (map (flip ETyLam (Just t)) xs)
-    , parens $ do xs <- concat <$> many existentialTyVars
-                  y  <- lexeme identifier
-                  t  <- optional (colon >> ty)
+    , parens $ do (xs, y, t) <- existentialBinder
                   return [EExLam xs [] y t]
     ]
-  where
-    existentialTyVars =
-      choice
-        [ singleton . (, Nothing) <$> lexeme (string "@!" >> identifier)
-        , parens $ do xs <- some (lexeme (string "@!" >> identifier))
-                      k  <- colon >> kind
-                      return (map (, Just k) xs)
-        ]
-
 
 term :: Parser Term
 term = prefixes typedTerm where
@@ -451,15 +451,24 @@ term = prefixes typedTerm where
       do k <- choice [ ESing . TLab <$> lidentifier
                      , EVar (-1) <$> qidentifier ]
          symbol ":"
-         x <- lexeme termIdentifier
+         x <- choice [ do x <- lexeme termIdentifier
+                          return (ELam x Nothing)
+                     , try $
+                       parens $ do x <- lexeme termIdentifier
+                                   t <- colon >> ty
+                                   return (ELam x (Just t))
+                     , parens $
+                       do (xs, y, mty) <- lexeme existentialBinder
+                          return (EExLam xs [] y mty) ]
+
          return (k, x)
 
     -- case ,k (\,x. ,t)
-    buildCase (k, x) t =
+    buildCase (k, lam) t =
       EApp
         (EApp (EVar (-1) (reverse ["Ro", "Base", "case"]))
               k)
-        (ELam x Nothing t)
+        (lam t)
 
   -- ELam "x" Nothing (EApp e1 (EApp e2 (EVar 0 ["x"])))
   o :: Term
