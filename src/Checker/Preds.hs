@@ -113,7 +113,6 @@ expand qs (p : ps) =
         m <|> n =
           do xs <- m
              if null xs then n else return xs
-
     expand2 _ _ = return []
 
 pickEqns :: [(Pred, Evid)] -> [Eqn]
@@ -138,12 +137,13 @@ solve (cin, p, r) =
   do as' <- forM (pctxt cin) $ \(p, v) ->
        do p' <- normalizeP [] =<< flatten p
           return (p', v)
-     trace $ "Solving: " ++ renderString (ppr p) ++ "\nassuming: " ++ intercalate ", " (map (renderString . ppr . fst) as') ++ "\nin " ++ show (kctxt cin)
-     let eqns = pickEqns as'
+     as'' <- expand [] as'
+     trace $ "Solving: " ++ renderString (ppr p) ++ "\nassuming: " ++ intercalate ", " (map (renderString . ppr . fst) as'') ++ "\nin " ++ show (kctxt cin)
+     let eqns = pickEqns as''
      unless (null eqns) $ trace ("Found equations " ++ show eqns)
      p' <- normalizeP eqns =<< flatten p
      trace ("Normalized goal to " ++ renderString (ppr p'))
-     mv <- everything as' p'
+     mv <- everything as'' p'
      case mv of
        Just v  -> writeRef r (Just v) >> return True
        Nothing -> return False
@@ -486,14 +486,17 @@ guesses prs =
   guessInstInst _ = Nothing
 
   guessExistsInst pr@(tcin, PEq t u, v)
-    | TInst (Unknown _ g : is) t' <- t, notExistential t', notUniversal u = Just $ writeGoal g [] >> return [pr]
-    | TInst (Unknown _ g : is) u' <- u, notExistential u', notUniversal t = Just $ writeGoal g [] >> return [pr]
+    | TInst (Unknown _ g : is) t' <- t, notExistential t', notUniversal u = Just $ guessEmpty g
+    | TInst (Unknown _ g : is) u' <- u, notExistential u', notUniversal t = Just $ guessEmpty g
     where notExistential (TExists {})  = False
           notExistential (TExistsP {}) = False
           notExistential _             = True
           notUniversal (TForall {}) = False
           notUniversal (TThen {})   = False
           notUniversal _            = True
+          guessEmpty g = do trace $ unwords ["guessing", goalName g, ":= {}"]
+                            writeGoal g []
+                            return [pr]
   guessExistsInst _ = Nothing
 
   guessForallInst pr@(tcin, PEq t u, v)
