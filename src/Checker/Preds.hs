@@ -85,6 +85,12 @@ expand qs (p : ps) =
     isComplement (TCompl {}) = True
     isComplement _           = False
 
+    leqPlus (PLeq v w, q) (PPlus x y z, r)
+      | w == x = [(PLeq v z, VLeqTrans q (VPlusLeqL r))]
+      | w == y = [(PLeq v z, VLeqTrans q (VPlusLeqR r))]
+      | z == v = [(PLeq x w, VLeqTrans (VPlusLeqL r) q), (PLeq y w, VLeqTrans (VPlusLeqR r) q)]
+    leqPlus _ _ = []
+
     expand2 :: (Pred, Evid) -> (Pred, Evid) -> CheckM [(Pred, Evid)]
     expand2 p@(PLeq {}, _) q@(PLeq {}, _) = return (oneWay p q ++ oneWay q p) where
       oneWay (PLeq x y, v1) (PLeq z w, v2)
@@ -92,6 +98,8 @@ expand qs (p : ps) =
         | TMap f `TApp` z' <- z, y == z' = [(PLeq (TMap f `TApp` x) w, VLeqTrans (VLeqLiftL f v1) v2)]
         | TMap f `TApp` y' <- y, y' == z = [(PLeq x (TMap f `TApp` w), VLeqTrans v1 (VLeqLiftL f v2))]
       oneWay _ _ = []
+    expand2 p@(PLeq {}, _) q@(PPlus {}, _) = return (leqPlus p q)
+    expand2 p@(PPlus {}, _) q@(PLeq {}, _) = return (leqPlus q p)
     expand2 (PPlus x y z, _) (PPlus x' y' z', _) =
       align x x' y y' z z' <|> align x x' z z' y y' <|> align y y' z z' x x'
       where
