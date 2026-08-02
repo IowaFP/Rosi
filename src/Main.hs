@@ -15,7 +15,7 @@ import System.Directory
 import System.Environment
 import System.Exit           (exitFailure, exitSuccess)
 import System.FilePath
-import System.IO             (BufferMode (..), hPutStr, hPutStrLn, hSetBuffering, stderr, stdout)
+import System.IO             (BufferMode (..), hPutStr, hPutStrLn, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
 
 import Checker
 import DesugarInfix          (desugarInfix)
@@ -100,7 +100,9 @@ main = do nowArgs <- getArgs
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   printUsage
                                   exitFailure
-          when (doPrintHelpMessage flags) $ printUsage >> exitSuccess
+          hSetEncoding stdout utf8
+          hSetEncoding stderr utf8
+``          when (doPrintHelpMessage flags) $ printUsage >> exitSuccess
           writeIORef traceKindInference (doTraceKindInference flags)
           writeIORef traceTypeInference (doTraceInference flags)
           writeIORef E.traceEvaluation (doTraceEvaluation flags)
