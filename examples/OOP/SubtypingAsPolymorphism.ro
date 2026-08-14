@@ -17,15 +17,13 @@
 -- however, they are able to achieve a translation from a source calculus with "rank 2" records and full subtyping (lambda full <=,records-2) into a target calculus with records and rank-1 row polymorphism (lambda rho-1, records),
 -- and  a translation from a source calculus with rank 1-variants and full subtyping (lambda full <=, variants-1) to the same target calculus (lambda rho-1, records),
 -- and from its extension with rank 2 variants(lambda full <=, variants-2) to a tc with rank 1 presence polymorphism (lambda theta-1, variants)
--- These are achieved by erasing type instantiations and relying on rank-1 row polymorphism's decidable type inference.
+-- These are achieved by erasing upcasts and relying on rank-1 row polymorphism's decidable type inference.
 
 -- However, this approach will not work for higher rank polymorphism, as type inference is no longer decidable.
 
 -- The main questions we want to answer are:
 -- 0. Preliminary: Can we handle all the examples in the Tang paper that doom the proposed translations of subtyping.
-
   -- We seem to be able to handle all of them one way or another, but ideally we could specify a unified approach that handles all examples.
-  
 
 -- 1. What kind of translation (local/global, type-only/term-involved, composable) can we give from the sc with full subtyping to Rosi.\
   -- Possible approaches:
@@ -90,14 +88,24 @@ getAge : Sigma {'Age := Nat, 'Year := Nat} -> Nat
 getAge = \x. (match x ('Age: y -> y
                       |'Year: y -> 50 - y))
 
--- our version of `upcast` is `inj`. I think this can be considered a "local, type-only" translation.
-ex_1 = getAge (inj year)
-ex_2 = getAge (inj age)
+
+-- Tang's encoding looks like this:
+year' : forall d. Sigma ({'Year := Nat} + d)
+year' = 'Year: 11
+
+-- Rosi is able to infer the row argument if we omit it
+ex_1 = getAge (year' @{'Age := Nat})
+
+
+-- In Rosi, we can instead leave year monomorphic, and directly replace the upcast with `inj`.
+
+ex_2 = getAge (inj year)
 
 -- row-polymorphic version of getAge, moving the `inj` inside the function.
 getAge' : forall r: R[*]. r < {'Age := Nat, 'Year := Nat} => Sigma r -> Nat
 getAge' = \x. (match (inj x) ('Age: y -> y
                              |'Year: y -> 50 - y))
+
 
 ---------------------------------------------------------------------------------------------------
 -- Simple Record Subtyping
@@ -119,7 +127,7 @@ ex_3 = getName (prj alice) ^ getName (prj bob)
 -- Our row-polymorphic version applies `prj` inside the function.
 -- We'd usually write it as `x.'name`, but that would hide the implicit projection.
 -- Not sure whether `prj` can be considered "type-only" or "local"
--- I think the fact that we're changing the types of all the functions that take records makes it non-local
+-- I think as long as we're only changing expressions involving records (including functions that manipulate records), it can be considered local.
 getName' : forall r. Pi ({'Name := String} + r) -> String
 getName' x = x.'Name
 
@@ -167,7 +175,6 @@ id_remember x = x
 ---------------------------------------------------------------------------------------------------
 -- Full Subtyping
 ---------------------------------------------------------------------------------------------------
-
 
 -- "Full subtyping lifts the width subtyping of rows to any type by propagating the subtyping relation to the components of type constructors." - Tang et al.
 
@@ -288,11 +295,11 @@ data_upcast = raw (inj (data :/ 'Raw))
 ex_16 = data_upcast
 
 -- however, we can also give a type-only polymorphic encoding, starting with the data.
-year' : forall d. {'Year := Nat} < d => Sigma d
-year' = 'Year: 11
+year'' : forall d. {'Year := Nat} < d => Sigma d
+year'' = 'Year: 11
 
 data' : forall d. {'Year := Nat} < d => Sigma {'Raw := Sigma d}
-data' = (raw year')
+data' = (raw year'')
 
 ex_17 : Sigma {'Raw := Sigma {'Year := Nat, 'Age := Nat}}
 ex_17 = data'
@@ -328,8 +335,8 @@ ex_20 = parseAge' data
 -- The polymorphic `parseAge'` does not accept the polymorphic `data'`.
 -- Nor does `getAge'` accept `year`.
 
--- Using `year'` and `getAge'` as the example, for simplicity.
--- The solver knows, from type of `year'` that:
+-- Using `year''` and `getAge'` as the example, for simplicity.
+-- The solver knows, from type of `year''` that:
 -- `{Year:_} < d`
 -- and wants to show that (to satisfy constraints on argument to `getAge'`)
 -- `d < {Age:_, Year:_}`
@@ -347,15 +354,15 @@ ex_20 = parseAge' data
 --   is not entailed by
 -- exit 1
 
--- I think this is the correct behavior, because the `forall` in `year' : forall d...` means that `year` has that type **for every choice of d**,
+-- I think this is the correct behavior, because the `forall` in `year'' : forall d...` means that `year` has that type **for every choice of d**,
 -- and since types exist where `d < {Age:_,Year:_}` does not hold, we cannot choose whatever `d` we like when deciding whether
 -- the constraints for an argument to `getAge'` are satisfied.
 
--- The misconception I was laboring under was that `forall d` means that we can choose whatever `d` we like when we try to pass `year'` to a function,
--- and expect it to work as if `d` was that row. However, some choices of `d` make `year'` invalid as an argument to `getAge'`, and `year'` also has those types.
+-- The misconception I was laboring under was that `forall d` means that we can choose whatever `d` we like when we try to pass `year''` to a function,
+-- and expect it to work as if `d` was that row. However, some choices of `d` make `year''` invalid as an argument to `getAge'`, and `year''` also has those types.
 
 -- ex_21_fail : Nat -- need type signature to force this to try to be a value.
--- ex_21_fail = getAge' year'
+-- ex_21_fail = getAge' year''
 
 -- Only the polymorphic one accepts the explicitly destructed and reconstructed upcast data
 -- ex_22_fail = parseAge data_upcast
@@ -421,7 +428,7 @@ getUnit = \x. prj x
 -- for a local translation of an upcast of getUnit, we can compose it with prj
 -- We'll see if this works in all cases.
 getUnit_upcast : Pi {'Name := String, 'Age := Int} -> Unit
-getUnit_upcast = getUnit . (\x. prj x)
+getUnit_upcast = getUnit . prj
 
 ex_24 = getUnit_upcast alice
 
