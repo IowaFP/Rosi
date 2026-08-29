@@ -9,35 +9,45 @@ import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple, EE.Types
 -- As an example, we'll implement Booleans as functions. We're relying on this
 -- being an untyped language, so we don't have to account for polymorphism.
 
-app : forall z. LamF < z => Mu (Sigma z) -> Mu (Sigma z) -> Mu (Sigma z)
-app = \f e. 'App: (pair f e)
+app : LamF < z => μ (Σ z) -> μ (Σ z) -> μ (Σ z)
+app f e= 'App: (f, e)
 
-desugarB : forall z.
-           LamF < z =>
-           Xh BoolF (\w. Mu (Sigma z))
-desugarB = \exp rec.
-            match exp
-            ('BConst: b ->
-               if b ('Lam: ('Lam: ('Var: 1)))
-                    ('Lam: ('Lam: ('Var: 0)))
-            | 'If: t -> app (app (rec t.'1) (rec t.'2)) (rec t.'3)
-            )
+desugarB : LamF < z => Xh BoolF (\w. μ (Σ z))
+desugarB exp rec =
+  match exp
+  ('BConst: b ->
+     if b ('Lam: ('Lam: ('Var: 1)))
+   ('Lam: ('Lam: ('Var: 0)))
+  | 'If: t -> app (app (rec t.'1) (rec t.'2)) (rec t.'3)
+  )
 
 -------------------------------------------------------------------------------
 -- Identity traversal
 
-ext : forall z : R[* -> *]. Pi (Functor z) -> Xh z (\ w. (Mu (Sigma z)))
-ext = \ d v rec. fmapS d rec v
+ext : Π (Functor* z) ->
+      Xh z (\w. (μ (Σ z)))
+ext d v rec = fmapS d rec v
 
--- TODO: Why is the result in terms of z, not w? The latter would require an
--- inj, but seems like the more correct thing to do...?
+-------------------------------------------------------------------------------
+-- Combined desugaring function
 
-desugar : forall y. BoolF < y, LamF < y - BoolF =>
-          Pi (Functor (y - BoolF)) -> Xh y (\ w. (Mu (Sigma (y - BoolF))))
-desugar = \d. desugarB | ext d
+desugar : BoolF < y, LamF < y - BoolF =>
+          Π (Functor (y - BoolF)) ->
+          Xh y (\w. (μ (Σ (y - BoolF))))
+desugar d = desugarB | ext d
 
-xpNott : Mu (Sigma LBF)
-xpNott = 'Lam: ('If: (triple ('Var: 0) ('BConst: False) ('BConst: True)))
+-------------------------------------------------------------------------------
+-- Examples
 
-desNott : Mu (Sigma LamF)
-desNott = histo (desugar functorLam) xpNott
+xpNot : μ (Σ (LamF + BoolF))
+xpNot = 'Lam: ('If: ('Var: 0, 'BConst: False, 'BConst: True))
+
+desNot : μ (Σ LamF)
+desNot = histo (desugar functorLam) xpNot
+
+xpArith : μ (Σ (ArithF + BoolF + LamF))
+xpArith = 'Lam: ('If: ('Var: 0, 'IConst: 1, 'IConst: 2))
+
+desArith : μ (Σ (ArithF + LamF))
+desArith = histo (desugar (functorLam ++ functorArith)) xpArith
+

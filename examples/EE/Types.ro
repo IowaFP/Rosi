@@ -34,16 +34,16 @@ functorTwo f x = pair (f x.'1) (f x.'2)
 functorThree : Functor (\t. Triple t t t)
 functorThree f x = triple (f x.'1) (f x.'2) (f x.'3)
 
-functorBool : Pi (Functor BoolF)
+functorBool : Π (Functor BoolF)
 functorBool = ('BConst := functorConst, 'If := functorThree)
 
-functorArith : Pi (Functor ArithF)
+functorArith : Π (Functor ArithF)
 functorArith = ('IConst := functorConst, 'Plus := functorTwo)
 
-functorLam : Pi (Functor LamF)
+functorLam : Π (Functor LamF)
 functorLam = ('Var := functorConst, 'Lam := functorId, 'App := functorTwo)
 
-functorRec : Pi (Functor RecF)
+functorRec : Π (Functor RecF)
 functorRec = 'Fix := functorId
 
 -------------------------------------------------------------------------------
@@ -53,7 +53,7 @@ tupleNames = ('1 := "1", '2 := "2", '3 := "3")
 
 showTuple : forall t : *, z : R[*].
             Fold (Const t z), Const String z < {'1 := String, '2 := String, '3 := String} =>
-            (t -> String) -> Pi (Const t z) -> String
+            (t -> String) -> Π (Const t z) -> String
 showTuple = \d. showP ('names := prj tupleNames, 'shows := every d)
 
 showBoolF : forall t. Show t -> ShowR (BoolF t)
@@ -77,6 +77,9 @@ showRecF = \d. ('names := ('Fix := "Fix"), 'shows := ('Fix := d))
 type ABF : R[* -> *]
 type ABF = ArithF + BoolF
 
+type ALF : R[* -> *]
+type ALF = ArithF + LamF
+
 type LBF : R [* -> *]
 type LBF = LamF + BoolF
 
@@ -86,13 +89,16 @@ type ABLF = ABF + LamF
 type AllF : R [* -> *]
 type AllF = ABLF + RecF
 
-functorLBF : Pi (Functor LBF)
+functorLBF : Π (Functor LBF)
 functorLBF = functorBool ++ functorLam
 
-functorABLF : Pi (Functor ABLF)
+functorALF : Π (Functor ALF)
+functorALF = functorArith ++ functorLam
+
+functorABLF : Π (Functor ABLF)
 functorABLF = functorArith ++ functorLBF
 
-functorAll : Pi (Functor AllF)
+functorAll : Π (Functor AllF)
 functorAll = functorArith
           ++ functorLBF
           ++ functorRec
@@ -106,26 +112,26 @@ showABLF = \d. showRCat (showArithF d) (showLBF d)
 showAllF : forall t. Show t -> ShowR (AllF t)
 showAllF = \d. showRCat (showABLF d) (showRecF d)
 
-showExpr : forall z : R[* -> *]. (forall t. Show t -> ShowR (z t)) -> Show (Mu (Sigma z))
+showExpr : forall z : R[* -> *]. (forall t. Show t -> ShowR (z t)) -> Show (μ (Σ z))
 showExpr = \d. fix (\showExpr e. showS (d showExpr) e)
 
 -------------------------------------------------------------------------------
 -- Some expressions
 
-xpId : Mu (Sigma AllF)
-xpId = 'Lam: ('Var: 0)
+xΠd : μ (Σ AllF)
+xΠd = 'Lam: ('Var: 0)
 
 shId : String
-shId = showExpr showAllF xpId
+shId = showExpr showAllF xΠd
 
-xpConst : Mu (Sigma AllF)
+xpConst : μ (Σ AllF)
 xpConst = 'Lam: ('Lam: ('Var: 1))
 
 shConst : String
 shConst = showExpr showAllF xpConst
 
-xpNot : Mu (Sigma AllF)
-xpNot = 'Lam: ('If: (triple ('Var: zero) ('BConst: False) ('BConst: True)))
+-- xpNot : μ (Σ ABLF)
+-- xpNot = 'Lam: ('If: (triple ('Var: zero) ('BConst: False) ('BConst: True)))
 
-shNot : String
-shNot = showExpr showAllF xpNot
+-- shNot : String
+-- shNot = showExpr showABLF xpNot
