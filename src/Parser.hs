@@ -326,9 +326,9 @@ labeledTy =
      u <- ty
      return [TLabeled l u | l <- ls]
 
-tcon = choice [ ordered (string "Pi") Pi
-              , ordered (string "Sigma") Sigma
-              , symbol "Mu" >> return (TConApp (Mu Unexpanded)) ] where
+tcon = choice [ ordered (string "Pi" <|> string "Π") Pi
+              , ordered (string "Sigma" <|> string "Σ") Sigma
+              , (symbol "Mu" <|> symbol "μ") >> return (TConApp (Mu Unexpanded)) ] where
   ordered p k =
     lexeme $
     do p
