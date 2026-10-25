@@ -16,6 +16,7 @@ import System.Environment
 import System.Exit           (exitFailure, exitSuccess)
 import System.FilePath
 import System.IO             (BufferMode (..), hPutStr, hPutStrLn, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
+import GHC.IO.Encoding (setLocaleEncoding)
 
 import Checker
 import DesugarInfix          (desugarInfix)
@@ -90,7 +91,8 @@ parseChasing additionalImportDirs fs =
     | otherwise                = findImport s
 
 main :: IO ()
-main = do nowArgs <- getArgs
+main = do setLocaleEncoding utf8
+          nowArgs <- getArgs
           configFile <- ("." ++) . dropExtension <$> getProgName
           globalArgs <- wordsIfExists =<< getXdgDirectory XdgConfig configFile
           localArgs <- wordsIfExists configFile
