@@ -24,7 +24,12 @@ import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
 
 -------------------------------------------------------------------------------
--- Operator symbols
+-- Reserved symbols
+
+typeK , labK :: Parser String 
+typeK     = symbol "*"      <|> symbol "⋆"
+labK      = symbol "L"
+
 forAll, exists :: Parser String 
 forAll    = string "forall" <|> symbol "∀"
 exists    = string "exists" <|> symbol "∃"
@@ -38,9 +43,10 @@ arrow, fatArrow :: Parser String
 arrow     = symbol "->"     <|> symbol "→"
 fatArrow  = symbol "=>"     <|> symbol "⇒"
 
-labels, compl :: Parser String 
+labels, compl , mapOp :: Parser String 
 labels    = symbol ":="     <|> symbol "▹"
 compl     = symbol "-"      <|> symbol "\\" <|> symbol "∖"
+mapOp     = symbol "*"      <|> symbol "$"
 
 lambda :: Parser String 
 lambda    = symbol "\\"     <|> symbol "λ"
@@ -260,8 +266,8 @@ termIdentifier = try surroundedOp <|> identifier
 
 kind :: Parser Kind
 kind = chainr1 akind (arrow >> return KFun) where
-  akind =  choice [ symbol "*" >> return KType
-                  , symbol "L" >> return KLabel
+  akind =  choice [ typeK >> return KType
+                  , labK >> return KLabel
                   , parens kind
                   , do symbol "R"
                        KRow <$> brackets kind ]
@@ -344,7 +350,7 @@ apps = foldl1 TApp
 mapType :: Parser Ty
 mapType =
   do t <- atype
-     us <- many (symbol "*")
+     us <- many mapOp
      return (foldr (const TMap) t us)
 
 labeledTy =

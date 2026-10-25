@@ -9,6 +9,9 @@ import Parse.Unicode.ArrowType
 -- [✓] Parse ∖ as - 
 import Parse.Unicode.Complement
 
+-- [ ] Parse ∃ as "exists"
+import Parse.Unicode.exists 
+
 -- [ ] Parse ∀ as "forall"
 import Parse.Unicode.forall 
 
@@ -38,6 +41,9 @@ import Parse.Unicode.Subscripts
 
 -- [✓] Parse ⇒ as => 
 import Parse.Unicode.Then 
+
+-- [✓] Parse * as ⋆
+import Parse.Unicode.TypeKind
 
 -- [ ] Parse ⊤ as Unit
 import Parse.Unicode.Unit 
