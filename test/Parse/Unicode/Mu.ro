@@ -1,0 +1,9 @@
+-- Parse μ as Mu
+
+-- Without:
+without : Mu (\ x. x)
+without = fix (\x. x)
+
+-- With:
+with : μ (\ x. x)
+with = fix (\x. x)

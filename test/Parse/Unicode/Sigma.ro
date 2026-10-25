@@ -1,0 +1,9 @@
+-- Parse Σ as Sigma
+
+-- Without:
+without : Sigma { 'x := String, 'y := String}
+without = inj (#'x := "x")
+
+-- With:
+with : Σ {'x := String, 'y := String}
+with =  inj (#'x := "y")

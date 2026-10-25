@@ -1,0 +1,17 @@
+-- Parse ▹ as ":=" in terms
+
+-- Without (records):
+withoutPi : Pi {'l := String, 'y := String}
+withoutPi = ('l := "foo", 'y := "bar")
+
+-- With (records):
+withPi : Pi {'l := String, 'y := String}
+withPi = {'l ▹ "foo", 'y ▹ "bar"}
+
+-- Without (variants):
+withoutSigma : Sigma {'l := String}
+withoutSigma = ('l := "foo")
+
+-- With (variants):
+withSigma : Sigma {'l := String}
+withSigma = ('l ▹ "foo")

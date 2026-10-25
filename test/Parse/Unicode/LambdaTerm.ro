@@ -1,0 +1,9 @@
+-- Parse λ as \ 
+
+-- Without:
+without : a -> a
+without = \ x. x 
+
+-- With:
+with : a -> a 
+with = λ x. x

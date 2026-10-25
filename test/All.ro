@@ -1,0 +1,5 @@
+-- Files that should all compile!
+
+import Parse.Parse.Unicode.All
+import Parse.DotCompose
+import Parse.EtaContraction

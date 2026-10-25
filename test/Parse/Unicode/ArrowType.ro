@@ -1,0 +1,9 @@
+-- Parse → as -> (in type signatures)
+
+-- Without:
+without : a -> a 
+without = \ x. x
+
+-- With:
+with : a → a
+with = \ x. x

@@ -1,0 +1,9 @@
+-- Parse ⇒ as => 
+
+-- Without:
+without : {'l := u} < z => Pi z 
+without = fix (\x. x)
+
+-- With:
+with : {'l := u} < z ⇒ Pi z 
+with = fix (\x. x)

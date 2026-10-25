@@ -1,0 +1,7 @@
+-- Parse ⊤ as Unit
+
+type ⊤ : *
+type ⊤ = Pi {}
+
+tt : ⊤
+tt = prj ('x := \@a x. x)

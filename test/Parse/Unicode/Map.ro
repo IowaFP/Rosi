@@ -1,0 +1,9 @@
+-- Make sure explicit maps are allowed
+
+-- Without: 
+without : forall f : * -> *, z : R[*]. Pi (f z)
+without = fix (\ x. x)
+
+-- With:
+with: forall f : * -> *, z : R[*]. Pi (f $ z)
+with = fix (\ x. x)

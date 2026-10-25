@@ -1,0 +1,42 @@
+{
+    "Right Arrow": {
+        "prefix": "\\to",
+        "body": "→"
+    },
+    "Lambda": {
+        "prefix": "\\lambda",
+        "body": "λ"
+    },
+    "Gl": {
+        "prefix": "\\Gl",
+        "body": "λ"
+    },
+    "GL": {
+        "prefix": "\\GL",
+        "body": "Λ" 
+    },
+    "Then": {
+        "prefix": "\\then",
+        "body": "⇒"
+    },		
+    "Pi": {
+        "prefix": "\\Pi",
+        "body": "Π"
+    },				
+    "pi": {
+        "prefix": "\\pi",
+        "body": "π"
+    },	
+    "Labels Symbol": {
+        "prefix": ":=",
+        "body": "▹"
+    },					
+    "labels": {
+        "prefix": "labels",
+        "body": "▹"
+    },					
+    "Compl": {
+        "prefix": "\\Compl",
+        "body": "∖"
+    },					
+}

@@ -1,0 +1,9 @@
+-- Parse Π as Pi
+
+-- Without:
+without : Pi {}
+without = prj ('x := \@a x. x)
+
+-- With:
+with : Π {}
+with = prj ('x := \@a x. x)

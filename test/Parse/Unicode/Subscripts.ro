@@ -1,0 +1,13 @@
+-- Subscripts 
+
+x₁ : String 
+x₁ = ""
+
+x₂ : String 
+x₂ = ""
+
+x₃ : String 
+x₃ = ""
+
+x₄ : String 
+x₄ = ""
