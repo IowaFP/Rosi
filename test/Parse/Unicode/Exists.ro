@@ -1,0 +1,9 @@
+-- Type ∀ as forall
+
+-- Without:
+without : exists a. a 
+without = "foo"
+
+-- With:
+-- with : ∃ a. a
+-- with = "foo"

@@ -40,7 +40,7 @@ fatArrow  = symbol "=>"     <|> symbol "⇒"
 
 labels, compl :: Parser String 
 labels    = symbol ":="     <|> symbol "▹"
-compl     = symbol "-"      <|> symbol "∖"
+compl     = symbol "-"      <|> symbol "\\" <|> symbol "∖"
 
 lambda :: Parser String 
 lambda    = symbol "\\"     <|> symbol "λ"
