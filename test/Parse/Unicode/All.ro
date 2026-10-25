@@ -21,9 +21,6 @@ import Parse.Unicode.LabelsType
 -- [ ] Parse λ as \ 
 import Parse.Unicode.LambdaTerm
 
--- [ ] Parse Λ as /\ 
-import Parse.Unicode.LambdaType
-
 -- [ ] Make sure explicit map ($) is permitted
 import Parse.Unicode.Map 
 
@@ -47,7 +44,7 @@ import Parse.Unicode.Unit
 
 -- [ ] Permit unicode parsing of variable names, e.g.:
 --       ∀ ℓ : L, ∀ τ : ⋆, ∀ υ, α, etc
-import Parse.Unicode.VarNames
+-- import Parse.Unicode.VarNames
 
 -- [ ] Parse _×_ as Tuple (or whatever it's called) 
 -- (TODO)

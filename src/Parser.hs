@@ -1,6 +1,8 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable, NoImplicitPrelude #-}
 {- HLINT ignore "Fuse foldr/map" -}
 module Parser where
+
+import Prelude hiding (pi)
 
 import Syntax
 
@@ -20,6 +22,33 @@ import System.IO                  (hPutStrLn, stderr)
 import Text.Megaparsec            hiding (State)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
+
+-------------------------------------------------------------------------------
+-- Operator symbols
+forAll, exists :: Parser String 
+forAll    = string "forall" <|> symbol "∀"
+exists    = string "exists" <|> symbol "∃"
+
+pi, sigma, mu :: Parser String 
+pi        = string "Pi"     <|> string "Π"
+sigma     = string "Sigma"  <|> string "Σ"
+mu        = symbol "Mu"     <|> symbol "μ"
+
+arrow, fatArrow :: Parser String 
+arrow     = symbol "->"     <|> symbol "→"
+fatArrow  = symbol "=>"     <|> symbol "⇒"
+
+labels, compl :: Parser String 
+labels    = symbol ":="     <|> symbol "▹"
+compl     = symbol "-"      <|> symbol "∖"
+
+lambda :: Parser String 
+lambda    = symbol "\\"     <|> symbol "λ"
+
+-- TODO:
+-- - Explicit map operator $
+-- - more unicode identifiers e.g. α, τ, υ
+
 
 
 --------------------------------------------------------------------------------
@@ -119,8 +148,8 @@ lexeme p    = guardIndent p <* whitespace
 
 symbol      = lexeme . string
 
-reserved :: String -> Parser ()
-reserved s  = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
+reserved :: Parser a -> Parser ()
+reserved s  = lexeme (try (s *> notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
 
 constants = [("prj", CPrj),
              ("inj", CInj),
@@ -150,13 +179,13 @@ fixityKeyword :: Parser FixityKind
 fixityKeyword = fromKeyMap fixityKeywords
 
 fromKeyMap :: [(String, a)] -> Parser a
-fromKeyMap keyMap = choice [k <$ reserved s | (s, k) <- keyMap]
+fromKeyMap keyMap = choice [k <$ reserved (string s) | (s, k) <- keyMap]
 
 syntaxKeywords = ["let", "in", "forall", "import"]
 
 reservedWords = syntaxKeywords ++ map fst fixityKeywords ++ map fst constants
 
-reservedOps = [":", "++", "|", "^", "~", "@", "\\", ":=", "=", "->", "#", ".", ":/"]
+reservedOps = [":", "++", "|", "^", "~", "@", "\\", ":=", "=", "->", "#", ".", ":/", "→", "⇒", "▹", "∀" ]
 
 namespace :: Parser String
 namespace = ((:) <$> upperChar) <*> many alphaNumChar <* char '.'
@@ -226,13 +255,11 @@ surroundedIdentifier  = immediateBackticks identifier
 termIdentifier = try surroundedOp <|> identifier
 
 
-
-
----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Parser
 
 kind :: Parser Kind
-kind = chainr1 akind (symbol "->" >> return KFun) where
+kind = chainr1 akind (arrow >> return KFun) where
   akind =  choice [ symbol "*" >> return KType
                   , symbol "L" >> return KLabel
                   , parens kind
@@ -260,15 +287,15 @@ ty = do pfs <- many prefix
 
   prefix :: Parser (Ty -> Ty)
   prefix = choice
-             [ do symbol "\\"
+             [ do lambda
                   bs <- some typeLamBinders
                   dot
                   return (foldr (\(v, k) f -> TLam v k . f) id (concat bs))
-             , do reserved "forall"
+             , do reserved forAll
                   bs <- commaSep1 quantBinders
                   dot
                   return (foldr (\(v, k) f -> TForall v k . f) id (concat bs))
-             , do reserved "exists"
+             , do reserved exists
                   bs <- commaSep quantBinders
                   dot
                   return (foldr (\(v, k) f -> TExists v k . f) flipThens (concat bs)) ]
@@ -281,7 +308,7 @@ ty = do pfs <- many prefix
     scan = tyOrP >>= rest
 
     rest (Right t) = return t
-    rest (Left ps)  = do symbol "=>"
+    rest (Left ps)  = do fatArrow
                          t <- scan
                          return (foldr TThen t ps)
                     <|>
@@ -291,13 +318,13 @@ tyOrP :: Parser (Either [Pred] Ty)
 tyOrP = Left <$> try (commaSep1 pr) <|> Right <$> arrTy
 
 arrTy :: Parser Ty
-arrTy = chainr1 labTy (symbol "->" >> return (\t u -> TApp (TApp TFun t) u))
+arrTy = chainr1 labTy (arrow >> return (\t u -> TApp (TApp TFun t) u))
 
 labTy :: Parser Ty
 labTy =
   do t <- minusTy
      choice
-       [ do symbol ":="
+       [ do labels
             TLabeled t <$> ty
        , return t ]
 
@@ -307,7 +334,7 @@ labTy =
 minusTy :: Parser Ty
 minusTy =
     chainl1 (apps <$> some mapType)
-            (choice [ lexeme (try (string "-" <* notFollowedBy (char '>'))) *> return TCompl  -- wtf is this?
+            (choice [ lexeme (try (compl <* notFollowedBy (char '>'))) *> return TCompl  -- wtf is this?
                     , symbol "+" *> return TPlus
                     ])
 
@@ -322,13 +349,13 @@ mapType =
 
 labeledTy =
   do ls <- some atype
-     symbol ":="
+     labels
      u <- ty
      return [TLabeled l u | l <- ls]
 
-tcon = choice [ ordered (string "Pi" <|> string "Π") Pi
-              , ordered (string "Sigma" <|> string "Σ") Sigma
-              , (symbol "Mu" <|> symbol "μ") >> return (TConApp (Mu Unexpanded)) ] where
+tcon = choice [ ordered pi Pi
+              , ordered sigma Sigma
+              , mu >> return (TConApp (Mu Unexpanded)) ] where
   ordered p k =
     lexeme $
     do p
@@ -342,7 +369,7 @@ atype = choice [ TLab <$> lexeme lidentifier
                , TSing <$> (char '#' >> atype)
                , tcon <*> atype
                , TRow <$> braces (concat <$> commaSep labeledTy)
-               , TString <$ reserved "String"
+               , TString <$ reserved (string "String")
                , TVar (-1) <$> lexeme qidentifier
                , do ts <- parens (commaSep ty)
                     return $ case ts of
@@ -351,13 +378,13 @@ atype = choice [ TLab <$> lexeme lidentifier
                       ts  -> TConApp Pi (TRow [TLabeled (TLab (show n)) t | n <- [1..] | t <- ts])]
 
 pr :: Parser Pred
-pr = choice [ do reserved "Fold"
+pr = choice [ do reserved (string "Fold")
                  PFold <$> arrTy
             , do t <- arrTy
                  choice
-                   [ do reserved "<"
+                   [ do reserved (string "<")
                         PLeq t <$> arrTy
-                  , do reserved "~"
+                  , do reserved (string "~")
                        u <- arrTy
                        return $ case t of
                          TPlus x y -> PPlus x y u
@@ -406,7 +433,7 @@ term :: Parser Term
 term = prefixes typedTerm where
 
   prefix :: Parser (Term -> Term)
-  prefix = do symbol "\\"
+  prefix = do lambda
               bs <- some termLamBinders
               dot
               return (foldr1 (.) (concat bs))
@@ -441,9 +468,9 @@ term = prefixes typedTerm where
   branchTerm = chainl1 caseTerm $ choice [op "++" (ebinary CConcat) , op "|" (ebinary CBranch)]
 
   caseTerm =
-        do p <- try (pattern <* symbol "->")
+        do p <- try (pattern <* arrow)
            buildCase p <$> caseTerm
-    <|> do try (symbol "otherwise" >> symbol "->")
+    <|> do try (symbol "otherwise" >> arrow)
            EApp (EVar (-1) (reverse ["Ro", "Base", "otherwise"])) <$> caseTerm
     <|> composeTerm
     where
@@ -485,7 +512,7 @@ term = prefixes typedTerm where
   labTerm =
     do t <- stringEqTerm
        choice
-         [ do symbol ":="
+         [ do labels
               ELabel Nothing t <$> term
          , do symbol ":/"
               EUnlabel Nothing t <$> stringEqTerm
@@ -582,7 +609,7 @@ data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKind
 topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
   lhs = choice
-          [ ImportLHS <$ reserved "import"
+          [ ImportLHS <$ reserved (string "import")
           , TypeLHS <$> lexeme typeIdentifier
           , TermLHS <$> try (lexeme termIdentifier)
           , FixityLHS <$> lexeme fixityKeyword
@@ -595,7 +622,7 @@ topLevel = item lhs body where
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
 
-  typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
+  typeIdentifier = reserved (string "type") *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
   body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
   body (TypeLHS x) =
     choice

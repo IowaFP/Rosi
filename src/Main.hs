@@ -26,6 +26,9 @@ import Printer
 import Scope
 import Syntax                hiding ((<.>))
 
+-- ----------------------------------------------------------------------------
+-- Options & flags
+
 data Flags = Flags { evals :: [String], inputs :: [String], imports :: [String]
                    , doPrintHelpMessage, doShowProgress
                    , doTraceKindInference, doTraceInference
@@ -55,6 +58,9 @@ options = [ Option [] [] (ReqArg (\s f -> f { inputs = inputs f ++ [s]}) "FILE")
           , Option [] ["reset"] (NoArg (const emptyFlags)) "reset flags" ]
 unprog (Prog ds) = ds
 
+-- ----------------------------------------------------------------------------
+-- Parsing and import chasing
+
 parseChasing :: [FilePath] -> [FilePath] -> IO [Decl]
 parseChasing additionalImportDirs fs =
   do fs' <- mapM findStartingPoint fs
@@ -66,11 +72,12 @@ parseChasing additionalImportDirs fs =
     do already <- get
        if fn `elem` already
        then chase fns
-       else do (imports, decls) <- unprog <$> liftIO (parse fn moduleName =<< readFile fn)
-               importFns <- mapM (liftIO . findImport) imports
-               imported <- chase importFns
-               modify (\already -> fn : already)
-               ((imported ++ decls) ++) <$> chase fns
+       else do 
+          (imports, decls) <- unprog <$> liftIO (parse fn moduleName =<< readFile fn)
+          importFns <- mapM (liftIO . findImport) imports
+          imported <- chase importFns
+          modify (\already -> fn : already)
+          ((imported ++ decls) ++) <$> chase fns
 
   findImport :: String -> IO ([String], FilePath)
   findImport s = check importDirs
@@ -88,6 +95,9 @@ parseChasing additionalImportDirs fs =
   findStartingPoint s
     | takeExtension s == ".ro" = return ([takeBaseName s], s)
     | otherwise                = findImport s
+
+-- ----------------------------------------------------------------------------
+-- main
 
 main :: IO ()
 main = do nowArgs <- getArgs
