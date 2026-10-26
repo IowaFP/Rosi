@@ -10,7 +10,7 @@ import Parse.Unicode.ArrowType
 import Parse.Unicode.Complement
 
 -- [ ] Parse ∃ as "exists"
-import Parse.Unicode.exists 
+import Parse.Unicode.Exists 
 
 -- [ ] Parse ∀ as "forall"
 import Parse.Unicode.Forall 
