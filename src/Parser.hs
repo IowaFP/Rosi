@@ -22,6 +22,7 @@ import System.IO                  (hPutStrLn, stderr)
 import Text.Megaparsec            hiding (State)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
+import Data.Functor (void)
 
 -------------------------------------------------------------------------------
 -- Reserved symbols
@@ -30,9 +31,9 @@ typeK , labK :: Parser String
 typeK     = symbol "*"      <|> symbol "⋆"
 labK      = symbol "L"
 
-forAll, exists :: Parser String 
-forAll    = string "forall" <|> symbol "∀"
-exists    = string "exists" <|> symbol "∃"
+forAll, exists :: Parser ()
+forAll    = reserved "forall" <|> void (symbol "∀" )
+exists    = reserved "exists" <|> void (symbol "∃")
 
 pi, sigma, mu :: Parser String 
 pi        = string "Pi"     <|> string "Π"
@@ -297,11 +298,11 @@ ty = do pfs <- many prefix
                   bs <- some typeLamBinders
                   dot
                   return (foldr (\(v, k) f -> TLam v k . f) id (concat bs))
-             , do reserved forAll
+             , do forAll
                   bs <- commaSep1 quantBinders
                   dot
                   return (foldr (\(v, k) f -> TForall v k . f) id (concat bs))
-             , do reserved exists
+             , do exists
                   bs <- commaSep quantBinders
                   dot
                   return (foldr (\(v, k) f -> TExists v k . f) flipThens (concat bs)) ]
