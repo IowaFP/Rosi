@@ -118,11 +118,11 @@ showExpr = \d. fix (\showExpr e. showS (d showExpr) e)
 -------------------------------------------------------------------------------
 -- Some expressions
 
-xΠd : μ (Σ AllF)
-xΠd = 'Lam: ('Var: 0)
+xpId : μ (Σ AllF)
+xpId = 'Lam: ('Var: 0)
 
 shId : String
-shId = showExpr showAllF xΠd
+shId = showExpr showAllF xpId
 
 xpConst : μ (Σ AllF)
 xpConst = 'Lam: ('Lam: ('Var: 1))
@@ -130,8 +130,8 @@ xpConst = 'Lam: ('Lam: ('Var: 1))
 shConst : String
 shConst = showExpr showAllF xpConst
 
--- xpNot : μ (Σ ABLF)
--- xpNot = 'Lam: ('If: (triple ('Var: zero) ('BConst: False) ('BConst: True)))
+xpNot : μ (Σ ABLF)
+xpNot = 'Lam: ('If: (triple ('Var: zero) ('BConst: False) ('BConst: True)))
 
--- shNot : String
--- shNot = showExpr showABLF xpNot
+shNot : String
+shNot = showExpr showABLF xpNot
