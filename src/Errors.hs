@@ -13,6 +13,7 @@ data Error = ErrContextDefn QName Error | ErrContextType Ty Error | ErrContextTe
            | ErrTypeDesugaring Ty
              -- Error which occurred during Infix Resolution, plus the EInfix expression where it occured.
            | ErrInfixDesugaring InfixDesugaringError [EInfixToken]
+           | ErrPredUnsatisfiable Pred UnsatisfiableError
            | ErrUnboundVar QName | ErrUnboundTyVar QName | ErrDuplicateDefinition QName
            | ErrOther String
 
@@ -29,3 +30,7 @@ data UnificationError =
   | PredsDon'tUnify Pred Pred
   | Unproductive
   | UErrOther String
+
+data UnsatisfiableError =
+    LeqConcrete [String] [String]
+  | PlusConcrete [String]
