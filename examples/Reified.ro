@@ -1,25 +1,54 @@
 import Ro.Base, Data.Nat
 
--- type ROrdF : (R[*] -> R[*]) -> R[*] -> R[*]
--- type ROrdF rec z =
---   { 'Empty := exists. z ~ {} => Unit
---   , 'Single := exists l t. z ~ {l := t} => #l
---   , 'Append := exists x y. x + y ~ z => (Sigma (rec x), Sigma (rec y))
---   }
+-------------------------------------------------------------------------------
+-- The type of row orderings
+--
+-- The type `ROrd z` gives a concrete ordering to the entries in `z`. At base
+-- case, we have either an empty row or a singleton row. In the inductive case,
+-- we have orderings of two subrows. The "value" of this type is that the
+-- subrows in the inductive case are ordered.
+--
+-- This is an example of a "unary row-indexed type", a term I am trying on for
+-- size.
 
 type ROrdF : (R[*] -> *) -> R[*] -> *
 type ROrdF rec z =
-  Sigma { 'Empty := exists. z ~ {} => Unit
+  Sigma { 'Empty  := exists.     z ~ {}       => Unit
         , 'Single := exists l t. z ~ {l := t} => #l
-        , 'Append := exists x y. x + y ~ z => (rec x, rec y)
+        , 'Append := exists x y. x + y ~ z    => (rec x, rec y)
         }
-
 
 type ROrd : R[*] -> *
 type ROrd z = Mu ROrdF z
 
+-- An alternative definition, as an attempting demonstration of recursive rows.
+-- For the moment, however, this only serves to illustrates the shortcomings of
+-- the predicate solver, which doesn't know how to solve constraints over
+-- recursive rows.
+
+type ROrdF' : (R[*] -> R[*]) -> R[*] -> R[*]
+type ROrdF' rec z =
+  { 'Empty := exists. z ~ {} => Unit
+  , 'Single := exists l t. z ~ {l := t} => #l
+  , 'Append := exists x y. x + y ~ z => (Sigma (rec x), Sigma (rec y))
+  }
+
+type ROrd' : R[*] -> *
+type ROrd' z = Sigma (Mu ROrdF' z)
+
+-------------------------------------------------------------------------------
+-- Folding records
+--
+-- We can now defining folding records by induction over row orderings.
+
 type FoldRec : *
-type FoldRec = forall z a. ROrd z -> (forall t. {l := t} < z => #l -> t -> a) -> (a -> a -> a) -> a -> Pi z -> a
+type FoldRec =
+    forall z a.
+        ROrd z ->                                    -- Ordering of row `z`
+        (forall t. {l := t} < z => #l -> t -> a) ->  -- Base case 1: singletons
+        (a -> a -> a) ->                             -- Inductive case
+        a ->                                         -- Base case 2: empty row
+        Pi z -> a                                    -- Result
 
 foldrecBody : FoldRec -> FoldRec
 foldrecBody foldrec @z row single append empty record = match row
@@ -34,16 +63,38 @@ foldrecBody foldrec @z row single append empty record = match row
 foldrec : FoldRec
 foldrec = fix foldrecBody
 
+-------------------------------------------------------------------------------
+-- Examples
 --
-
-eqP' : ROrd z -> Pi (Eq z) -> Eq (Pi z)
-eqP' row d r = foldrec row (\l x. d.l r.l x) and True
+-- First, here are two differing orderings of a two-entry row.
 
 r1 : ROrd {'A := t, 'B := u}
 r1 = 'Append: ('Single: 'A, 'Single: 'B)
 
-v1 = eqP' r1 (every eqBool) ('A := True, 'B := False) ('A := True, 'B := False)
-v2 = eqP' r1 (every eqBool) ('A := True, 'B := True) ('A := True, 'B := False)
+r2 : ROrd {'A := t, 'B := u}
+r2 = 'Append: ('Single: 'B, 'Single: 'A)
+
+-- Note that there's no connection between the way the row is specified and the
+-- order that it's given... `r1` also orders the row `{'B := u, 'A := t}`, and
+-- so forth.
+
+-- We can repeat the definition of `eqP` from `Ro.Base`, replacing `fold` (and
+-- the corresponding `Fold z` constraint) with `foldrec` and an explicit `ROrd
+-- z`.
+
+eqP' : ROrd z -> Pi (Eq z) -> Eq (Pi z)
+eqP' row d r = foldrec row (\l x. d.l r.l x) and True
+
+-- Testing for equality doesn't depend on row ordering, so using different
+-- orderings gives the same results
+
+v1a = eqP' r1 (every eqBool) ('A := True, 'B := False) ('A := True, 'B := False)
+v1b = eqP' r2 (every eqBool) ('A := True, 'B := False) ('A := True, 'B := False)
+v2a = eqP' r1 (every eqBool) ('A := True, 'B := True) ('A := True, 'B := False)
+v2b = eqP' r2 (every eqBool) ('A := True, 'B := True) ('A := True, 'B := False)
+
+-- Let's define an operation where ordering does matter: (lexicographic)
+-- comparison.
 
 next : Cmp -> Cmp -> Cmp
 next = 'EQ: u -> id
@@ -53,11 +104,13 @@ next = 'EQ: u -> id
 lexico : ROrd z -> Pi (Compare z) -> Compare (Pi z)
 lexico row d r = foldrec row (\l x. d.l r.l x) next LT
 
-r2 : ROrd {'A := t, 'B := u}
-r2 = 'Append: ('Single: 'B, 'Single: 'A)
+-- Specializing ordering to records of nats.
 
-c : ROrd {'A := Nat, 'B := Nat} -> Compare (Pi {'A := Nat, 'B := Nat})
+c : ROrd ((Const Nat)* z) -> Compare (Pi ((Const Nat)* z))
 c row r1 r2 = lexico row (every compN) r1 r2
+
+-- Now we can actually observe a difference: `m1` comes first if `'A` comes
+-- before `'B`, but second if `'B` comes before `'A`.
 
 m1 : Pi {'A := Nat, 'B := Nat}
 m1 = ('A := 1, 'B := 2)
@@ -68,7 +121,13 @@ m2 = ('A := 2, 'B := 1)
 v3 = c r1 m1 m2
 v4 = c r2 m1 m2
 
+-------------------------------------------------------------------------------
+-- Renaming records and variants
 --
+-- We consider renamings of records and variants, an example of a "binary
+-- row-indexed type". Here the value of the type is all in the `'Single` case;
+-- the ordering in `'Append` is irrelevant.
+
 
 type RenamingF : (R[*] -> R[*] -> *) -> (R[*] -> R[*] -> *)
 type RenamingF rec y z =
@@ -80,6 +139,8 @@ type RenamingF rec y z =
 type Renaming : R[*] -> R[*] -> *
 type Renaming = Mu RenamingF
 
+-- Renaming records
+
 type RenameP : *
 type RenameP = forall y z. Renaming y z -> Pi y -> Pi z
 
@@ -88,7 +149,7 @@ renamePBody renameP @y @z renaming r = match renaming
   ( 'Empty: (u : exists. y ~ {}, z ~ {} => Unit) ->
       r
   | 'Single: (p : exists k l t. y ~ {k := t}, z ~ {l := t} => (#k, #l)) ->
-      (p.'2 := sel r (p.'1))
+      (p.'2 := sel r (p.'1)) -- Parser limitation: r.(p.'1) is parsed as composition, not selection
   | 'Append: (p : exists w w' x x'. w + x ~ y, w' + x' ~ z => (Renaming w w', Renaming x x')) ->
       (renameP p.'1 (prj r) ++ renameP p.'2 (prj r))
   )
@@ -96,26 +157,31 @@ renamePBody renameP @y @z renaming r = match renaming
 renameP : RenameP
 renameP = fix renamePBody
 
+-- Renaming variants
+
 type RenameS : *
 type RenameS = forall y z. Renaming y z -> Sigma y -> Sigma z
 
+-- There's a cunning η-contraction here: each branch of `renameSBody` can define
+-- the `Sigma y -> Sigma z` function points-free.
+
 renameSBody : RenameS -> RenameS
-renameSBody renameS @y @z renaming v = match renaming
-  ( 'Empty: (u : exists. y ~ {}, z ~ {} => Unit) -> v
+renameSBody renameS @y @z renaming = match renaming
+  ( 'Empty: (u : exists. y ~ {}, z ~ {} => Unit) -> id
   | 'Single: (p : exists k l t. y ~ {k := t}, z ~ {l := t} => (#k, #l)) ->
-      match v (case p.'1 (con p.'2))
+      case p.'1 (con p.'2)
   | 'Append: (p : exists w w' x x'. w + x ~ y, w' + x' ~ z => (Renaming w w', Renaming x x')) ->
-      (inj . renameS p.'1 | inj . renameS p.'2) v
+      (inj . renameS p.'1 | inj . renameS p.'2)
   )
 
 renameS : RenameS
 renameS = fix renameSBody
 
---
+-- Demonstration
 
 ren1 : Renaming {'A := Bool, 'B := Unit} {'A := Unit, 'C := Bool}
 ren1 = 'Append: ('Single: ('A, 'C), 'Single: ('B, 'A))
 
-v5 = renameP ren1 ('A := True, 'B := tt)
+v5  = renameP ren1 ('A := True, 'B := tt)
 v6a = renameS ren1 ('A: True)
 v6b = renameS ren1 ('B: tt)
