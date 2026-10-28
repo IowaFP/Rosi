@@ -5,5 +5,8 @@ without : exists a. a
 without = "foo"
 
 -- With:
--- with : ∃ a. a
--- with = "foo"
+with : ∃ a. a
+with = "foo"
+
+withNoSpace : ∃a. a
+withNoSpace = "foo"

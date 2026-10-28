@@ -46,7 +46,7 @@ import Parse.Unicode.Then
 import Parse.Unicode.TypeKind
 
 -- [ ] Parse ⊤ as Unit
-import Parse.Unicode.Unit 
+-- import Parse.Unicode.Unit 
 
 -- [✓] Permit unicode parsing of variable names, e.g.:
 --       ∀ ℓ : L, ∀ τ : ⋆, ∀ υ, α, etc
