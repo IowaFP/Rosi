@@ -155,8 +155,8 @@ lexeme p    = guardIndent p <* whitespace
 
 symbol      = lexeme . string
 
-reserved :: Parser a -> Parser ()
-reserved s  = lexeme (try (s *> notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
+reserved :: String -> Parser ()
+reserved s  = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '\'' <|> char '_')))
 
 constants = [("prj", CPrj),
              ("inj", CInj),
@@ -186,7 +186,7 @@ fixityKeyword :: Parser FixityKind
 fixityKeyword = fromKeyMap fixityKeywords
 
 fromKeyMap :: [(String, a)] -> Parser a
-fromKeyMap keyMap = choice [k <$ reserved (string s) | (s, k) <- keyMap]
+fromKeyMap keyMap = choice [k <$ reserved s | (s, k) <- keyMap]
 
 syntaxKeywords = ["let", "in", "forall", "import"]
 
@@ -376,7 +376,7 @@ atype = choice [ TLab <$> lexeme lidentifier
                , TSing <$> (char '#' >> atype)
                , tcon <*> atype
                , TRow <$> braces (concat <$> commaSep labeledTy)
-               , TString <$ reserved (string "String")
+               , TString <$ reserved "String"
                , TVar (-1) <$> lexeme qidentifier
                , do ts <- parens (commaSep ty)
                     return $ case ts of
@@ -385,13 +385,13 @@ atype = choice [ TLab <$> lexeme lidentifier
                       ts  -> TConApp Pi (TRow [TLabeled (TLab (show n)) t | n <- [1..] | t <- ts])]
 
 pr :: Parser Pred
-pr = choice [ do reserved (string "Fold")
+pr = choice [ do reserved "Fold"
                  PFold <$> arrTy
             , do t <- arrTy
                  choice
-                   [ do reserved (string "<")
+                   [ do reserved "<"
                         PLeq t <$> arrTy
-                  , do reserved (string "~")
+                  , do reserved "~"
                        u <- arrTy
                        return $ case t of
                          TPlus x y -> PPlus x y u
@@ -616,7 +616,7 @@ data LHS = TypeLHS String | TermLHS String | ImportLHS | FixityLHS FixityKind
 topLevel :: Parser ([Char], TL)
 topLevel = item lhs body where
   lhs = choice
-          [ ImportLHS <$ reserved (string "import")
+          [ ImportLHS <$ reserved "import"
           , TypeLHS <$> lexeme typeIdentifier
           , TermLHS <$> try (lexeme termIdentifier)
           , FixityLHS <$> lexeme fixityKeyword
@@ -629,7 +629,7 @@ topLevel = item lhs body where
   -- Maybe this points to a more cunning behavior for lexeme: that having
   -- checked the indentation *once*, nested calls should not check it further.
 
-  typeIdentifier = reserved (string "type") *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
+  typeIdentifier = reserved "type" *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_'))
   body ImportLHS   = ("",) . ImportTL <$> commaSep (lexeme (some (alphaNumChar <|> char '.')))
   body (TypeLHS x) =
     choice
