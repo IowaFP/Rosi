@@ -225,6 +225,8 @@ solve (cin, p, r) =
     suppose (typesEqual z z')
       (suppose (typesEqual x x') (forceFD y y') <|>
        suppose (typesEqual y y') (forceFD x x') <|>
+       suppose (typesEqual x y') (forceFD x' y) <|>
+       suppose (typesEqual x' y) (forceFD x y') <|>
        (case (x, x') of
           (TRow xr, TRow xr')
             | Just xs <- mapM splitLabel xr, Just xs' <- mapM splitLabel xr', sameSet (map fst xs) (map fst xs') ->
