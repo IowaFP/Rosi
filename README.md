@@ -43,12 +43,25 @@ Top-level definitions can be evaluated by providing the `-e` option. For example
 
 ```shell
 > cabal run Rosi -- -i rolib -i examples EE -e szId,szId0
-szId = in (<0, in (<0, in (<1, ()>)>)>)
-szId0 = in (<0, in (<0, in (<1, ()>)>)>)
+EE.Size.szId = 2
+EE.Size.szId0 = 2
 >
 ```
 
-By default, Rosi searches for modules in the current directory. Its search list can be expanded using the `-i` option. Common options can a configuration file in the current directory, or in your XDG_CONFIG directory. Rosi looks for configuration files with the same name as its executable; to take best advantage of this, you may not want to invoke Rosi via `cabal run`.
+By default, Rosi searches for modules in the current directory. Its search list can be expanded using the `-i` option.
+
+Common options can be stored a configuration file in the current directory or in your XDG_CONFIG directory. Rosi looks for configuration files either named ".rosi" or with the same name as its executable. The contents of the configuration file are identical to the command line options (although not necessarily on a single line). For example, you could have a `.rosi` file containing
+
+```
+-i rolib
+-i examples
+```
+
+and then the above output would also result from
+
+```shell
+> cabal run Rosi -- EE -e szId,szId0
+```
 
 # Rose by Example
 
