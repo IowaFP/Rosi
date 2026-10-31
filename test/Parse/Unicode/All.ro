@@ -1,4 +1,4 @@
-import Ro.base
+import Ro.Base
 
 -- [✓] Parse → as -> (in kind signatures)
 import Parse.Unicode.ArrowKind
@@ -10,10 +10,10 @@ import Parse.Unicode.ArrowType
 import Parse.Unicode.Complement
 
 -- [ ] Parse ∃ as "exists"
-import Parse.Unicode.exists 
+import Parse.Unicode.Exists 
 
 -- [ ] Parse ∀ as "forall"
-import Parse.Unicode.forall 
+import Parse.Unicode.Forall 
 
 -- [✓] Parse ▹ as ":=" in terms 
 import Parse.Unicode.LabelsTerm
@@ -46,7 +46,7 @@ import Parse.Unicode.Then
 import Parse.Unicode.TypeKind
 
 -- [ ] Parse ⊤ as Unit
-import Parse.Unicode.Unit 
+-- import Parse.Unicode.Unit 
 
 -- [✓] Permit unicode parsing of variable names, e.g.:
 --       ∀ ℓ : L, ∀ τ : ⋆, ∀ υ, α, etc
