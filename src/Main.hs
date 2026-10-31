@@ -9,14 +9,14 @@ import Data.List
 import Data.List.Split
 import Data.Semigroup        ()
 import Data.String
+import GHC.IO.Encoding       (setLocaleEncoding)
 import Prettyprinter.Util    qualified as P
 import System.Console.GetOpt
 import System.Directory
 import System.Environment
 import System.Exit           (exitFailure, exitSuccess)
 import System.FilePath
-import System.IO             (BufferMode (..), hPutStr, hPutStrLn, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
-import GHC.IO.Encoding (setLocaleEncoding)
+import System.IO             (BufferMode (..), hPutStr, hPutStrLn, hSetBuffering, stderr, stdout, utf8)
 
 import Checker
 import DesugarInfix          (desugarInfix)
@@ -95,15 +95,15 @@ main = do setLocaleEncoding utf8
           nowArgs <- getArgs
           configFile <- ("." ++) . dropExtension <$> getProgName
           globalArgs <- wordsIfExists =<< getXdgDirectory XdgConfig configFile
+          globalArgs' <- wordsIfExists =<< getXdgDirectory XdgConfig ".rosi"
           localArgs <- wordsIfExists configFile
+          localArgs' <- wordsIfExists ".rosi"
           flags <-
-             case getOpt (ReturnInOrder (\s f -> f { inputs = inputs f ++ [s]})) options (globalArgs ++ localArgs ++ nowArgs) of
+             case getOpt (ReturnInOrder (\s f -> f { inputs = inputs f ++ [s]})) options (globalArgs' ++ localArgs' ++ globalArgs ++ localArgs ++ nowArgs) of
                (flags, [], []) -> return (interpretFlags flags)
                (_, _, errs) -> do hPutStrLn stderr (concat errs)
                                   printUsage
                                   exitFailure
-          hSetEncoding stdout utf8
-          hSetEncoding stderr utf8
           when (doPrintHelpMessage flags) $ printUsage >> exitSuccess
           writeIORef traceKindInference (doTraceKindInference flags)
           writeIORef traceTypeInference (doTraceInference flags)
