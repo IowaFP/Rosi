@@ -1,9 +1,12 @@
 -- Type ∀ as forall
 
 -- Without:
-without : forall a. a 
+without : forall a. a
 without = fix (\ x. x)
 
 -- With:
 with : ∀ a. a
 with = fix (\ x. x) 
+
+withNoSpace : ∀a. a
+withNoSpace = fix (\ x. x) 
