@@ -1,55 +1,58 @@
-import Ro.base
+import Ro.Base
 
--- [ ] Parse → as -> (in kind signatures)
+-- [✓] Parse → as -> (in kind signatures)
 import Parse.Unicode.ArrowKind
 
--- [ ] Parse → as -> (in type signatures)
-import Parse.Unicode.ArrowType 
+-- [✓] Parse → as -> (in type signatures)
+import Parse.Unicode.ArrowType
 
--- [ ] Parse ∖ as - 
+-- [✓] Parse ∖ as -
 import Parse.Unicode.Complement
 
--- [ ] Parse ∀ as "forall"
-import Parse.Unicode.forall 
+-- [ ] Parse ∃ as "exists"
+import Parse.Unicode.Exists
 
--- [ ] Parse ▹ as ":=" in terms 
+-- [ ] Parse ∀ as "forall"
+import Parse.Unicode.Forall
+
+-- [✓] Parse ▹ as ":=" in terms
 import Parse.Unicode.LabelsTerm
 
--- [ ] Parse ▹ as ":=" in types
+-- [✓] Parse ▹ as ":=" in types
 import Parse.Unicode.LabelsType
 
--- [ ] Parse λ as \ 
+-- [✓] Parse λ as \
 import Parse.Unicode.LambdaTerm
 
--- [ ] Parse Λ as /\ 
-import Parse.Unicode.LambdaType
-
 -- [ ] Make sure explicit map ($) is permitted
-import Parse.Unicode.Map 
+import Parse.Unicode.Map
 
--- [ ] Parse μ as "Mu"
-import Parse.Unicode.Mu 
+-- [✓] Parse μ as "Mu"
+import Parse.Unicode.Mu
 
--- [ ] Parse Π as "Pi"
+-- [✓] Parse Π as "Pi"
 import Parse.Unicode.Pi
 
--- [ ] Parse Σ as "Sigma"
-import Parse.Unicode.Sigma 
+-- [✓] Parse Σ as "Sigma"
+import Parse.Unicode.Sigma
 
 -- [✓] Parse Subscripts
-import Parse.Unicode.Subscripts 
+import Parse.Unicode.Subscripts
 
--- [ ] Parse ⇒ as => 
-import Parse.Unicode.Then 
+-- [✓] Parse ⇒ as =>
+import Parse.Unicode.Then
 
--- [x] Parse ⊤ as Unit
-import Parse.Unicode.Unit 
+-- [✓] Parse * as ⋆
+import Parse.Unicode.TypeKind
 
--- [ ] Permit unicode parsing of variable names, e.g.:
+-- [ ] Parse ⊤ as Unit
+-- import Parse.Unicode.Unit
+
+-- [✓] Permit unicode parsing of variable names, e.g.:
 --       ∀ ℓ : L, ∀ τ : ⋆, ∀ υ, α, etc
-import Parse.Unicode.VarNames
+-- import Parse.Unicode.VarNames
 
--- [ ] Parse _×_ as Tuple (or whatever it's called) 
+-- [ ] Parse _×_ as Tuple (or whatever it's called)
 -- (TODO)
 
 
@@ -59,7 +62,7 @@ import Parse.Unicode.VarNames
 -- type NatF : * → *
 -- type NatF = Σ {'Z ▹ const ⊤ , 'S ▹ λ nat. nat}
 
--- foo : ∀ ℓ : L, τ : *, ρ : R[ * ]. 
---       {l ▹ τ} < ρ ⇒ Π ρ → Σ ρ → 
+-- foo : ∀ ℓ : L, τ : *, ρ : R[ * ].
+--       {l ▹ τ} < ρ ⇒ Π ρ → Σ ρ →
 --       μ NatF → Π ((λ x. x) $ {ℓ ▹ τ}) → Π (ρ ∖ {l ▹ τ})
 -- foo = Λ ℓ τ ρ. sorry

@@ -1,6 +1,10 @@
 -- Make sure explicit maps are allowed
 
--- Without: 
+-- I believe * is used rather than $, currently
+current : forall f : * -> *, z : R[*]. Pi (f * z)
+current = fix (\ x. x)
+
+-- Without:
 without : forall f : * -> *, z : R[*]. Pi (f z)
 without = fix (\ x. x)
 

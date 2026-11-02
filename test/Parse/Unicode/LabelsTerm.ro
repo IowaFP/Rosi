@@ -6,7 +6,7 @@ withoutPi = ('l := "foo", 'y := "bar")
 
 -- With (records):
 withPi : Pi {'l := String, 'y := String}
-withPi = {'l ▹ "foo", 'y ▹ "bar"}
+withPi = ('l ▹ "foo", 'y ▹ "bar")
 
 -- Without (variants):
 withoutSigma : Sigma {'l := String}

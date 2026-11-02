@@ -4,6 +4,10 @@
 without : forall x y : R[*]. x < y => Pi y -> Pi (y - x)
 without = \ d. prj d
 
--- With:
+-- With (\):
 with : forall x y : R[*]. x < y => Pi y -> Pi (y \ x)
 with = \ d. prj d
+
+-- With (\setminus):
+with' : forall x y : R[*]. x < y => Pi y -> Pi (y ∖ x)
+with' = \ d. prj d
