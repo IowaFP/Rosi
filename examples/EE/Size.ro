@@ -22,6 +22,9 @@ sizeR = case #'Fix succ
 sizeLB : FAlg (Sigma LBF) Nat
 sizeLB = sizeL | sizeB
 
+sizeABL : FAlg (Sigma ABLF) Nat
+sizeABL = sizeA | sizeLB
+
 sizeAll : FAlg (Sigma AllF) Nat
 sizeAll = sizeLB
         | sizeA
@@ -30,15 +33,15 @@ sizeAll = sizeLB
 -- Examples
 
 szId : Nat
-szId = cata (fmapS @AllF functorAll) sizeAll xpId
+szId = cata (fmapS functorAll) sizeAll xpId
 
 szConst : Nat
-szConst = cata (fmapS @AllF functorAll) sizeAll xpConst
+szConst = cata (fmapS functorAll) sizeAll xpConst
 
 szNot : Nat
-szNot = cata (fmapS @AllF functorAll) sizeAll xpNot
+szNot = cata (fmapS functorABLF) sizeABL xpNot
 
--- Sizeg as a bounded algebra
+-- Size as a bounded algebra
 
 type RConst : * -> R[* -> *] -> *  -- kind polymorphism still not a thing...
 type RConst = \x y. x
@@ -59,16 +62,6 @@ sizeLb = case #'Lam (\e rec. succ (rec e))
 sizeRb : Xh RecF (RConst Nat)
 sizeRb = case #'Fix (\e rec. succ (rec e))
 
--- Okay, the type annotations here are getting out of hand again... time to
--- figure out what's going wrong in type inference.
-
-type ABF : R[* -> *]
-type ABF = { 'BConst := \t. Bool, 'If := \t. Triple t t t
-           , 'IConst := \t. Nat, 'Plus := \t. Pair t t }
-
-type LRF : R[* -> *]
-type LRF = { 'Var := Const Nat, 'Lam := Id, 'App := \t. Pair t t
-           , 'Fix := \t. t }
 
 sizeAllb : Xh AllF (RConst Nat)
 sizeAllb = (sizeBb | sizeAb) | (sizeLb | sizeRb)
@@ -85,4 +78,4 @@ szConst0 : Nat
 szConst0 = sizeb xpConst
 
 szNot0 : Nat
-szNot0 = sizeb xpNot
+szNot0 = histo (sizeBb | sizeAb | sizeLb) xpNot

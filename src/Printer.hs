@@ -348,8 +348,11 @@ pprTypeError te = vsep ctxts <> pure P.line <> indent 2 (pprErr te')
         pprErr (ErrDuplicateDefinition v) = "Duplicate definition o" <+> ppr v
         pprErr (ErrTypeDesugaring t) = "Error in desugaring" <+> ppr t
         pprErr (ErrInfixDesugaring e exp) = vsep ["Infix resolution error", ppr e, "Error occured while desugaring expression " <+> hsep (map ppr exp)]
+        pprErr (ErrPredUnsatisfiable p perr) =
+          vsep ["The predicate" <+> ppr p <+> "is unsatisfiable:"
+               , ppr perr ]
         pprErr (ErrOther s) = ppre s
-        pprErr _ = mempty -- Context cases, should have been handled by contexts. Maybe split type?
+        pprErr _            = mempty -- Context cases, should have been handled by contexts. Maybe split type?
 
 instance Printable InfixDesugaringError where
   ppr :: InfixDesugaringError -> RDoc ann
@@ -374,6 +377,13 @@ instance Printable InfixDesugaringError where
                                                                     , "expected", ppre expected, "but found", ppre (length stack)
                                                                     ] <> if not (null stack) then ":" <+> ppr (head stack) else ""
   ppr (OtherInfixResolutionError s)                          = ppre s
+
+
+instance Printable UnsatisfiableError where
+  ppr (LeqConcrete ys zs) =
+    "Labels" <+> fillSep (punctuate "," (map (ppre . ('\'' :)) ys)) <+> "not found in" <+> fillSep (punctuate "," (map (ppre . ('\'' :)) zs))
+  ppr (PlusConcrete zs) =
+    "Overlapping labels: " <+> fillSep (punctuate "," (map (ppre . ('\'' :)) zs))
 
 renderString :: RDoc ann -> String
 renderString doc =

@@ -225,6 +225,8 @@ solve (cin, p, r) =
     suppose (typesEqual z z')
       (suppose (typesEqual x x') (forceFD y y') <|>
        suppose (typesEqual y y') (forceFD x x') <|>
+       suppose (typesEqual x y') (forceFD x' y) <|>
+       suppose (typesEqual x' y) (forceFD x y') <|>
        (case (x, x') of
           (TRow xr, TRow xr')
             | Just xs <- mapM splitLabel xr, Just xs' <- mapM splitLabel xr', sameSet (map fst xs) (map fst xs') ->
@@ -283,7 +285,7 @@ solve (cin, p, r) =
       - the REMAINING x, y, z is f* x', f* y', or f* z'
 
   Now, this case can arise 6 different ways, so I've abstracted the meat to the
-  `align` case, in which the FIRST is `z` and the second is `x`. We then call
+  `align` case, in which the FIRST i0s `z` and the second is `x`. We then call
   the `align` case for each permutation of the input rows.
 
   -}
@@ -341,12 +343,15 @@ solve (cin, p, r) =
          Right _ -> return ()
 
   prim p@(PLeq (TRow y) (TRow z))
+    | Just ys <- mapM concreteLabel y, Just zs <- mapM concreteLabel z, any (`notElem` zs) ys =
+      throwError (ErrPredUnsatisfiable p (LeqConcrete (filter (`notElem` zs) ys) zs))
     | Just yd <- mapM label y, Just zd <- mapM label z =
       do case sequence [elemIndex e zd | e <- yd] of
            Nothing -> return Nothing
            Just is ->
              do mapM_ (\(i, TLabeled _ t) -> let TLabeled _ u = z !! i in force p t u) (zip is y)
                 return (Just (VLeqSimple is))
+
   prim (PPlus (TRow x) (TRow y) (TRow z))
     | Just xd <- mapM label x, Just yd <- mapM label y, Just zd <- mapM label z
     , length xd + length yd == length zd, sameSet (xd ++ yd) zd =
@@ -394,6 +399,8 @@ solve (cin, p, r) =
         in
         do force p z (TRow (map (uncurry (TLabeled . TLab)) zs))
            return (Just (VPlusSimple is))
+    | Just xs <- mapM concreteLabel x, Just ys <- mapM concreteLabel y, let zs = filter (`elem` ys) xs, not (null zs) =
+      throwError (ErrPredUnsatisfiable p (PlusConcrete zs))
   prim p@(PEq t u) =
     do result <- unifyProductive [] t u
        case result of
