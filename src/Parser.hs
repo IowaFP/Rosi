@@ -1,8 +1,8 @@
-{-# LANGUAGE DeriveDataTypeable, NoImplicitPrelude #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {- HLINT ignore "Fuse foldr/map" -}
 module Parser where
 
-import Prelude hiding (pi)
+import Prelude                    hiding (pi)
 
 import Syntax
 
@@ -19,11 +19,11 @@ import Data.Void                  (Void)
 import System.Exit                (exitFailure)
 import System.IO                  (hPutStrLn, stderr)
 
+import Data.Char                  (isAlphaNum)
+import Data.Functor               (void)
 import Text.Megaparsec            hiding (State)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
-import Data.Functor (void)
-import Data.Char (isAlphaNum)
 
 -------------------------------------------------------------------------------
 -- Reserved symbols

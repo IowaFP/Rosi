@@ -6,4 +6,4 @@ type Without = \ x. x
 
 -- With:
 type With : ⋆ -> ⋆
-type With = \ x. x 
+type With = \ x. x

@@ -6,7 +6,7 @@ without = fix (\ x. x)
 
 -- With:
 with : ∀ a. a
-with = fix (\ x. x) 
+with = fix (\ x. x)
 
 withNoSpace : ∀a. a
-withNoSpace = fix (\ x. x) 
+withNoSpace = fix (\ x. x)

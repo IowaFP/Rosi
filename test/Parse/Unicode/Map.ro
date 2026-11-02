@@ -4,10 +4,10 @@
 current : forall f : * -> *, z : R[*]. Pi (f * z)
 current = fix (\ x. x)
 
--- Without: 
+-- Without:
 without : forall f : * -> *, z : R[*]. Pi (f z)
 without = fix (\ x. x)
 
 -- With:
-with: forall f : * -> *, z : R[*]. Pi (f $ z) 
+with: forall f : * -> *, z : R[*]. Pi (f $ z)
 with = fix (\ x. x)

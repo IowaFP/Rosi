@@ -9,6 +9,7 @@ import Data.List
 import Data.List.Split
 import Data.Semigroup        ()
 import Data.String
+import GHC.IO.Encoding       (setLocaleEncoding)
 import Prettyprinter.Util    qualified as P
 import System.Console.GetOpt
 import System.Directory
@@ -16,7 +17,6 @@ import System.Environment
 import System.Exit           (exitFailure, exitSuccess)
 import System.FilePath
 import System.IO             (BufferMode (..), hPutStr, hPutStrLn, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
-import GHC.IO.Encoding (setLocaleEncoding)
 
 import Checker
 import DesugarInfix          (desugarInfix)
@@ -73,11 +73,11 @@ parseChasing additionalImportDirs fs =
     do already <- get
        if fn `elem` already
        then chase fns
-       else do 
+       else do
           (imports, decls) <- unprog <$> liftIO (parse fn moduleName =<< readFile fn)
           importFns <- mapM (liftIO . findImport) imports
           imported <- chase importFns
-          modify (\already -> fn : already)
+          modify (fn :)
           ((imported ++ decls) ++) <$> chase fns
 
   findImport :: String -> IO ([String], FilePath)

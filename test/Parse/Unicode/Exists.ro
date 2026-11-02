@@ -1,7 +1,7 @@
 -- Type ∀ as forall
 
 -- Without:
-without : exists a. a 
+without : exists a. a
 without = "foo"
 
 -- With:
