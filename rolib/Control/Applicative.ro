@@ -1,40 +1,39 @@
-import Data.Functor , Control.Monoid
+import Data.Functor, Data.Monoid
 
-type Applicative : (* -> *) -> *
-type Applicative = \f. Pi { 'Functor := Functor f,
-                            'pure := forall a. a -> f a,
-                            'ap := forall a b. f (a -> b) -> f a -> f b }
+type Applicative : (* → *) → *
+type Applicative f = Π { 'Functor := Functor f,
+                         'pure    := ∀ a. a → f a,
+                         'ap      := ∀ a b. f (a → b) → f a → f b }
 
-applicativeFunctor : forall z : R[* -> *]. Pi (Applicative z) -> Pi (Functor z)
-applicativeFunctor = mapP #(Applicative) #(Functor) (\l d. sel d #'Functor)
+applicativeFunctor : ∀ z : R[* → *]. Π (Applicative z) → Π (Functor z)
+applicativeFunctor = mapP #Applicative #Functor (λl d. d.'Functor)
 
 --------------------------------------------------------------------------------
 -- The identity and constant functor
 
 applicativeId : Applicative Id
-applicativeId = (#'Functor := \@a @b. functorId ,
-                 #'pure := \@a. id ,
-                 #'ap := \@a @b f. f)
+applicativeId = ('Functor := λ @a @b. functorId,
+                 'pure    := λ @a. id,
+                 'ap      := λ @a @b f. f)
+                 -- Explicit type abstractions still needed here..
 
 -- as GHC defines it---Const m is applicative if m is a monoid.
-applicativeConst : forall m. Monoid m -> Applicative (Const m)
-applicativeConst = \ m. (#'Functor := \@a @b. functorConst ,
-                    #'pure := \@a. const (sel m #'empty) ,
-                    #'ap := \@a @b. sel m #'append)
+applicativeConst : Monoid m → Applicative (Const m)
+applicativeConst m = ('Functor := \@a @b. functorConst ,
+                      'pure    := \@a. const m.'empty ,
+                      'ap      := \@a @b. m.'append)
 
 --------------------------------------------------------------------------------
 -- The maybe functor
 
-pureMaybe : forall a. a -> Maybe a
-pureMaybe = con #'Just
+pureMaybe : a → Maybe a
+pureMaybe = 'Just:
 
-apMaybe : forall a b. Maybe (a -> b) -> Maybe a -> Maybe b
-apMaybe = case #'Just (\g x. functorMaybe g x)
-        | otherwise (const Nothing)
+apMaybe : Maybe (a → b) → Maybe a → Maybe b
+apMaybe = 'Just: g  → (λx. functorMaybe g x)
+        | otherwise → const Nothing
 
 applicativeMaybe : Applicative Maybe
-applicativeMaybe = (#'Functor := functorMaybe,
-                    #'pure := pureMaybe,
-                    #'ap := apMaybe)
-
-
+applicativeMaybe = ('Functor := functorMaybe,
+                    'pure    := pureMaybe,
+                    'ap      := apMaybe)

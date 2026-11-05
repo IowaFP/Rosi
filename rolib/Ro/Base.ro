@@ -1,38 +1,38 @@
 -------------------------------------------------------------------------------
 -- Functions
 
-o : forall t u v. (u -> v) -> (t -> u) -> t -> v
-o = \ f g x. f (g x)
+o : (u → v) → (t → u) → t → v
+o f g x = f (g x)
 
-type Id : * -> *
-type Id = \x. x
+type Id : * → *
+type Id x = x
 
-id : t -> t
-id = \x. x
+id : t → t
+id x = x
 
-type Const : * -> * -> *
-type Const = \x y. x
+type Const : * → * → *
+type Const x y = x
 
-const : t -> u -> t
-const = \ x y. x
+const : t → u → t
+const x y = x
 
-flip : (a -> b -> c) -> b -> a -> c
-flip = \ f b a. f a b
+flip : (a → b → c) → b → a → c
+flip f b a = f a b
 
 -------------------------------------------------------------------------------
 -- Unit type
 
 type Unit : *
-type Unit = Pi {}
+type Unit = Π {}
 
 tt : Unit
-tt = prj ('x := \@a x. x)
+tt = prj ('x := \x. x)
 
 -------------------------------------------------------------------------------
 -- the any label
 
-any : forall l : L. #l
-any = \@l. #l
+any : ∀ l : L. #l
+any @l = #l
 
 -------------------------------------------------------------------------------
 -- Convenience functions for records and variants
@@ -40,53 +40,53 @@ any = \@l. #l
 -- Note: sel, con, match, case, and otherwise are used in desugaring! In
 -- particular, this means they can't be implemented with sugar themselves!
 
--- sel : {l := t} < z => Pi z -> #l -> t
-sel : Pi> {l := t} -> #l -> t
-sel = \ r l. prj r :/ l
+-- sel : {l := t} < z ⇒ Pi z → #l → t
+sel : Π> {l := t} → #l → t
+sel r l = prj r :/ l
 
-con : #l -> t -> Sigma> {l := t}
-con = \l x. inj (l := x)
+con : #l → t → Σ> {l := t}
+con l x = inj (l := x)
 
-match : a -> (a -> b) -> b
-match = \x f. f x
+match : a → (a → b) → b
+match x f = f x
 
-case : #l -> (t -> u) -> Sigma { l := t } -> u
-case = \ l f x. f (x :/ l)
+case : #l → (t → u) → Σ { l := t } → u
+case l f x = f (x :/ l)
 
-otherwise : a -> b -> a
+otherwise : a → b → a
 otherwise = const
 
 -------------------------------------------------------------------------------
 
-brnl : x < z => (Sigma x -> t) -> (Sigma z -> t) -> Sigma z -> t
-brnl = \ f g. f | (g . inj)
+brnl : x < z ⇒ (Σ x → t) → (Σ z → t) → Σ z → t
+brnl f g = f | (g . inj)
 
-relabelS : #l0 -> #l1 -> Sigma ({l0 := t} + z) -> Sigma ({l1 := t} + z)
-relabelS = \ l0 l1. case l0 (con l1) | inj
+relabelS : #l0 → #l1 → Σ ({l0 := t} + z) → Σ ({l1 := t} + z)
+relabelS l0 l1 = case l0 (con l1) | inj
 
-relabelP : #l0 -> #l1 -> Pi ({l0 := t} + z) -> Pi ({l1 := t} + z)
-relabelP = \ l0 l1 r. (l1 := r.l0) ++ prj r
+relabelP : #l0 → #l1 → Π ({l0 := t} + z) → Π ({l1 := t} + z)
+relabelP l0 l1 r = (l1 := r.l0) ++ prj r
 
 ---
 
-type Labels : R[*] -> R[*]
-type Labels = \r. Const Unit r
+type Labels : R[*] → R[*]
+type Labels r = Const Unit r
 
-upd : Labels x' < Labels x => Pi x -> Pi (x' + y) -> Pi (x + y)
-upd = \r s. r ++ prj s
+upd : Labels x' < Labels x ⇒ Π x → Π (x' + y) → Π (x + y)
+upd r s = r ++ prj s
 
 --------------------------------------------------------------------------------
 -- Existential types
 
 -- Function singleton here because figuring out functions is hard...
-pack : forall f t. #f -> f t -> (exists x. f x)
+pack : ∀ f t. #f → f t → (∃ x. f x)
 pack f x = x
 
 --------------------------------------------------------------------------------
 -- The Bool type
 
 type Bool : *
-type Bool = Sigma { 'True 'False := Unit }
+type Bool = Σ { 'True 'False := Unit }
 
 True : Bool
 True = 'True: tt
@@ -94,63 +94,64 @@ True = 'True: tt
 False : Bool
 False = 'False: tt
 
-if : Bool -> t -> t -> t
-if = 'True: u -> (\t1 t2. t1)
-   | 'False: u -> (\t1 t2. t2)
+if : Bool → t → t → t
+if = 'True: u → (\t1 t2. t1)
+   | 'False: u → (\t1 t2. t2)
 
-not : Bool -> Bool
-not = \b. if b False True
+not : Bool → Bool
+not b = if b False True
 
-and : Bool -> Bool -> Bool
-and = \b. if b id (const False)
+and : Bool → Bool → Bool
+and b = if b id (const False)
 
-or : Bool -> Bool -> Bool
-or = \b. if b (const True) id
+or : Bool → Bool → Bool
+or b = if b (const True) id
 
-xor : Bool -> Bool -> Bool
-xor = \b. if b not id
+xor : Bool → Bool → Bool
+xor b = if b not id
 
 --------------------------------------------------------------------------------
 -- Bot elimination
 
-impossible : Sigma {} -> a
+impossible : Σ {} → a
 impossible = fix (\x. x)
 
 -------------------------------------------------------------------------------
 -- Basic analysis / synthesis
 
 
-reflect : forall z : R[*], t. Pi (z -> t) -> Sigma z -> t
-reflect = \ d w. ana #(\X. X) (\ l u. d.l u) w
+reflect : ∀ z : R[*], t. Π (z → t) → Σ z → t
+reflect d w = ana #(λX. X) (λ l u. d.l u) w
 
-reify : forall z t. (Sigma z -> t) -> Pi (z -> t)
-reify = \ @z @t f. syn #(\X. X -> t) (\l x. f (l: x))
+-- Need to name type variables
+reify : ∀ z t. (Σ z → t) → Π (z → t)
+reify @z @t f = syn #(λX. X → t) (λl x. f (l: x))
 
 -- Categorical duals to reify / reflect. Don't have great names for these.
-decompose : forall z : R[*] , t. Pi (t -> z) -> (t -> Pi z)
-decompose = \ d t. syn #(\ X. X) (\ l. d.l t)
+decompose : ∀ z : R[*] , t. Π (t → z) → (t → Π z)
+decompose d t = syn #(λ X. X) (λl. d.l t)
 
-recompose : forall z : R[*] , t. (t -> Pi z) -> Pi (t -> z)
-recompose = \ @z @t f. syn #(\ X. t -> X) (\ l u. sel (f u) l)
+recompose : ∀ z : R[*] , t. (t → Π z) → Π (t → z)
+recompose @z @t f = syn #(λ X. t → X) (λ l u. sel (f u) l)
 
-every : a -> Pi ((Const a)* z)
-every = \@a x. syn #(\X. a) (\l. x)
+every : a → Π ((Const a)* z)
+every @a x = syn #(λX. a) (λl. x)
 
-type Eq : * -> *
-type Eq t = t -> t -> Bool
+type Eq : * → *
+type Eq t = t → t → Bool
 
-eqS : forall z : R[*]. Pi (Eq z) -> Eq (Sigma z)
-eqS = \ d v. ana #(\X. X)
-                 (\ l y. match v
-                         ( l: x -> d.l x y
-                         | otherwise -> False))
+eqS : ∀ z : R[*]. Π (Eq z) → Eq (Σ z)
+eqS d v =  ana #(λX. X)
+               (λ l y. match v
+                       ( l: x → d.l x y
+                       | otherwise → False))
 
-eqP : Fold z => Pi (Eq z) -> Eq (Pi z)
-eqP = \ d r. fold #(\t. t) (\l x. d.l r.l x) and True
+eqP : Fold z ⇒ Π (Eq z) → Eq (Π z)
+eqP d r = fold #(λt. t) (λl x. d.l r.l x) and True
 
 -- Branching is derivable
-branch : (Sigma x -> t) -> (Sigma y -> t) -> Sigma (x + y) -> t
-branch = \ f g. reflect (reify f ++ reify g)
+branch : (Σ x → t) → (Σ y → t) → Σ (x + y) → t
+branch f g = reflect (reify f ++ reify g)
 
 -------------------------------------------------------------------------------
 
@@ -162,60 +163,59 @@ eqBool = eqS (every eqUnit)
 
 -------------------------------------------------------------------------------
 
-type Maybe : * -> *
-type Maybe = \a. Sigma { 'Nothing := Unit, 'Just := a }
+type Maybe : * → *
+type Maybe a = Σ { 'Nothing := Unit, 'Just := a }
 
-Just : a -> Maybe a
+Just : a → Maybe a
 Just = 'Just:
 
 Nothing : Maybe a
 Nothing = 'Nothing: tt
 
-maybe : b -> (a -> b) -> Maybe a -> b
-maybe = \z f.
-        ( 'Nothing: u -> z
-        | 'Just: x -> f x
-        )
+maybe : b → (a → b) → Maybe a → b
+maybe z f =
+  ( 'Nothing: u → z
+  | 'Just: x → f x
+  )
 
-is : {l := t} < z => #l -> Sigma z -> Maybe t
-is = \ l. case l Just | otherwise Nothing
+is : {l := t} < z ⇒ #l → Σ z → Maybe t
+is l = case l Just | otherwise Nothing
 
-fromMaybe : a -> Maybe a -> a
-fromMaybe = \z. maybe z id
+fromMaybe : a → Maybe a → a
+fromMaybe z = maybe z id
 
-maybeSigma : Sigma (Maybe* z) -> Maybe (Sigma z)
-maybeSigma = ana #Maybe (\k. maybe Nothing (Just . k:))
+maybeSigma : Σ (Maybe* z) → Maybe (Σ z)
+maybeSigma = ana #Maybe (λk. maybe Nothing (Just . k:))
 
-isJust : Maybe a -> Bool
+isJust : Maybe a → Bool
 isJust = maybe False (const True)
 
-isJusts : Fold z => Pi (Maybe* z) -> Bool
+isJusts : Fold z ⇒ Π (Maybe* z) → Bool
 isJusts = fold #Maybe (const isJust) and True
 
-fromJust : Maybe a -> a
+fromJust : Maybe a → a
 fromJust = fromMaybe (fix id)
 
-maybePi : Fold z => Pi (Maybe* z) -> Maybe (Pi z)
-maybePi = \r. if (isJusts r)
-                 (Just (syn #Id (\k. fromJust r.k)))
-                 Nothing
+maybePi : Fold z ⇒ Π (Maybe* z) → Maybe (Π z)
+maybePi r = if (isJusts r)
+               (Just (syn #Id (\k. fromJust r.k)))
+               Nothing
 
 -------------------------------------------------------------------------------
 
-type Either : * -> * -> *
-type Either = \a b. Sigma { 'Left := a, 'Right := b }
+type Either : * → * → *
+type Either a b = Σ { 'Left := a, 'Right := b }
 
-Left : forall a b. a -> Either a b
+Left : a → Either a b
 Left = 'Left:
 
-Right : forall a b. b -> Either a b
+Right : b → Either a b
 Right = 'Right:
 
-either : forall a b c. (a -> c) -> (b -> c) -> Either a b -> c
-either = \ f g. (case 'Left f | case 'Right g)
+either : (a → c) → (b → c) → Either a b → c
+either f g = (case 'Left f | case 'Right g)
 
 -------------------------------------------------------------------------------
 
-sorry : forall a. a
+sorry : ∀ a. a
 sorry = fix (\x. x)
-

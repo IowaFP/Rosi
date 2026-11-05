@@ -1,22 +1,22 @@
 import Ro.Base
 
-type Names : R[*] -> *
-type Names = \z. Pi (Const String z)
+type Names : R[*] → *
+type Names z = Π (Const String z)
 
-type Show : * -> *
-type Show = \t. t -> String
+type Show : * → *
+type Show t = t → String
 
-type ShowR : R[*] -> *
-type ShowR = \z. Pi { 'names := Names z, 'shows := Pi (Show z) }
+type ShowR : R[*] → *
+type ShowR z = Π { 'names := Names z, 'shows := Π (Show z) }
 
-showRCat : forall x y z. x + y ~ z => ShowR x -> ShowR y -> ShowR z
-showRCat = \r s. ('names := r.'names ++ s.'names, 'shows := r.'shows ++ s.'shows)
+showRCat : x + y ~ z ⇒ ShowR x → ShowR y → ShowR z
+showRCat r s = ('names := r.'names ++ s.'names, 'shows := r.'shows ++ s.'shows)
 
-showS : forall z. ShowR z -> Sigma z -> String
-showS = \d. ana #(\X. X) (\l x. d.'names.l ^ " := " ^ d.'shows.l x)
+showS : ShowR z → Σ z → String
+showS d = ana #(λX. X) (λl x. d.'names.l ^ " := " ^ d.'shows.l x)
 
-showP : forall z. Fold z => ShowR z -> Pi z -> String
-showP = \d r. "(" ^ fold #(\t. t) (\l x. d.'names.l ^ " := " ^ d.'shows.l x) (\s t. s ^ ", " ^ t) "" r  ^ ")"
+showP : Fold z ⇒ ShowR z → Π z → String
+showP d r = "(" ^ fold #(\t. t) (\l x. d.'names.l ^ " := " ^ d.'shows.l x) (\s t. s ^ ", " ^ t) "" r  ^ ")"
 
 --
 
@@ -24,12 +24,14 @@ showUnit : Show Unit
 showUnit = showP ('names := tt, 'shows := tt)
 
 showBool : Show Bool
-showBool = \b . if b "True" "False"
+showBool b = if b "True" "False"
 
 -------------------------------------------------------------------------------
 -- A sneaky encoding of closed-world overloading, for demonstration.
+--
+-- Type arguments listed because they're going to be provided explicitly.
 
-show : forall l : L, t : *. Show {l := t} < Show { 'Unit := Unit , 'Bool := Bool } => Show t
+show : forall l : L, t : *. Show {l := t} < Show { 'Unit := Unit , 'Bool := Bool } ⇒ Show t
 show = \@l @t. sel ('Unit := showUnit , 'Bool := showBool) (any @l)
 
 ex : String

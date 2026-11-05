@@ -1,29 +1,29 @@
 import Ro.Base
 
-type Iter : ((* -> *) -> *) -> ((* -> *) -> *) -> R[* -> *] -> *
-type Iter = \f g z. forall l u. {l := u} < z => #l -> f u -> g u
+type Iter : ((* → *) → *) → ((* → *) → *) → R[* → *] → *
+type Iter f g z = ∀ l u. {l := u} < z ⇒ #l → f u → g u
 
-type Mapper : (R[*] -> *) -> *
-type Mapper = \k. forall z : R[* -> *], f g : (* -> *) -> *. #f -> #g -> Iter f g z -> k (f z) -> k (g z)
+type Mapper : (R[*] → *) → *
+type Mapper k = ∀ z : R[* → *], f g : (* → *) → *. #f → #g → Iter f g z → k (f z) → k (g z)
 
 -- TURNS OUT that Pi and Sigma are syntax, not normal constructors. Fix me, eventually.
 
-mapS : Mapper (\r. Sigma r)
-mapS = \ f g i v. ana f (\ l x. con l (i l x)) v
+mapS : Mapper (λr. Σ r)
+mapS f g i v = ana f (λ l x. l: (i l x)) v
 
-mapP : Mapper (\r. Pi r)
-mapP = \ f g i r. syn g (\l. i l (sel r l))
+mapP : Mapper (λr. Π r)
+mapP f g i r = syn g (λl. i l r.l)
 
-type Functor : (* -> *) -> *
-type Functor = \f. forall a b. (a -> b) -> f a -> f b
+type Functor : (* → *) → *
+type Functor f = ∀ a b. (a → b) → f a → f b
 
-fmapS : forall z : R[* -> *]. Pi (Functor z) -> Functor (Sigma z)
-fmapS = \ d @a @b f.
-          mapS #(\ X. X a) #(\ X. X b) (\l. sel d l f)
+fmapS : ∀ z : R[* → *]. Π (Functor z) → Functor (Σ z)
+fmapS d @a @b f =
+  mapS #(λX. X a) #(λX. X b) (λl. d.l f)
 
-fmapP : forall z : R[* -> *] . Pi (Functor z) -> Functor (Pi z)
-fmapP = \ d @a @b f.
-          mapP #(\ X. X a) #(\ X. X b) (\l. sel d l f)
+fmapP : ∀ z : R[* → *] . Π (Functor z) → Functor (Π z)
+fmapP d @a @b f =
+  mapP #(λX. X a) #(λX. X b) (λl. d.l f)
 
 -- TODO: generalize, but this seems to require kind polymorphism???
 
@@ -31,16 +31,16 @@ fmapP = \ d @a @b f.
 -- The maybe functor
 
 functorMaybe : Functor Maybe
-functorMaybe = (\f. 'Just: x -> Just (f x)
-                  | 'Nothing: u -> Nothing)
+functorMaybe f = 'Just: x → Just (f x)
+               | 'Nothing: u → Nothing
 
 --------------------------------------------------------------------------------
 -- The identity and constant functor
 
 functorId : Functor Id
-functorId = \ f. f
+functorId f = f
 
 functorConst : Functor (Const a)
-functorConst = \ f. id
+functorConst f = id
 
 

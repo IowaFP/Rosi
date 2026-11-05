@@ -608,8 +608,8 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   labeledTerm _                = Nothing
 
   buildNumber :: Int -> Term
-  buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "zero"])
-  buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "succ"])) (buildNumber (n - 1))
+  buildNumber 0 = EVar (-1) (reverse ["Data", "Nat", "Zero"])
+  buildNumber n = EApp (EVar (-1) (reverse ["Data", "Nat", "Succ"])) (buildNumber (n - 1))
 
   catAll = foldl (\t1 t2 -> EApp (EApp (EConst CConcat) t1) t2)
 

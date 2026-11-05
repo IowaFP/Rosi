@@ -1,24 +1,20 @@
-import Data.Functor, Control.Applicative , Data.List
+import Data.Functor, Control.Applicative, Data.List
 
-type Monad : (* -> *) -> *
-type Monad = \t. Pi { 'Applicative := Applicative t,
-                      'bind := forall a b. t a -> (a -> t b) -> t b }
+type Monad : (* → *) → *
+type Monad t = Π { 'Applicative := Applicative t,
+                   'bind        := ∀ a b. t a → (a → t b) → t b }
 
 
-composeKleisli : forall t : * -> *, a b c : *.
-                 Monad t ->
-                 (b -> t c) -> (a -> t b) -> (a -> t c)
-composeKleisli = \ m f g a. sel m #'bind (g a) f
+composeKleisli : Monad t → (b → t c) → (a → t b) → (a → t c)
+composeKleisli m f g a = m.'bind (g a) f
 
-bindMaybe : forall a b. Maybe a -> (a -> Maybe b) -> Maybe b
-bindMaybe =
-    case #'Nothing (\u k. Nothing)
-  | case #'Just (\x k. k x)
+bindMaybe : Maybe a → (a → Maybe b) → Maybe b
+bindMaybe = 'Nothing: u → (λk. Nothing)
+          | 'Just: x    → (λk. k x)
 
 monadMaybe : Monad Maybe
-monadMaybe = ( #'Applicative := applicativeMaybe
-             , #'bind := bindMaybe )
+monadMaybe = ( 'Applicative := applicativeMaybe
+             , 'bind        := bindMaybe )
 
-
-composeMaybe : forall a b c. (b -> Maybe c) -> (a -> Maybe b) -> a -> Maybe c
+composeMaybe : (b → Maybe c) → (a → Maybe b) → a → Maybe c
 composeMaybe = composeKleisli monadMaybe

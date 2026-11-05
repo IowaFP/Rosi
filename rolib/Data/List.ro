@@ -1,124 +1,123 @@
 import Ro.Base, Ro.Show , Ro.Xr, Data.Functor, Data.Nat, Data.Tuple
 
-type ListF : * -> * -> *
-type ListF = \a. Sigma { 'Nil := Const Unit, 'Cons := \l. Pair a l }
+type ListF : * → * → *
+type ListF a = Σ { 'Nil := Const Unit, 'Cons := Pair a }
 
-type List : * -> *
-type List = \a. Mu (ListF a)
+type List : * → *
+type List a = μ (ListF a)
 
 nil : List a
 nil = 'Nil: tt
 
+(::) : a → List a → List a
+(::) hd tl = 'Cons: (hd, tl)
 infixr 5 ::
-(::) : a -> List a -> List a
-(::) = \hd tl. 'Cons: (pair hd tl)
+
+sing : a → List a
+sing a = a :: nil
+
+head : List a → Maybe a
+head = 'Nil: u → Nothing
+     | 'Cons: p → Just p.'1
+
+tail : List a → List a
+tail = 'Nil: u → 'Nil: u
+     | 'Cons: p → p.'2
+
+nth : List a → Nat → Maybe a
+nth = fix (λnth l.
+             ( 'Zero: u → head l
+             | 'Succ: n → nth (tail l) n))
+
+map : (a → b) → List a → List b
+map = fix (λmap f.
+             ( 'Nil: u → 'Nil: u
+             | 'Cons: p → f p.'1 :: map f p.'2))
+
+foldr : (a → b → b) → b → List a → b
+foldr = fix (λfoldr f b.
+               ( 'Nil: u → b
+               | 'Cons: p → f p.'1 (foldr f b p.'2)))
+
+length : List a → Nat
+length = foldr (λe a. Succ a) 0
 
 
-sing : a -> List a
-sing = \ a. a::nil
-
-head : List a -> Maybe a
-head = 'Nil: u -> Nothing
-     | 'Cons: p -> Just p.'1
-
-tail : List a -> List a
-tail = 'Nil: u -> 'Nil: u
-     | 'Cons: p -> p.'2
-
-nth : List a -> Nat -> Maybe a
-nth = fix (\nth l.
-             ( 'Zero: u -> head l
-             | 'Succ: n -> nth (tail l) n))
-
-map : (a -> b) -> List a -> List b
-map = fix (\map f.
-             ( 'Nil: u -> 'Nil: u
-             | 'Cons: p -> (f p.'1)::(map f p.'2)))
-
-foldr : (a -> b -> b) -> b -> List a -> b
-foldr = fix (\foldr f b.
-               ( 'Nil: u -> b
-               | 'Cons: p -> f p.'1 (foldr f b p.'2)))
-
-length : List a -> Nat
-length = foldr (\e a. succ a) 0
-
+append : List a → List a → List a
+append xs ys = foldr (::) ys xs
 infixr 5 `append`
-append : List a -> List a -> List a
-append = \ xs ys. foldr (::) ys xs
 
 (<>) = append
 infixr 5 <>
 
-
-concat : List (List a) -> List a
+concat : List (List a) → List a
 concat = foldr append nil
 
-take : List a -> Nat -> List a
-take = fix (\take xs. ( 'Zero: u -> nil
-                       | 'Succ: pr -> ( 'Nil: u -> nil
-                                     | 'Cons: ys -> ys.'1::(take ys.'2 pr)) xs))
+take : List a → Nat → List a
+take = fix (λtake xs. ( 'Zero: u → nil
+                      | 'Succ: pr → ( 'Nil: u → nil
+                                    | 'Cons: ys → ys.'1 :: take ys.'2 pr) xs))
 
 -- zipping
 
-zip : List a -> List b -> List (Pair a b)
-zip = fix (\zip.
-              ( 'Nil: u -> const nil
-              | 'Cons: xs -> 
-                    (  'Nil: u -> nil
-                    | 'Cons: ys -> (pair xs.'1 ys.'1)::(zip xs.'2 ys.'2))))
+zip : List a → List b → List (Pair a b)
+zip = fix (λzip.
+              (  'Nil: u → const nil
+              | 'Cons: xs →
+                    (  'Nil: u → nil
+                    | 'Cons: ys → pair xs.'1 ys.'1 :: zip xs.'2 ys.'2)))
 
-unzip : List (Pair a b) -> Pair (List a) (List b)
-unzip = foldr (\p xs_ys. (pair (p.'1::xs_ys.'1) (p.'2::xs_ys.'2))) (pair nil nil)
+unzip : List (Pair a b) → Pair (List a) (List b)
+unzip = foldr (λp xs_ys. (p.'1 :: xs_ys.'1, p.'2 :: xs_ys.'2)) (nil, nil)
 
 -- equivalent to zip with a stream that repeats the first argument
-zipRepeat : a -> List b -> List (Pair a b)
+zipRepeat : a → List b → List (Pair a b)
 zipRepeat = map . pair
 
-enumerate : List a -> List (Pair a Nat)
-enumerate = (fix (\enumerateHelper n. ( 'Nil: u -> nil
-                                      | 'Cons: xs -> (pair (xs.'1) n)::(enumerateHelper (succ n) xs.'2)))
+enumerate : List a → List (Pair a Nat)
+enumerate = (fix (λenumerateHelper n. (  'Nil: u  → nil
+                                      | 'Cons: xs → (xs.'1, n) :: enumerateHelper (Succ n) xs.'2))
             ) 0
 
 -- Searching and filtering
 
-find : (a -> Bool) -> List a -> Maybe a
-find = fix (\find f.
-                    ( 'Nil: u -> Nothing
-                    | 'Cons: xs -> (if (f xs.'1)
-                                      (Just xs.'1)
-                                      (find f xs.'2))))
+find : (a → Bool) → List a → Maybe a
+find = fix (λfind f.
+              ( 'Nil: u → Nothing
+              | 'Cons: xs → (if (f xs.'1)
+                                (Just xs.'1)
+                                (find f xs.'2))))
 
-findAll : (a -> Bool) -> List a -> List a
-findAll = fix (\findAll f.
-                    ( 'Nil: u -> nil
-                    | 'Cons: xs -> (if (f xs.'1)
-                                       (xs.'1::(findAll f xs.'2))
-                                       (findAll f xs.'2))))
+findAll : (a → Bool) → List a → List a
+findAll = fix (λfindAll f.
+                 (  'Nil: u → nil
+                 | 'Cons: xs → (if (f xs.'1)
+                                   (xs.'1 :: findAll f xs.'2)
+                                   (findAll f xs.'2))))
 
-findIndex : (a -> Bool) -> List a -> Maybe Nat
-findIndex = \f xs. maybe Nothing (\x. Just (x.'2)) (find (\p. f p.'1) (enumerate xs))
+findIndex : (a → Bool) → List a → Maybe Nat
+findIndex f xs = maybe Nothing (λx. Just (x.'2)) (find (λp. f p.'1) (enumerate xs))
 
-filter : (a -> Bool) -> List a -> List a
-filter = \f ls. foldr (\e a. if (f e)
-                                (e::a)
-                                        a) nil ls
+filter : (a → Bool) → List a → List a
+filter f ls = foldr (λe a. if (f e)
+                              (e::a)
+                              a) nil ls
 
-filterMaybe : List (Maybe a) -> List a
-filterMaybe = foldr (\e a. ( 'Just: x -> (x::a)
-                           | 'Nothing: u -> a) e) nil
+filterMaybe : List (Maybe a) → List a
+filterMaybe = foldr (λe a. ( 'Just: x → (x::a)
+                           | 'Nothing: u → a) e) nil
 
-all : (a -> Bool) -> List a -> Bool
-all = \f xs. foldr and True (map f xs) 
+all : (a → Bool) → List a → Bool
+all f xs = foldr and True (map f xs)
 
 
 -- Show Instance
 
-showList : Show a -> Show (List a)
-showList = \ show. fix (\showList.
-    ( 'Nil: u -> "[]"
-    | 'Cons: p -> show p.'1 ^ " :: " ^ showList p.'2))
+showList : Show a → Show (List a)
+showList show = fix (λshowList.
+    ( 'Nil: u → "[]"
+    | 'Cons: p → show p.'1 ^ " :: " ^ showList p.'2))
 
 
-listTest1 = nth (one::two::three::nil) two
-listTest2 = nth (one::two::nil) two
+listTest1 = nth (one :: two :: three :: nil) two
+listTest2 = nth (one :: two :: nil) two

@@ -1,92 +1,78 @@
-import Ro.Base , Data.List , Data.Nat
+import Ro.Base, Data.List, Data.Nat
 
 -- --------------------------------------------------------------------------------
 -- Streams
 
-type StreamF : * -> R[ * -> * ]
-type StreamF = \ a. {'hd := Const a , 'tl := \ x. x }
+type StreamF : * → R[ * → * ]
+type StreamF a = {'hd := Const a , 'tl := λx. x }
 
-type Stream : * -> *
-type Stream = \ a. Mu (Pi (StreamF a))
-
-hd : forall a. Stream a -> a
-hd = \ d. sel (out d) #'hd 
-
-tl : forall a. Stream a -> Stream a
-tl = \ d. sel (out d) #'tl
+type Stream : * → *
+type Stream a = μ (Π (StreamF a))
 
 -- Convert a sequence of nats into a Stream, starting at n
-seq : forall a. (Nat -> a) -> Nat -> Stream a
-seq = \ f. fix (\ seq n. in (#'hd := f n , #'tl := seq (succ n)))
+seq : (Nat → a) → Nat → Stream a
+seq f = fix (λ seq n. ('hd := f n,
+                       'tl := seq (Succ n)))
 
 -- Return only the even elements of a stream
-even : forall a. Stream a -> Stream a 
-even = fix (\ even xs. in
-    (#'hd := hd xs, 
-     #'tl := even (tl (tl xs))))
+even : Stream a → Stream a
+even = fix (\ even xs.
+    ('hd := xs.'hd,
+     'tl := even xs.'tl.'tl))
 
 -- the odd
-odd : forall a. Stream a -> Stream a 
-odd = \ xs. even (tl xs)
+odd : Stream a → Stream a
+odd xs = even xs.'tl
 
 -- grab n elements from a stream
-grab : forall a. Nat -> Stream a -> List a 
-grab = fix (\ grab n xs. match (out n)
-    ( case #'Zero (const nil)
-    | case #'Succ (\ m. (hd xs)::(grab m (tl xs)))))
+grab : Nat → Stream a → List a
+grab = fix (λ grab n xs. match n
+    ( 'Zero: u → nil
+    | 'Succ: m → xs.'hd :: grab m xs.'tl))
 
 -- example
 firstTen : String
-firstTen = showList showNat (grab 10  (even (seq id 0)))
+firstTen = showList showNat (grab 10 (even (seq id 0)))
 
 -- --------------------------------------------------------------------------------
 -- Or a rose by another other name
 
-type RoseF : * -> R[* -> *]
-type RoseF = \ a. {'node := Const a , 'children := List }
+type RoseF : * → R[* → *]
+type RoseF a = {'node := Const a, 'children := List }
 
-type Rose : * -> *
-type Rose = \ a. Mu (Pi (RoseF a))
+type Rose : * → *
+type Rose a = μ (Π (RoseF a))
 
-node : forall x : R[* -> *] , t : *. {'node := Const t} < x => Mu (Pi x) -> t
-node     = \ d. sel (out d) #'node 
-
-children : forall x : R[* -> *] , t : *. {'children := List} < x => Mu (Pi x) -> List (Mu (Pi x))
-children = \ d. sel (out d) #'children
-
-prune : forall a. Nat -> Rose a -> Rose a 
-prune = fix (\ prune n t. in
-    (#'node     := node t , 
-     #'children := match (out n)
-        ( (case #'Zero (const nil)) 
-        | (case #'Succ (\ m. map (prune m) (children t))))))
+prune : Nat → Rose a → Rose a
+prune = fix (λ prune n t.
+    ('node     := t.'node,
+     'children := match n
+        ( 'Zero: u → nil
+        | 'Succ: m → map (prune m) t.'children)))
 
 -- --------------------------------------------------------------------------------
 -- Mendler-style coalgebras
 -- For reference: https://arxiv.org/pdf/2005.00199
 
+type MCoAlgebra : (* → *) → * → *
+type MCoAlgebra f x = ∀ r : *. (x → r) → x → f r
 
-type MCoAlgebra : (* -> *) -> * -> * 
-type MCoAlgebra = \ f x. forall r : *. (x -> r) -> x -> f r
+coit : MCoAlgebra f x → x → Mu f
+coit = fix (λ coit alg x. (alg (coit alg) x))
 
-coit : forall f : * -> * , x : *. MCoAlgebra f x -> x -> Mu f
-coit =  fix (\ coit alg x. in (alg (coit alg) x))
+corec : (∀ r : *. (μ f → r) → (x → r) → x → f r) →
+        x → μ f
+corec = fix (λ corec alg x. (alg id (corec alg) x))
 
-corec : forall f : * -> *, x : *. 
-        (forall r : *. (Mu f -> r) -> (x -> r) -> x -> f r) ->
-        x -> Mu f 
-corec = fix (\ corec alg x. in (alg id (corec alg) x))
-
-cov : forall f : * -> *, x : *. 
-      (forall r : *. (f r -> r) -> (x -> r) -> x -> f r) ->
-      x -> Mu f 
-cov = fix (\ cov alg x. in (alg in (cov alg) x))
+cov : (∀ r : *. (f r → r) → (x → r) → x → f r) →
+      x → μ f
+cov = fix (λ cov alg x. (alg id (cov alg) x))
 
 -- --------------------------------------------------------------------------------
 -- Programming with co-algebras
 
-mapAlg : forall a b. (a -> b) -> MCoAlgebra (Pi (StreamF b)) (Stream a)
-mapAlg = \ f map xs. (#'hd := f (hd xs) , #'tl := map (tl xs))
+mapAlg : (a → b) → MCoAlgebra (Π (StreamF b)) (Stream a)
+mapAlg f map xs = ('hd := f xs.'hd, 'tl := map xs.'tl)
 
-streamMap : forall a b. (a -> b) -> Stream a -> Stream b
-streamMap = \f. coit (mapAlg f)
+streamMap : (a → b) → Stream a → Stream b
+streamMap f = coit (mapAlg f)

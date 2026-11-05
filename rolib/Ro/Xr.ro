@@ -6,38 +6,41 @@ import Ro.Base, Data.Functor
 -------------------------------------------------------------------------------
 -- Catamorphisms
 
-type FAlg : (* -> *) -> * -> *
-type FAlg = \f a. f a -> a
+type FAlg : (* → *) → * → *
+type FAlg f a = f a → a
 
-cata : forall f a. Functor f -> FAlg f a -> Mu f -> a
-cata = \ map a. fix (\ cata x. a (map cata x))
+cata : Functor f → FAlg f a → μ f → a
+cata map a = fix (λ cata x. a (map cata x))
 
-rinj : forall f g : R[* -> *]. f < g => Pi (Functor f) -> Mu (Sigma f) -> Mu (Sigma g)
-rinj = \d. cata (fmapS d) inj
+rinj : f < g ⇒ Π (Functor f) → μ (Σ f) → μ (Σ g)
+rinj d = cata (fmapS d) inj
 
-rprj : forall f g : R[* -> *]. f < g => Pi (Functor g) -> Mu (Pi g) -> Mu (Pi f)
-rprj = \ d. cata (fmapP d) prj
+rprj : f < g ⇒ Π (Functor g) → μ (Π g) → μ (Π f)
+rprj d = cata (fmapP d) prj
 
 -------------------------------------------------------------------------------
 -- Mendler catamorphisms
 
-type MAlg : (* -> *) -> * -> *
-type MAlg = \f c. forall a. (a -> c) -> f a -> c
+type MAlg : (* → *) → * → *
+type MAlg f c = ∀ a. (a → c) → f a → c
 
-mcata : forall a f. MAlg f a -> Mu f -> a
-mcata = \ alg. fix (\mcata. alg mcata)
+mcata : MAlg f a → μ f → a
+mcata alg = fix (λmcata. alg mcata)
 
 -------------------------------------------------------------------------------
 -- Bounded algebras
 
-type Xh : R[* -> *] -> (R[* -> *] -> *) -> *
-type Xh = \z f. forall w. z < w => Sigma z (Mu (Sigma w)) -> (Mu (Sigma w) -> f w) -> f w
+type Xh : R[* → *] → (R[* → *] → *) → *
+type Xh z f = ∀ w. z < w ⇒ Σ z (μ (Σ w)) → (μ (Σ w) → f w) → f w
 
-histo : forall f r. (f (Mu f) -> (Mu f -> r) -> r) -> Mu f -> r
-histo = \ a. fix (\ rec x. a x rec)
+type Xhs : R[* → *] → * → *
+type Xhs z t = Xh z (λw. t)
 
-brna : forall f x y z. x + y ~ z => Xh x f -> Xh y f -> Xh z f
-brna = \ f g. f | g
+histo : (f (μ f) → (μ f → r) → r) → μ f → r
+histo a = fix (λ rec x. a x rec)
 
-brnal : forall f x z. x < z => Xh x f -> Xh z f -> Xh z f
-brnal = \ f g. brnl f g
+brna : x + y ~ z ⇒ Xh x f → Xh y f → Xh z f
+brna f g = f | g
+
+brnal : x < z ⇒ Xh x f → Xh z f → Xh z f
+brnal f g = brnl f g

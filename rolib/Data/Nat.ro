@@ -1,75 +1,75 @@
 import Ro.Base, Ro.Show, Data.Functor, Data.Tuple
 
-type NatF : * -> *
-type NatF = \n. Sigma { 'Zero := Unit, 'Succ := n}
+type NatF : * → *
+type NatF n = Σ { 'Zero := Unit, 'Succ := n}
 
 fmapNatF : Functor NatF
-fmapNatF = fmapS ('Zero := \@a @b (f : a -> b) (u : Unit). u ,
-                  'Succ := \@a @b (f : a -> b). f)
+fmapNatF = fmapS ('Zero := \@a @b (f : a → b) (u : Unit). u ,
+                  'Succ := \@a @b (f : a → b). f)
+                  -- These definitions still need to be explicitly polymorphic :(
 
 type Nat : *
-type Nat = Mu NatF
+type Nat = μ NatF
 
-zero : Nat
-zero = 'Zero: tt
+Zero : Nat
+Zero = 'Zero: tt
 
-succ : Nat -> Nat
-succ = 'Succ:
+Succ : Nat → Nat
+Succ = 'Succ:
 
 --
 
-decr : Nat -> Nat
-decr = case #'Zero (const zero)
-     | case #'Succ id
+decr : Nat → Nat
+decr = 'Zero: u → Zero
+     | 'Succ: n → n
 
-add : Nat -> Nat -> Nat
-add = \m. fix (\add . 'Zero: u -> m
-                    | 'Succ: nn -> succ (add nn))
+add : Nat → Nat → Nat
+add m=  fix (λadd . 'Zero: u → m
+                  | 'Succ: nn → Succ (add nn))
 
-mult : Nat -> Nat -> Nat
-mult = \m. fix (\mult . 'Zero: u -> zero
-                      | 'Succ: nn -> add m (mult nn))
+mult : Nat → Nat → Nat
+mult m = fix (λmult . 'Zero: u → Zero
+                    | 'Succ: nn → add m (mult nn))
 
-monus : Nat -> Nat -> Nat
-monus = fix (\ monus m.
-               ( 'Zero: u -> m
-               | 'Succ: n' -> monus (decr m) n'))
+monus : Nat → Nat → Nat
+monus = fix (λ monus m . 'Zero: u → m
+                       | 'Succ: n' → monus (decr m) n')
 
-max : Nat -> Nat -> Nat
-max = fix (\max m n.
+max : Nat → Nat → Nat
+max = fix (λmax m n.
   match m
-  ( case #'Zero (const n)
-  | case #'Succ (\m'.
+  ( 'Zero: u  → n
+  | 'Succ: m' →
     match n
-    ( case #'Zero (const m)
-    | case #'Succ (\n'. succ (max m' n'))))))
+    ( 'Zero: u  → m
+    | 'Succ: n' → Succ (max m' n'))))
 
-isZero : Nat -> Bool
-isZero = case #'Zero (const True)
-       | otherwise False
+isZero : Nat → Bool
+isZero = 'Zero: u  → True
+       | otherwise → False
 
-equal : Nat -> Nat -> Bool
-equal = fix (\equal m n.
+equal : Nat → Nat → Bool
+equal = fix (λequal m n.
               match m
-              ( case #'Zero (const (isZero n))
-              | case #'Succ (\mm.
+              ( 'Zero: u  → isZero n
+              | 'Succ: mm →
                 match n
-                ( case #'Zero (const False)
-                | case #'Succ (\nn. equal mm nn)))))
+                ( 'Zero: u  → False
+                | 'Succ: nn → equal mm nn)))
 
-lte : Nat -> Nat -> Bool
-lte = fix (\lte m n.
+lte : Nat → Nat → Bool
+lte = fix (λlte m n.
             match m
-            ( 'Zero: u -> True
-            | 'Succ: m' ->
+            ( 'Zero: u  → True
+            | 'Succ: m' →
               match n
-              ( 'Zero: u -> False
-              | 'Succ: n' -> lte m' n')))
+              ( 'Zero: u  → False
+              | 'Succ: n' → lte m' n')))
 
 -- 3-way comparison
 
 type Cmp : *
-type Cmp = Sigma {'GT := Unit, 'LT := Unit, 'EQ := Unit}
+type Cmp = Σ {'GT 'LT 'EQ := Unit}
 
 GT: Cmp
 GT = 'GT: tt
@@ -80,37 +80,37 @@ LT = 'LT: tt
 EQ: Cmp
 EQ = 'EQ: tt
 
-type Compare : * -> *
-type Compare = \a. (a -> a -> Cmp)
+type Compare : * → *
+type Compare a = a → a → Cmp
 
 compN : Compare Nat
-compN = fix (\compN. ( 'Zero: u -> ( 'Zero: u -> EQ
-                                   | 'Succ: b' -> LT)
-                     | 'Succ: a' -> ( 'Zero: u -> GT
-                                    | 'Succ: b' -> compN a' b')))
-
+compN = fix (λcompN. 'Zero: u → ( 'Zero: u  → EQ
+                                | 'Succ: b' → LT)
+                   | 'Succ: a' → ( 'Zero: u  → GT
+                                 | 'Succ: b' → compN a' b'))
 
 -- division
 
-divMod : Nat -> Nat -> Pair Nat Nat
-divMod = fix (\divMod n1 n2. 
-              ((( 'EQ: u -> (pair 1 0)
-               | 'LT: u -> (pair 0 n1)
-               | 'GT: u -> (if (equal (monus n1 n2) 0)
-                                 (pair 0 n1)
-                                 ((\p. pair (add p.'1 1) p.'2) (divMod (monus n1 n2) n2)))))
-              (compN n1 n2)))
+divMod : Nat → Nat → Pair Nat Nat
+divMod = fix (λdivMod n1 n2.
+               match (compN n1 n2)
+               ( 'EQ: u → (1, 0)
+               | 'LT: u → (0, n1)
+               | 'GT: u → if (equal (monus n1 n2) 0)
+                             (0, n1)
+                             (let p = divMod (monus n1 n2) n2 in
+                                (add p.'1 1, p.'2))))
 
-div : Nat -> Nat -> Nat
-div = \n1 n2. (divMod n1 n2).'1
+div : Nat → Nat → Nat
+div n1 n2 = (divMod n1 n2).'1
 
-mod : Nat -> Nat -> Nat
-mod = \n1 n2. (divMod n1 n2).'2
+mod : Nat → Nat → Nat
+mod n1 n2 = (divMod n1 n2).'2
 
 -- Show instance
 
 -- helper for showNat. Should only be used when 0 <= n < 10
-showNatDigit : Nat -> String
+showNatDigit : Nat → String
 showNatDigit =
   ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ ( case 'Succ (const "[OOPS, digit > 9]")
                                                                                                                                                  | case 'Zero (const "10"))
@@ -127,7 +127,7 @@ showNatDigit =
   | case 'Zero (const "0"))
 
 -- converts Nat to base 10 string.
-showNat : Nat -> String
+showNat : Nat → String
 showNat =
   fix (\showNat n.
           let divModResult = (divMod n 10) in (if (equal divModResult.'1 0) "" (showNat divModResult.'1)) ^ (showNatDigit divModResult.'2))
@@ -138,10 +138,10 @@ showNat =
 --
 
 one : Nat
-one = succ zero
+one = Succ Zero
 
 two : Nat
-two = succ one
+two = Succ one
 
 three : Nat
 three = add one two

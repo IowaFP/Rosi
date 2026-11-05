@@ -1,39 +1,29 @@
 import Ro.Base, Ro.Show
 
-type PairRow : * -> * -> R[ * ]
-type PairRow = \ t u. {'1 := t , '2 := u}
+type Pair : * → * → *
+type Pair t u = (t, u)
 
-type Pair : * -> * -> *
-type Pair = \ t u. Pi (PairRow t u)
+pair : t → u → (t, u)
+pair x y = (x, y)
 
-pair : t -> u -> (t, u)
-pair x y= (x, y)
+type Triple : * → * → * → *
+type Triple t u v = (t, u, v)
 
-type TripleRow : * -> * -> * -> R[ * ]
-type TripleRow = \ t u v. {'1 := t , '2 := u , '3 := v}
+triple : t → u → v → (t, u, v)
+triple x y z = (x, y) ++ ('3 := z)
 
-type Triple : * -> * -> * -> *
-type Triple = \ t u v. Pi (TripleRow t u v)
+nth : #l → (a → b) → Π ({l := a} + y) → Π ({l := b} + y)
+nth l f x = upd (l := f x.l) x
 
-triple : t -> u -> v -> (t, u, v)
-triple x y z = (x, y) ++ (#'3 := z)
+first  = nth '1
+second = nth '2
+third  = nth '3
 
-fst x = x.'1
-snd x = x.'2
-thd x = x.'3
+curry : ((a, b) → c) → a → b → c
+curry f x y = f (x, y)
 
-nth : #l -> (a -> b) -> Pi ({l := a} + y) -> Pi ({l := b} + y)
-nth = \l f x. (l := f (sel x l)) ++ prj x
+uncurry : (a → b → c) → (a, b) → c
+uncurry f p = f p.'1 p.'2
 
-first  = nth #'1
-second = nth #'2
-third  = nth #'3
-
-curry : ((a, b) -> c) -> a -> b -> c
-curry = \f x y. f (pair x y)
-
-uncurry : (a -> b -> c) -> (a, b) -> c
-uncurry = \f p. f (fst p) (snd p)
-
-showPair : Show a -> Show b -> Show (a, b)
-showPair = \ showa showb p. "(" ^ (showa (fst p)) ^ ", " ^ (showb (snd p)) ^ ")"
+showPair : Show a → Show b → Show (a, b)
+showPair showa showb p = "(" ^ (showa p.'1) ^ ", " ^ (showb p.'2) ^ ")"

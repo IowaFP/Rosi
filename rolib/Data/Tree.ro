@@ -1,13 +1,13 @@
 import Ro.Base, Ro.Xr, Data.Functor, Data.Nat, Data.Tuple
 
-type TreeF : * -> * -> *
-type TreeF = \a. Sigma { 'Empty := Const Unit, 'Node := \l. Triple l a l }
+type TreeF : * → * → *
+type TreeF a = Σ { 'Empty := Const Unit, 'Node := λl. Triple l a l }
 
-type Tree : * -> *
-type Tree = \a. Mu (TreeF a)
+type Tree : * → *
+type Tree a = Mu (TreeF a)
 
-empty : forall a. Tree a
-empty = con #'Empty tt
+empty : Tree a
+empty = 'Empty: tt
 
-node : forall a. Tree a -> a -> Tree a -> Tree a
-node = \ l a r. con #'Node (triple l a r)
+node : Tree a → a → Tree a → Tree a
+node l a r = 'Node: (triple l a r)
