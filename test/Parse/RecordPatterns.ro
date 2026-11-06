@@ -1,0 +1,9 @@
+import Ro.Base, Data.Nat
+
+-- single field
+bar : Pi {'1 := Nat} -> (Nat -> a) -> a
+bar ('1 := x) p = p (Succ x)
+
+
+foo : Pair Nat Nat -> Nat
+foo ('1 := x, '2 := y) = (add x y)

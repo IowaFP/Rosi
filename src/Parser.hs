@@ -201,6 +201,7 @@ reservedLetters = ['λ']
 namespace :: Parser String
 namespace = ((:) <$> upperChar) <*> many alphaNumChar <* char '.'
 
+-- a variable name or compound identifier
 identifier :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 identifier  =
   do s <- (:) <$> letterChar <*> many identChar
@@ -209,10 +210,12 @@ identifier  =
      else return s
   where keywords = ["let", "in", "forall", "exists"]
 
+-- identifier that represents a label
 lidentifier :: Parser String
 lidentifier =
   char '\'' >> some identChar
 
+-- qualified identifier, can start with a path made of namespaces
 qidentifier  = do xs <- many (try namespace)
                   x <- termIdentifier
                   return (x:reverse xs)
@@ -426,6 +429,29 @@ existentialBinder =
                       return (map (, Just k) xs)
         ]
 
+fieldBinder :: Parser [(String, String)]
+fieldBinder =
+    do l <- lexeme lidentifier
+       let (l' :: Term) = (ESing . TLab) l
+       lexeme (void labels)
+       fieldVar <- termIdentifier
+      --  ELabel (Just Pi) l'' <$> bindingPattern
+       return [(l, fieldVar)]
+
+
+
+bindingPattern :: Parser (Term -> Term)
+bindingPattern = parens $ do f <- handleBinders . concat <$> commaSep fieldBinder
+                             return $ ELam newVar Nothing . f
+
+  where newVar = "NEWVAR"
+
+        handleBinders :: [(String, String)] -> (Term -> Term)
+        handleBinders [] = id
+        handleBinders ((l, m):xs) = handleBinders xs . ELet m (EUnlabel (Just Pi) (EApp (EConst CPrj) (EVar (-1) [newVar])) ((ESing . TLab) l))
+
+
+
 
 
 termLamBinders :: Parser [Term -> Term]
@@ -441,8 +467,9 @@ termLamBinders =
       parens $ do xs <- some (lexeme (char '@' >> identifier))
                   t <- colon >> kind
                   return (map (flip ETyLam (Just t)) xs)
-    , parens $ do (xs, y, t) <- existentialBinder
-                  return [EExLam xs [] y t]
+    , try $ parens $ do (xs, y, t) <- existentialBinder
+                        return [EExLam xs [] y t]
+    , try $ some bindingPattern
     ]
 
 term :: Parser Term
