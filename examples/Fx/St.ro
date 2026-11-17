@@ -58,7 +58,8 @@ handleSt : forall s a. Free (St s) a -> s -> Pair (Free {} a) s
 handleSt = handle stH pureStM
 
 test : Pair Nat Nat
-test = let x = handleSt comp' 3 in pair (runFree (fst x)) (snd x)
+test = (runFree x.'1, x.'2) where
+  x = handleSt comp' 3
 -- first runFree (handleSt comp' 3)
 
 

@@ -190,7 +190,7 @@ fixityKeyword = fromKeyMap fixityKeywords
 fromKeyMap :: [(String, a)] -> Parser a
 fromKeyMap keyMap = choice [k <$ keyword s | (s, k) <- keyMap]
 
-syntaxKeywords = ["let", "in", "forall", "import"]
+syntaxKeywords = ["let", "in", "forall", "import", "where"]
 
 reservedWords = syntaxKeywords ++ map fst fixityKeywords ++ map fst constants
 
@@ -207,7 +207,7 @@ identifier  =
      if s `elem` reservedWords
      then unexpected $ Label (fromList "reserved word")
      else return s
-  where keywords = ["let", "in", "forall", "exists"]
+  where keywords = ["let", "in", "forall", "exists", "where"]
 
 lidentifier :: Parser String
 lidentifier =
@@ -646,16 +646,29 @@ topLevel = item lhs body where
       , do bs <- many typeLamBinders
            let binders = foldr (.) id (map (uncurry TLam) (concat bs))
            symbol "=" *> ((x,) . TypeDef . binders <$> ty) ]
-  body (TermLHS x) =
-    choice
-      [ colon *> ((x,) . TypeSig <$> ty)
-      , do bs <- many termLamBinders
-           let binders = foldr (.) id (concat bs)
-           symbol "=" *> ((x,) . TermDef . binders <$> term) ]
+  body (TermLHS x) = termRHS x
   body (FixityLHS fx) = do lvl <- lexeme number
                            name <- lexeme (try customOperator <|> surroundedIdentifier)
                            return (name, FixityDecl (Fixity fx lvl))
 
+  termRHS x =
+    choice
+      [ colon *> ((x,) . TypeSig <$> ty)
+      , do bs <- many termLamBinders
+           let binders = foldr (.) id (concat bs)
+           m <- symbol "=" *> term
+           whereBlock <- optional $
+             do keyword "where"
+                Prog (_, locals) <- defns [] =<< block (item (lexeme termIdentifier) termRHS)
+                return $ foldr (.) id (map wrapBinder  locals)
+           case whereBlock of
+             Nothing -> return (x, TermDef (binders m))
+             Just f  -> return (x, TermDef (binders $ f m)) ]
+
+  wrapBinder (TmDecl (x : _) mty m _)
+    | Just ty <- mty = ELet x (ETyped m ty)
+    | otherwise      = ELet x m
+  wrapBinder _ = id
 
 prog :: [String] -> Parser Program
 prog moduleNames = whitespace >> block topLevel >>= defns moduleNames

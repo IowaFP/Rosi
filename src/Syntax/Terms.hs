@@ -61,7 +61,7 @@ hasHoles _                  = False -- covers: EVar, ESing, EConst
 -- Programs
 --------------------------------------------------------------------------------
 
-data Program = Prog ([String], [Decl])
+newtype Program = Prog ([String], [Decl])
   deriving (Data, Eq, Show)
 
 data Decl = TyDecl QName Kind Ty | TmDecl QName (Maybe Ty) Term (Maybe Fixity)
