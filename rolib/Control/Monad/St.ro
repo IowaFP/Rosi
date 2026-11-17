@@ -12,7 +12,7 @@ pureStM : ∀ s a. a → StM s a
 pureStM = pair
 
 apStM : ∀ s a b. StM s (a → b) → StM s a → StM s b
-apStM f m s = let x = f s in first (fst x) (m (snd x))
+apStM f m s = let x = f s in first x.'1 (m x.'2)
 
 applicativeStM : Applicative (StM s)
 applicativeStM = ( 'Functor := functorStM

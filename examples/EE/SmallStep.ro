@@ -12,7 +12,7 @@ substF = \ exp rec i m.
   ( case #'Var (\j. match (equal i j)
                     ( case #'True (const m)
                     | otherwise (con #'Var j)))
-  | case #'Lam (\e. con #'Lam (rec e (succ i) m)))
+  | case #'Lam (\e. con #'Lam (rec e (Succ i) m)))
 
 extS : forall z : R[* -> *]. Pi (Functor z) -> Xh z (\y. Nat -> Mu (Sigma y) -> Mu (Sigma y))
 extS = \d exp rec i m. inj (fmapS d (\x. rec x i m) exp)
@@ -33,56 +33,56 @@ stepA = \ exp rec d.
   match exp
   ( 'IConst: u -> Nothing
   | 'Plus: p ->
-    match (fst p)
+    match p.'1
     ( 'IConst: i ->
-      match (snd p)
+      match p.'2
       ( 'IConst: j -> Just ('IConst: (add i j))
       | otherwise ->
-        match (rec (snd p) d)
-        ( 'Just: sndd -> Just ('Plus: (pair ('IConst: i) sndd))
+        match (rec p.'2 d)
+        ( 'Just: sndd -> Just ('Plus: ('IConst: i, sndd))
         | otherwise -> Nothing))
     | otherwise (
-      match (rec (fst p) d)
-      ( 'Just: fstt -> Just ('Plus: (pair fstt (snd p)))
+      match (rec p.'1 d)
+      ( 'Just: fstt -> Just ('Plus: (fstt, p.'2))
       | otherwise ->
-        match (rec (snd p) d)
-        ( case #'Just (\sndd. Just (con #'Plus (pair (fst p) sndd)))
+        match (rec p.'2 d)
+        ( 'Just: sndd -> Just ('Plus: (p.'1, sndd))
         | otherwise -> Nothing )))))
 
 stepB : Xh BoolF Step
 stepB = \ exp rec d.
   match exp
-  ( case #'BConst (const Nothing)
-  | case #'If (\ t.
-    match (fst t)
-    ( case #'BConst
-      ( case #'True (const (Just (snd t)))
-      | case #'False (const (Just (thd t))) )
+  ( 'BConst: u -> Nothing
+  | 'If: t ->
+    match t.'1
+    ( case 'BConst
+      ( 'True: u -> Just t.'2
+      | 'False: u -> Just t.'3 )
     | otherwise
-      ( match (rec (fst t) d)
-        ( case #'Just (\fstt. Just (con #'If (triple fstt (snd t) (thd t))))
-        | otherwise (
-          match (rec (snd t) d)
-          ( case #'Just (\sndd. Just (con #'If (triple (fst t) sndd (thd t))))
-          | otherwise (
-            match (rec (thd t) d)
-            ( case #'Just (\thdd. Just (con #'If (triple (fst t) (snd t) thdd)))
-            | otherwise Nothing )))))))))
+      ( match (rec t.'1 d)
+        ( 'Just: fstt -> Just ('If: (fstt, t.'2, t.'3))
+        | otherwise ->
+          match (rec t.'2 d)
+          ( 'Just: sndd -> Just ('If: (t.'1, sndd, t.'3))
+          | otherwise ->
+            match (rec t.'3 d)
+            ( 'Just: thdd -> Just ('If: (t.'1, t.'2, thdd))
+            | otherwise -> Nothing ))))))
 
 stepF : Xh LamF Step
 stepF = \ exp rec d.
   match exp
-  ( case #'App (\ p.
-    match (fst p)
-    ( case #'Lam (\e. Just (subst d e 0 (snd p)))
-    | otherwise (
-      match (rec (fst p) d)
-      ( case #'Just (\fstt. Just (con #'App (pair fstt (snd p))))
-      | otherwise (
-        match (rec (snd p) d)
-        ( case #'Just (\sndd. Just (con #'App (pair (fst p) sndd)))
-        | otherwise Nothing ))))))
-  | otherwise Nothing )
+  ( 'App: p ->
+    match p.'1
+    ( 'Lam: e -> Just (subst d e 0 p.'2)
+    | otherwise ->
+      match (rec p.'1 d)
+      ( 'Just: fstt -> Just ('App: (fstt, p.'2))
+      | otherwise ->
+        match (rec p.'2 d)
+        ( 'Just: sndd -> Just ('App: (p.'1, sndd))
+        | otherwise -> Nothing )))
+  | otherwise -> Nothing )
 
 step : Xh ABLF Step
 step = stepA | stepB | stepF
@@ -108,7 +108,7 @@ astepsS : String
 astepsS = showExpr showABLF asteps
 
 exp : Mu (Sigma ABLF)
-exp = con #'App (pair (con #'Lam (con #'Plus (pair (con #'Var zero) (con #'Var zero))))
+exp = con #'App (pair (con #'Lam (con #'Plus (pair (con #'Var 0) (con #'Var 0))))
                       (con #'IConst one))
 
 expS : String

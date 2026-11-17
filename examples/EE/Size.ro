@@ -5,19 +5,19 @@ import Ro.Base, Ro.Xr, Data.Functor, Data.List, Data.Nat, Data.Tuple, EE.Types
 
 sizeB : FAlg (Sigma BoolF) Nat    -- Sigma BoolF Nat -> Nat
 sizeB = case #'BConst (\u. one)
-      | case #'If (\t. succ (add (sel t #'1) (add (sel t #'2) (sel t #'3))))
+      | case #'If (\t. Succ (add (sel t #'1) (add (sel t #'2) (sel t #'3))))
 
 sizeA : FAlg (Sigma ArithF) Nat
 sizeA = case #'IConst (\u. one)
-       | case #'Plus (\t. succ (add (sel t #'1) (sel t #'2)))
+       | case #'Plus (\t. Succ (add (sel t #'1) (sel t #'2)))
 
 sizeL : FAlg (Sigma LamF) Nat
-sizeL = case #'Lam succ
-      | case #'App (\t. succ (add (sel t #'1) (sel t #'2)))
+sizeL = case #'Lam Succ
+      | case #'App (\t. Succ (add (sel t #'1) (sel t #'2)))
       | case #'Var (\t. one)
 
 sizeR : FAlg (Sigma RecF) Nat
-sizeR = case #'Fix succ
+sizeR = case #'Fix Succ
 
 sizeLB : FAlg (Sigma LBF) Nat
 sizeLB = sizeL | sizeB
@@ -48,19 +48,19 @@ type RConst = \x y. x
 
 sizeBb : Xh BoolF (RConst Nat)
 sizeBb = case #'BConst (\u rec. one)
-       | case #'If (\t rec. succ (add (rec (sel t #'1)) (add (rec (sel t #'2)) (rec (sel t #'3)))))
+       | case #'If (\t rec. Succ (add (rec (sel t #'1)) (add (rec (sel t #'2)) (rec (sel t #'3)))))
 
 sizeAb : Xh ArithF (RConst Nat)
 sizeAb = case #'IConst (\u rec. one)
-       | case #'Plus (\t rec. succ (add (rec (sel t #'1)) (rec (sel t #'2))))
+       | case #'Plus (\t rec. Succ (add (rec (sel t #'1)) (rec (sel t #'2))))
 
 sizeLb : Xh LamF (RConst Nat)
-sizeLb = case #'Lam (\e rec. succ (rec e))
-       | case #'App (\t rec. succ (add (rec (sel t #'1)) (rec (sel t #'2))))
+sizeLb = case #'Lam (\e rec. Succ (rec e))
+       | case #'App (\t rec. Succ (add (rec (sel t #'1)) (rec (sel t #'2))))
        | case #'Var (\t rec. one)
 
 sizeRb : Xh RecF (RConst Nat)
-sizeRb = case #'Fix (\e rec. succ (rec e))
+sizeRb = case #'Fix (\e rec. Succ (rec e))
 
 
 sizeAllb : Xh AllF (RConst Nat)

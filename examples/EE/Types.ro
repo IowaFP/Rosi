@@ -131,7 +131,7 @@ shConst : String
 shConst = showExpr showAllF xpConst
 
 xpNot : μ (Σ ABLF)
-xpNot = 'Lam: ('If: (triple ('Var: zero) ('BConst: False) ('BConst: True)))
+xpNot = 'Lam: ('If: (triple ('Var: 0) ('BConst: False) ('BConst: True)))
 
 shNot : String
 shNot = showExpr showABLF xpNot

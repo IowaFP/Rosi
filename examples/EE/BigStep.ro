@@ -117,8 +117,8 @@ evTrue : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
 evTrue = histo evalABL xpTrue nil
 
 xpIdd : Mu (Sigma ABLF)
-xpIdd = con #'App (pair (con #'Lam (con #'Var zero))
-                        (con #'Lam (con #'Var zero)))
+xpIdd = con #'App (pair (con #'Lam (con #'Var 0))
+                        (con #'Lam (con #'Var 0)))
 
 evIdd : Mu (Sigma { 'Nat := \val. Nat, 'Bool := \val. Bool
                   , 'Clos := \val. Pair (List val) (Mu (Sigma ABLF))

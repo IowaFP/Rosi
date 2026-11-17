@@ -205,11 +205,14 @@ type ColorPointF = {
 type ColorPoint : *
 type ColorPoint = Mu (Pi ColorPointF)
 
+type TripleRow : * -> * -> * -> R[*]
+type TripleRow t u v = { '1 := t, '2 := u, '3 := v }
+
 -- Note that the ColorPoint constructor crucially uses its parent constructor
 -- (cartPoint) to construct `super`, then overwrites super's `equal` method.
 colorPoint : Class ColorPointF (TripleRow Nat Nat Color)
-colorPoint = \@t init p self.
-  let super = (cartPoint @t
+colorPoint = \init p self.
+  let super = (cartPoint
                 (\ q. init (triple q.'1 q.'2 p.'3))
                 (pair p.'1 p.'2)
                 self) in

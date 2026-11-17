@@ -175,7 +175,7 @@ projectLens = ('get := prj, 'put := flip upd)
 --      = (prj [x] [z] zs) ++ (prj [y] [z] zs)
 --      = zs
 concatLens : x + y ~ z ⇒ Lens (Pair (Π x) (Π y)) (Π z)
-concatLens = ('get := λ p. fst p ++ snd p, 'put := λ p zs. (prj zs, prj zs))
+concatLens = ('get := λ p. p.'1 ++ p.'2, 'put := λ p zs. (prj zs, prj zs))
 
 --------------------------------------------------------------------------------
 -- Injection is a prism
@@ -191,7 +191,7 @@ branchPrism = ('get := Just . Left | Just . Right , 'put := case 'Left inj | cas
 
 -- and a lens on eliminators
 branchLens : x + y ~ z ⇒ Lens (Pair (Σ x → t) (Σ y → t)) (Σ z → t)
-branchLens = bijective (λ p. fst p | snd p) (λ t. pair (t . inj) (t . inj))
+branchLens = bijective (λ p. p.'1 | p.'2) (λ t. (t . inj, t . inj))
 
 --------------------------------------------------------------------------------
 -- A Pi to Sigma lens
