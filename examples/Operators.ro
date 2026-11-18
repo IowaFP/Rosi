@@ -175,7 +175,7 @@ exp_8 = 2**3 -- 8
 exp_24 = & 2**3
 
 (+++) : Nat -> Nat
-(+++) = succ
+(+++) = Succ
 
 -- infix 9 +++
 prefix 11 +++

@@ -561,7 +561,9 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   buildSel x l = EApp (EApp (EVar (-1) (reverse ["Ro", "Base", "sel"])) x) l
 
   selection =
-    do x <- EVar (-1) <$> qidentifier
+    do x <- choice [ EVar (-1) <$> try qidentifier
+                   , EVar (-1) . singleton <$> termIdentifier
+                   ]
        xs <- many $ do char '.'
                        choice [ ESing . TLab <$> lidentifier
                               , EVar (-1) . sing <$> identifier]
