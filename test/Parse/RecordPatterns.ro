@@ -15,3 +15,10 @@ nested ('top := ('inner := ('innerInner := x)),
 nested' = λ record.
                   let x = record.'top.'inner.'innerInner in
                     let y = record.'secondField in tt
+
+lamDef = λ ('1 := x, '2 := y). x ^ y
+
+nestedLam = λ ('1 := x, '2 := y). λ ('1 := z). x
+
+-- Ensure that the order of binding means that x holds the correct "__RECORD.'1"
+shouldBeYes = nestedLam ('1 := "YES", '2 := "y") ('1 := "NO")
