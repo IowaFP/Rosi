@@ -12,3 +12,5 @@ ex_adjacent_pre_post1,ex_adjacent_pre_post2,ex_adjacent_pre_post3,ex_adjacent_pr
 exp_1,exp_2,exp_4,exp_8,exp_24,ex_adjacent_exprs1,ex_adjacent_exprs2,ex_adjacent_exprs3,fold\',\
 op_made_of_reserved_symbols2,op_made_of_reserved_symbols1,\
 widenVariant,monoIdYes,monoIdNo,postfix_betwixt_type_application,\~\~\~
+
+cabal run Rosi -- -i rolib -i test test/Parse/RecordPatterns.ro -t -e foo,bar,nested,nested'

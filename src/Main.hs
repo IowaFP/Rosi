@@ -26,6 +26,7 @@ import Parser
 import Printer
 import Scope
 import Syntax                hiding ((<.>))
+import DesugarPatterns
 
 -- ----------------------------------------------------------------------------
 -- Options & flags
@@ -123,7 +124,8 @@ main = do setLocaleEncoding utf8
           when (doShowProgress flags) $
             hSetBuffering stderr NoBuffering
           decls <- parseChasing (imports flags) (inputs flags)
-          scoped <- reportErrors flags $ runScopeM $ scopeProg decls
+          dePatterned <- reportErrors flags $ desugarPatterns decls
+          scoped <- reportErrors flags $ runScopeM $ scopeProg dePatterned
           deOpped <- reportErrors flags $ desugarInfix scoped
           checked <- goCheck flags [] [] [] deOpped
           when (doPrintTyped flags) $

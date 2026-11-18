@@ -9,4 +9,9 @@ foo : Pair Nat Nat -> Nat
 foo ('1 := x, '2 := y) = (add x y)
 
 
-nested ('top := ('inner := ('innerInner := x))) = tt
+nested ('top := ('inner := ('innerInner := x)),
+        'secondField := y) = tt
+
+nested' = λ record.
+                  let x = record.'top.'inner.'innerInner in
+                    let y = record.'secondField in tt

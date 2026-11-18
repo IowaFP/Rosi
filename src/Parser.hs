@@ -435,15 +435,13 @@ existentialBinder =
                       return (map (, Just k) xs)
         ]
 
-fieldBinder :: Parser (Term, Binder)
-
+fieldBinder :: Parser (String, Binder)
 fieldBinder =
     do l <- lexeme lidentifier
-       let (l' :: Term) = (ESing . TLab) l
        lexeme (void labels)
        innerPattern <- bindingPattern
       --  ELabel (Just Pi) l'' <$> bindingPattern
-       return (l', innerPattern)
+       return (l, innerPattern)
 
 
 label :: String -> Term
@@ -495,7 +493,6 @@ termLamBinders =
     , map (`ELam` Nothing) <$> try (some bindingPattern)
     ]
 
-buildSel x l = EApp (EApp (EVar (-1) (reverse ["Ro", "Base", "sel"])) x) l
 
 var :: String -> Term
 var s = EVar (-1) [s]

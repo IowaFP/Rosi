@@ -18,7 +18,7 @@ data Const =
 -- The Term in (Term, _) should be a label literal [parsed as ((ESing . TLab) String)]
 data Binder =
     PatternVar String
-  | PatternRecord [(Term, Binder)]
+  | PatternRecord [(String, Binder)]
   -- TODO(mctano): do we need this? A single field could also be a record, but I guess we could indicate a variant by bracket choice.
   | PatternVariant (Term, Binder)
   deriving (Data, Eq, Show)
@@ -43,6 +43,13 @@ instance Ord EOp where
 
 explicitApp :: EInfixToken
 explicitApp = Operator $ Op (-1) ["__Apply"] (Just (Fixity InfixL 10))
+
+buildSel :: Term -> Term -> Term
+buildSel x = EApp (EApp (EVar (-1) (reverse ["Ro", "Base", "sel"])) x)
+
+buildDeepSel  :: Term -> [Term] -> Term
+buildDeepSel = foldl buildSel
+
 
 data EOp = Op Int QName (Maybe Fixity)
   deriving (Data, Eq, Show)
