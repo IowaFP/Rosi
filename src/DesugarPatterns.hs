@@ -40,10 +40,11 @@ instance DesugarPatterns Term where
                                           -- we make the recursive call to desugar subterms before collecting and resolving fixities
   desugarPatterns (EInfix _ops)        = EInfix <$> desugarPatterns _ops
 
+recordStr = "__RECORD"
 
 desugarPattern :: Binder -> Either Error (Maybe Ty -> Term -> Term)
 desugarPattern x@(PatternVar _) = return $ ELam x
-desugarPattern (PatternRecord fields) = return $ \mty -> ELam (PatternVar "__RECORD") mty . desugarPatternFields fields
+desugarPattern (PatternRecord fields) = return $ \mty -> ELam (PatternVar recordStr) mty . desugarPatternFields fields
   where
     desugarPatternFields :: [(String, Binder)] -> (Term -> Term)
     desugarPatternFields [] = id
@@ -55,7 +56,7 @@ findPaths (l, PatternRecord fields) = let fieldPaths = map findPaths fields in m
 
 construct :: [([String], String)] -> (Term -> Term)
 construct = foldr g id where
-                      g (ls, x) a = ELet x (buildDeepSel (EVar (-1) ["RECORD"]) (map (ESing . TLab) ls)) . a
+                      g (ls, x) a = ELet x (buildDeepSel (EVar (-1) [recordStr]) (map (ESing . TLab) ls)) . a
 
 
 -- desugar all subterms in the list of operators and operands
