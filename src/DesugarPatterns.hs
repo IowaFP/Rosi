@@ -16,7 +16,7 @@ instance DesugarPatterns Term where
 
   desugarPatterns :: Term -> Either Error Term
   desugarPatterns (EVar n qname)       = return $ EVar n qname
-  desugarPatterns (ELam x ty tm)       = desugarPattern x ty <*> desugarPatterns tm
+  desugarPatterns (ELam x mty tm)       = ($ mty) <$> desugarPattern x <*> desugarPatterns tm
   desugarPatterns (EApp ft xt)         = EApp <$> desugarPatterns ft <*> desugarPatterns xt
 
   desugarPatterns (ETyLam s k tm )     = ETyLam s k <$> desugarPatterns tm
@@ -41,9 +41,9 @@ instance DesugarPatterns Term where
   desugarPatterns (EInfix _ops)        = EInfix <$> desugarPatterns _ops
 
 
-desugarPattern :: Binder ->  Maybe Ty -> Either Error (Term -> Term)
-desugarPattern x@(PatternVar _) ty = return $ ELam x ty
-desugarPattern (PatternRecord fields) ty = return $ ELam (PatternVar "__RECORD") ty . desugarPatternFields fields
+desugarPattern :: Binder -> Either Error (Maybe Ty -> Term -> Term)
+desugarPattern x@(PatternVar _) = return $ ELam x
+desugarPattern (PatternRecord fields) = return $ \mty -> ELam (PatternVar "__RECORD") mty . desugarPatternFields fields
   where
     desugarPatternFields :: [(String, Binder)] -> (Term -> Term)
     desugarPatternFields [] = id
