@@ -107,7 +107,6 @@ checkTerm0 (ELam v Nothing e) expected =
   do tdom <- typeGoal "dom"
      checkTerm0 (ELam v (Just tdom) e) expected
 checkTerm0 (ELam v@(PatternRecord {}) _ _) _ = error "unexpected PatternRecord after desugaring"
-checkTerm0 (ELam v@(PatternVariant {}) _ _) _ = error "unexpected PatternVariant after desugaring"
 checkTerm0 e0@(ELam (PatternVar v) (Just t) e) expected =
   do tcod <- expectedGoal "cod"
      t' <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))

@@ -262,7 +262,6 @@ instance Printable EOp where
 instance Printable Binder where
   ppr (PatternVar s) = ppre s
   ppr (PatternRecord fields) = "TODO"
-  ppr (PatternVariant (l,v)) = "TODO"
 
 
 
