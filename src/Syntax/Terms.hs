@@ -19,8 +19,6 @@ data Const =
 data Binder =
     PatternVar String
   | PatternRecord [(String, Binder)]
-  -- TODO(mctano): do we need this? A single field could also be a record, but I guess we could indicate a variant by bracket choice.
-  | PatternVariant (Term, Binder)
   deriving (Data, Eq, Show)
 
 data Term =

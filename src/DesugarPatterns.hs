@@ -12,8 +12,6 @@ import Data.Bifunctor (first)
 class DesugarPatterns a where
   desugarPatterns :: a -> Either Error a
 
--- TODO(mctano) try to do something about the amount of boilerplate required to write a desugaring pass.
-
 instance DesugarPatterns Term where
 
   desugarPatterns :: Term -> Either Error Term
@@ -45,17 +43,15 @@ instance DesugarPatterns Term where
 
 desugarPattern :: Binder ->  Maybe Ty -> Either Error (Term -> Term)
 desugarPattern x@(PatternVar _) ty = return $ ELam x ty
-desugarPattern (PatternRecord fields) ty = return $ ELam (PatternVar "RECORD") ty . desugarPatternFields fields
+desugarPattern (PatternRecord fields) ty = return $ ELam (PatternVar "__RECORD") ty . desugarPatternFields fields
   where
     desugarPatternFields :: [(String, Binder)] -> (Term -> Term)
     desugarPatternFields [] = id
     desugarPatternFields (p:ps) = (construct . findPaths) p . desugarPatternFields ps
-desugarPattern (PatternVariant _) ty = error "TODO"
 
 findPaths :: (String, Binder) -> [([String], String)]
 findPaths (l, PatternVar x) = [([l], x)]
 findPaths (l, PatternRecord fields) = let fieldPaths = map findPaths fields in map (first (l :)) (concat fieldPaths)
-findPaths (l,p) = error "TODO"
 
 construct :: [([String], String)] -> (Term -> Term)
 construct = foldr g id where

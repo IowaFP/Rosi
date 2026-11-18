@@ -440,7 +440,6 @@ fieldBinder =
     do l <- lexeme lidentifier
        lexeme (void labels)
        innerPattern <- bindingPattern
-      --  ELabel (Just Pi) l'' <$> bindingPattern
        return (l, innerPattern)
 
 
