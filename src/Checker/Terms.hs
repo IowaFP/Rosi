@@ -106,7 +106,9 @@ checkTerm0 e@(EVar i v) expected =
 checkTerm0 (ELam v Nothing e) expected =
   do tdom <- typeGoal "dom"
      checkTerm0 (ELam v (Just tdom) e) expected
-checkTerm0 e0@(ELam v (Just t) e) expected =
+checkTerm0 (ELam v@(PatternRecord {}) _ _) _ = error "unexpected PatternRecord after desugaring"
+checkTerm0 (ELam v@(PatternVariant {}) _ _) _ = error "unexpected PatternVariant after desugaring"
+checkTerm0 e0@(ELam (PatternVar v) (Just t) e) expected =
   do tcod <- expectedGoal "cod"
      t' <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
      wrapInst expected $ \expected ->
@@ -115,7 +117,7 @@ checkTerm0 e0@(ELam v (Just t) e) expected =
           case tdom of
             TExists {}  -> checkTerm (EExLam [] [] v (Just tdom) e) expected
             TExistsP {} -> checkTerm (EExLam [] [] v (Just tdom) e) expected
-            _           -> wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
+            _           -> wrap q . ELam (PatternVar v) (Just t') <$> bind v t' (checkTerm'  e tcod)
 checkTerm0 e0@(EExLam xs _ y mt m) expected
   | Nothing <- mt =
     do tdom <- expectedGoal "dom"

@@ -151,7 +151,8 @@ instance HasVars Term where
   scope (EVar _ x) = fst <$> var x
   scope (EConst c) = return (EConst c)
 
-  scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x Nothing (scope m)
+  scope (ELam (PatternVar x) t m) = ELam (PatternVar x) <$> traverse scope t <*> bindVar x Nothing (scope m)
+  scope (ELam _ t m) = error "scope: Pattern Binding"
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
   scope (EExLam xs ps y mt m) = EExLam xs <$> scope ps <*> pure y <*> scope mt <*> foldr (bindTyVar . fst) (bindVar y Nothing (scope m)) xs
@@ -202,4 +203,4 @@ scopeProg (d@(TyDecl x _ _) : ds)   = (:) <$> scope d <*> bindGTyVar x (scopePro
 
 test1 =
   runScopeM $ scope $
-  TmDecl ["id"] (Just (TApp (TApp TFun (TVar (-1) ["a"])) (TVar (-1) ["a"]))) (ELam "x" Nothing (EVar (-1) ["x"])) Nothing
+  TmDecl ["id"] (Just (TApp (TApp TFun (TVar (-1) ["a"])) (TVar (-1) ["a"]))) (ELam (PatternVar "x") Nothing (EVar (-1) ["x"])) Nothing

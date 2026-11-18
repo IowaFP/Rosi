@@ -229,13 +229,13 @@ class FromPeano a where
 instance FromPeano Term where
   fromPeano :: Term -> Maybe Int
   fromPeano (EVar _ ["zero","Nat","Data"])          = Just 0
-  fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
+  fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+  1) (fromPeano p)
   fromPeano _                                       = Nothing
 
 collectBinders :: Term -> RDoc ann
 collectBinders = go "\\" where
-  go s (ELam x Nothing m)    = go (s <+> ppre x) m
-  go s (ELam x (Just t) m)   = go (s <+> parens (ppre x <:> ppr t)) m
+  go s (ELam x Nothing m)    = go (s <+> ppr x) m
+  go s (ELam x (Just t) m)   = go (s <+> parens (ppr x <:> ppr t)) m
   go s (ETyLam x Nothing m)  = go (s <+> "@" <> ppre x) m
   go s (ETyLam x (Just k) m) = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
   go s (EExLam xs _ps y mt m)
@@ -258,6 +258,13 @@ instance Printable EOp where
                            if pi
                              then ppre (stringFromQName qn) <> "@" <> ppre i
                              else ppre (stringFromQName qn)
+
+instance Printable Binder where
+  ppr (PatternVar s) = ppre s
+  ppr (PatternRecord fields) = "TODO"
+  ppr (PatternVariant (l,v)) = "TODO"
+
+
 
 instance Printable AppTerm where
   ppr (AType t) = "@" <> ppr t

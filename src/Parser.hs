@@ -4,7 +4,8 @@ module Parser where
 
 import Prelude                    hiding (pi)
 
-import Syntax
+import Syntax hiding (label)
+
 
 import Control.Monad              (when)
 import Control.Monad.Reader
@@ -21,7 +22,8 @@ import System.IO                  (hPutStrLn, stderr)
 
 import Data.Char                  (isAlphaNum)
 import Data.Functor               (void)
-import Text.Megaparsec            hiding (State)
+import Text.Megaparsec hiding (State, label)
+
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as P
 
@@ -201,7 +203,8 @@ reservedLetters = ['λ']
 namespace :: Parser String
 namespace = ((:) <$> upperChar) <*> many alphaNumChar <* char '.'
 
--- a variable name or compound identifier
+-- a name, used for top-level bindings, let-variables, lambda arguments, etc.
+
 identifier :: ParsecT Void [Char] (State [(Ordering, Pos)]) [Char]
 identifier  =
   do s <- (:) <$> letterChar <*> many identChar
@@ -210,7 +213,8 @@ identifier  =
      else return s
   where keywords = ["let", "in", "forall", "exists"]
 
--- identifier that represents a label
+-- label literal
+
 lidentifier :: Parser String
 lidentifier =
   char '\'' >> some identChar
@@ -250,6 +254,8 @@ customOperator =
 immediateParens = between (char '(') (char ')')
 immediateBackticks = between (char '`') (char '`')
 parens      = between (symbol "(") (symbol ")")
+angles :: ParsecT Void [Char] (State [(Ordering, Pos)]) a -> ParsecT Void [Char] (State [(Ordering, Pos)]) a
+
 angles      = between (symbol "<") (symbol ">")
 brackets    = between (symbol "[") (symbol "]")
 braces      = between (symbol "{") (symbol "}")
@@ -429,26 +435,42 @@ existentialBinder =
                       return (map (, Just k) xs)
         ]
 
-fieldBinder :: Parser [(String, String)]
+fieldBinder :: Parser (Term, Binder)
+
 fieldBinder =
     do l <- lexeme lidentifier
        let (l' :: Term) = (ESing . TLab) l
        lexeme (void labels)
-       fieldVar <- termIdentifier
+       innerPattern <- bindingPattern
       --  ELabel (Just Pi) l'' <$> bindingPattern
-       return [(l, fieldVar)]
+       return (l', innerPattern)
 
 
+label :: String -> Term
+label = ESing . TLab
 
-bindingPattern :: Parser (Term -> Term)
-bindingPattern = parens $ do f <- handleBinders . concat <$> commaSep fieldBinder
-                             return $ ELam newVar Nothing . f
 
-  where newVar = "NEWVAR"
+bindingPattern :: Parser Binder
+bindingPattern = choice [ PatternVar <$> try (lexeme termIdentifier)
+                                              , PatternRecord <$> try (parens (commaSep fieldBinder))
+                                              ]
 
-        handleBinders :: [(String, String)] -> (Term -> Term)
-        handleBinders [] = id
-        handleBinders ((l, m):xs) = handleBinders xs . ELet m (EUnlabel (Just Pi) (EApp (EConst CPrj) (EVar (-1) [newVar])) ((ESing . TLab) l))
+
+  -- where newVar = "RECORD"
+
+  --       handleBinders :: [(String, String)] -> (Term -> Term)
+  --       handleBinders [] = id
+  --       handleBinders ((l, m):xs) = handleBinders xs . ELet m (buildSel (var newVar) (label l))
+
+-- parse top level of record pattern, then use helper for the interior pattern.
+-- at each level, return a list of labels and the term that they map to.
+-- with the returned value, prepend the current level's label to each of the lists.
+--
+
+
+-- don't do anything with newVar at this point, that's a desugaring concern.
+
+
 
 
 
@@ -457,20 +479,26 @@ bindingPattern = parens $ do f <- handleBinders . concat <$> commaSep fieldBinde
 termLamBinders :: Parser [Term -> Term]
 termLamBinders =
   choice
-    [ singleton . flip ELam Nothing <$> try (lexeme termIdentifier)
+    [ singleton . flip ELam Nothing . PatternVar <$> try (lexeme termIdentifier)
     , singleton . flip ETyLam Nothing <$> lexeme (char '@' >> identifier)
     , try $
       parens $ do xs <- some (try (lexeme termIdentifier))
                   t <- colon >> ty
-                  return (map (flip ELam (Just t)) xs)
+                  return (map (flip ELam (Just t) . PatternVar) xs)
+
     , try $
       parens $ do xs <- some (lexeme (char '@' >> identifier))
                   t <- colon >> kind
                   return (map (flip ETyLam (Just t)) xs)
     , try $ parens $ do (xs, y, t) <- existentialBinder
                         return [EExLam xs [] y t]
-    , try $ some bindingPattern
+    , map (`ELam` Nothing) <$> try (some bindingPattern)
     ]
+
+buildSel x l = EApp (EApp (EVar (-1) (reverse ["Ro", "Base", "sel"])) x) l
+
+var :: String -> Term
+var s = EVar (-1) [s]
 
 term :: Parser Term
 term = prefixes typedTerm where
@@ -522,11 +550,13 @@ term = prefixes typedTerm where
                      , EVar (-1) <$> qidentifier ]
          symbol ":"
          x <- choice [ do x <- lexeme termIdentifier
-                          return (ELam x Nothing)
+                          return (ELam (PatternVar x) Nothing)
+
                      , try $
                        parens $ do x <- lexeme termIdentifier
                                    t <- colon >> ty
-                                   return (ELam x (Just t))
+                                   return (ELam (PatternVar x) (Just t))
+
                      , parens $
                        do (xs, y, mty) <- lexeme existentialBinder
                           return (EExLam xs [] y mty) ]
@@ -542,9 +572,9 @@ term = prefixes typedTerm where
 
   -- ELam "x" Nothing (EApp e1 (EApp e2 (EVar 0 ["x"])))
   o :: Term
-  o = ELam "f" Nothing
-     (ELam "g" Nothing
-     (ELam "x" Nothing
+  o = ELam (PatternVar "f") Nothing
+     (ELam (PatternVar "g") Nothing
+     (ELam (PatternVar "x") Nothing
        (EApp (EVar (-1) ["f"])
          (EApp (EVar (-1) ["g"]) (EVar (-1) ["x"])))))
 
@@ -585,7 +615,6 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
             return (EApp (EVar (-1) (reverse ["Ro", "Base", "con"])) x)
 
   sing x = [x]
-  buildSel x l = EApp (EApp (EVar (-1) (reverse ["Ro", "Base", "sel"])) x) l
 
   selection =
     do x <- EVar (-1) <$> qidentifier
@@ -598,7 +627,8 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
     do xs <- some $ do char '.'
                        choice [ ESing . TLab <$> lidentifier
                               , EVar (-1) . sing <$> identifier]
-       return (ELam "$x" Nothing (foldl buildSel (EVar (-1) ["$x"]) xs))
+       return (ELam (PatternVar "$x") Nothing (foldl buildSel (EVar (-1) ["$x"]) xs))
+
 
   aterm :: Parser Term
   aterm = choice [ EConst <$> constant

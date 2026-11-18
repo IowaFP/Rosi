@@ -189,7 +189,7 @@ eval' h (EExLam _ ps _ _ e) =
     peel (qs, vs) (_ : ps) (VPack q v) = peel (q : qs, vs) ps v
     peel _ qs v                        = error $ "bad peel: " ++ show qs ++ " " ++ show v
 eval' h (EApp f e) = app (eval h f) (eval h e)
-eval' h (ELet x e f) = eval h (EApp (ELam x Nothing f) e)
+eval' h (ELet x e f) = eval h (EApp (ELam (PatternVar x) Nothing f) e)
 eval' h (ETyLam _ _ e) = eval h e
 eval' h (EPrLam _ e) = VPrLam h (Term e)
 eval' h (EInst t is) = inst (eval h t) is
@@ -276,7 +276,7 @@ eval' h (EConst CBranch) =
                   Right i -> app g (VVariant i w s)
           _ -> error $ "bad environment for branch: " ++ show h
 eval' h (EConst CFix) =
-  eval h (ELam "f" Nothing (EApp (EVar 0 ["f", ""]) (EApp (EConst CFix) (EVar 0 ["f", []]))))
+  eval h (ELam (PatternVar "f") Nothing (EApp (EVar 0 ["f", ""]) (EApp (EConst CFix) (EVar 0 ["f", []]))))
 eval' h (EConst CStringCat) =
   VLam h $ Prim $ \h ->
     VLam h $ Prim $ \case

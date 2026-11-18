@@ -7,3 +7,6 @@ bar ('1 := x) p = p (Succ x)
 
 foo : Pair Nat Nat -> Nat
 foo ('1 := x, '2 := y) = (add x y)
+
+
+nested ('top := ('inner := ('innerInner := x))) = tt
