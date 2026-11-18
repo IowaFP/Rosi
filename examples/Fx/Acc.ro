@@ -9,7 +9,7 @@ type Id = \x. x
 inck : forall a z. St Nat < z => Free z a -> Free z a
 inck = \k.
   con #'Con (con #'Get (\i.
-  con #'Con (con #'Put (pair (succ i) (\u. k)))))
+  con #'Con (con #'Put (pair (Succ i) (\u. k)))))
 
 deck : forall a z. St Nat < z => Free z a -> Free z a
 deck = \k.
