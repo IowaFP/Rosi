@@ -1,0 +1,10 @@
+import Ro.Base
+
+pair x y = ('1 := x, '2 := y)
+
+fst ('1 := x, '2 := y) = x
+
+myFstFCP (pair x y) = x
+
+myFstFstFCP (pair (pair x y) y') = x
+
