@@ -311,7 +311,7 @@ instance Printable Term where
     name CSyn       = "syn"
     name CAna       = "ana"
     name CFold      = "fold"
-  ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> "in", ppr n]
+  ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppr x <+> "=" <+> ppr m <+> "in", ppr n]
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   -- Not printing internals (yet)
   ppr (EPrLam _ m) = ppr m

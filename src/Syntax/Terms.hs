@@ -15,7 +15,6 @@ data Const =
     -- TODO: can treat syn and ana as constants? is currently parse magic to insert identity function as default argument...
     -- TODO: can treat label and unlabel as constants with provided type argument?
 
--- The Term in (Term, _) should be a label literal [parsed as ((ESing . TLab) String)]
 data Binder =
     PatternVar String
   | PatternRecord [(String, Binder)]
@@ -28,7 +27,7 @@ data Term =
   | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const | EInfix [EInfixToken]
-  | ELet String Term Term | ECast Term Evid | ETyped Term Ty
+  | ELet Binder Term Term | ECast Term Evid | ETyped Term Ty
   | EStringLit String | EHole String
   deriving (Data, Eq, Show, Typeable)
 

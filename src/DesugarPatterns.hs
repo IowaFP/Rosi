@@ -5,9 +5,9 @@
 module DesugarPatterns where
 
 
+import Data.Bifunctor (first)
 import Errors
 import Syntax
-import Data.Bifunctor (first)
 
 class DesugarPatterns a where
   desugarPatterns :: a -> Either Error a
@@ -16,7 +16,7 @@ instance DesugarPatterns Term where
 
   desugarPatterns :: Term -> Either Error Term
   desugarPatterns (EVar n qname)       = return $ EVar n qname
-  desugarPatterns (ELam x mty tm)       = ($ mty) <$> desugarPattern x <*> desugarPatterns tm
+  desugarPatterns (ELam x mty tm)       = desugarLamPattern x mty <$> desugarPatterns tm
   desugarPatterns (EApp ft xt)         = EApp <$> desugarPatterns ft <*> desugarPatterns xt
 
   desugarPatterns (ETyLam s k tm )     = ETyLam s k <$> desugarPatterns tm
@@ -30,7 +30,11 @@ instance DesugarPatterns Term where
 
   desugarPatterns (EConst c)           = return $ EConst c
 
-  desugarPatterns (ELet x vt et)       = ELet x <$> desugarPatterns vt <*> desugarPatterns et
+  desugarPatterns (ELet x vt et)       = do et' <- desugarPatterns et
+                                            vt' <- desugarPatterns vt
+                                            let f =desugarLetPattern x
+                                            return $ f vt' et'
+      -- ($ Nothing) <$> desugarPattern x <*> desugarPatterns vt <*> desugarPatterns et
   desugarPatterns (ECast tm evid)      = (`ECast` evid) <$> desugarPatterns tm
   desugarPatterns (ETyped tm ty)       = (`ETyped` ty) <$> desugarPatterns tm
 
@@ -42,21 +46,30 @@ instance DesugarPatterns Term where
 
 recordStr = "__RECORD"
 
-desugarPattern :: Binder -> Either Error (Maybe Ty -> Term -> Term)
-desugarPattern x@(PatternVar _) = return $ ELam x
-desugarPattern (PatternRecord fields) = return $ \mty -> ELam (PatternVar recordStr) mty . desugarPatternFields fields
-  where
-    desugarPatternFields :: [(String, Binder)] -> (Term -> Term)
-    desugarPatternFields [] = id
-    desugarPatternFields (p:ps) = (construct . findPaths) p . desugarPatternFields ps
+-- parse top level of record pattern, then use helper for the interior pattern.
+desugarLamPattern :: Binder -> (Maybe Ty -> Term -> Term)
+desugarLamPattern x@(PatternVar _)       = ELam x
+desugarLamPattern (PatternRecord fields) = \mty -> ELam (PatternVar recordStr) mty . desugarPatternFields fields
 
-findPaths :: (String, Binder) -> [([String], String)]
-findPaths (l, PatternVar x) = [([l], x)]
-findPaths (l, PatternRecord fields) = let fieldPaths = map findPaths fields in map (first (l :)) (concat fieldPaths)
+desugarLetPattern :: Binder -> (Term -> Term -> Term)
+desugarLetPattern x@(PatternVar _) = ELet x
+desugarLetPattern (PatternRecord fields) = \vt -> ELet (PatternVar recordStr) vt . desugarPatternFields fields
 
-construct :: [([String], String)] -> (Term -> Term)
-construct = foldr g id where
-                      g (ls, x) a = ELet x (buildDeepSel (EVar (-1) [recordStr]) (map (ESing . TLab) ls)) . a
+desugarPatternFields :: [(String, Binder)] -> (Term -> Term)
+desugarPatternFields = foldr ((.) . (buildInnerBinding . buildPaths)) id
+
+-- at each level, return a list of labels and the term that they map to.
+-- with the returned value, prepend the current level's label to each of the lists.
+buildPaths :: (String, Binder) -> [([String], String)]
+buildPaths (l, PatternVar x)         = [([l], x)]
+buildPaths (l, PatternRecord fields) = first (l :) <$> concatMap buildPaths fields
+
+buildInnerBinding :: [([String], String)] -> (Term -> Term)
+buildInnerBinding = foldr ((.) . bindPatternVar) id where
+                  bindPatternVar (ls, x) = (ELet (PatternVar x) . toSel) ls
+                  toSel = buildDeepSel recordVar . map labelFromString
+                  recordVar = EVar (-1) [recordStr]
+                  labelFromString = ESing . TLab
 
 
 -- desugar all subterms in the list of operators and operands

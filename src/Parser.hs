@@ -452,27 +452,6 @@ bindingPattern = choice [ PatternVar <$> try (lexeme termIdentifier)
                                               , PatternRecord <$> try (parens (commaSep fieldBinder))
                                               ]
 
-
-  -- where newVar = "RECORD"
-
-  --       handleBinders :: [(String, String)] -> (Term -> Term)
-  --       handleBinders [] = id
-  --       handleBinders ((l, m):xs) = handleBinders xs . ELet m (buildSel (var newVar) (label l))
-
--- parse top level of record pattern, then use helper for the interior pattern.
--- at each level, return a list of labels and the term that they map to.
--- with the returned value, prepend the current level's label to each of the lists.
---
-
-
--- don't do anything with newVar at this point, that's a desugaring concern.
-
-
-
-
-
-
-
 termLamBinders :: Parser [Term -> Term]
 termLamBinders =
   choice
@@ -506,7 +485,7 @@ term = prefixes typedTerm where
               return (foldr1 (.) (concat bs))
          <|>
            do symbol "let"
-              x <- lexeme termIdentifier
+              x <- lexeme bindingPattern
               mty <- optional $ symbol ":" >> ty
               symbol "="
               t <- term

@@ -152,14 +152,15 @@ instance HasVars Term where
   scope (EConst c) = return (EConst c)
 
   scope (ELam (PatternVar x) t m) = ELam (PatternVar x) <$> traverse scope t <*> bindVar x Nothing (scope m)
-  scope (ELam _ t m) = error "scope: Pattern Binding"
+  scope (ELam (PatternRecord _) t m) = error "scope: Record Pattern in lambda"
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
   scope (EExLam xs ps y mt m) = EExLam xs <$> scope ps <*> pure y <*> scope mt <*> foldr (bindTyVar . fst) (bindVar y Nothing (scope m)) xs
   scope (ESing t) = ESing <$> scope t
   scope (ELabel k l m) = ELabel k <$> scope l <*> scope m
   scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l
-  scope (ELet x m n) = ELet x <$> scope m <*> bindVar x Nothing (scope n)
+  scope (ELet (PatternVar x) m n) = ELet (PatternVar x) <$> scope m <*> bindVar x Nothing (scope n)
+  scope (ELet (PatternRecord _) m n) = error "scope: Record Pattern in let"
   scope (ETyped m t) = ETyped <$> scope m <*> scope t
   scope (EInst m is) = EInst <$> scope m <*> (mapM scopeI is) where
     scopeI (TyArg t)     = TyArg <$> scope t

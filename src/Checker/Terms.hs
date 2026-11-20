@@ -315,7 +315,7 @@ checkTerm0 e0@(ETyped e t) expected =
      wrapInst expected $ \expected ->
        do q <- expectT e0 t' expected
           return (ECast e' q)
-checkTerm0 e0@(ELet x e f) expected =
+checkTerm0 e0@(ELet (PatternVar x) e f) expected =
   do (e', t) <- generalize False e
      case t of
        TExists {} ->
@@ -327,7 +327,7 @@ checkTerm0 e0@(ELet x e f) expected =
                      checkTerm f (shiftN 0 (length existentials) expected)
                return (EApp (EExLam existentials assumed x (Just t) f') e')
        _ -> do f' <- bind x t (wrapInst expected (checkTerm f))
-               return (ELet x e' f')
+               return (ELet (PatternVar x) e' f')
   where
     bindTys [] m                 = m
     bindTys ((_, Just k) : xs) m = bindTy k (bindTys xs m)
@@ -335,6 +335,7 @@ checkTerm0 e0@(ELet x e f) expected =
 
     assumes [] m       = m
     assumes (p : ps) m = assume p (assumes ps m)
+checkTerm0 __@(ELet (PatternRecord _) _ _) _ = error "unexpected record pattern after desugaring"
 checkTerm0 e0@(EStringLit _) expected =
   wrapInst expected $ \expected ->
     do expectT e0 TString expected
