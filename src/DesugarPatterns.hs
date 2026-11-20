@@ -69,8 +69,6 @@ buildInnerBinding = foldr ((.) . bindPatternVar) id where
                   bindPatternVar (ls, x) = (ELet (PatternVar x) . toSel) ls
                   toSel = buildDeepSel recordVar . map labelFromString
                   recordVar = EVar (-1) [recordStr]
-                  labelFromString = ESing . TLab
-
 
 -- desugar all subterms in the list of operators and operands
 -- this must be called before passing the list of tokens to resolveFixities

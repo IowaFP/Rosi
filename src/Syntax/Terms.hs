@@ -47,6 +47,9 @@ buildSel x = EApp (EApp (EVar (-1) (reverse ["Ro", "Base", "sel"])) x)
 buildDeepSel  :: Term -> [Term] -> Term
 buildDeepSel = foldl buildSel
 
+labelFromString :: String -> Term
+labelFromString = ESing . TLab
+
 
 data EOp = Op Int QName (Maybe Fixity)
   deriving (Data, Eq, Show)

@@ -443,10 +443,6 @@ fieldBinder =
        return (l, innerPattern)
 
 
-label :: String -> Term
-label = ESing . TLab
-
-
 bindingPattern :: Parser Binder
 bindingPattern = choice [ PatternVar <$> try (lexeme termIdentifier)
                                               , PatternRecord <$> try (parens (commaSep fieldBinder))
@@ -521,7 +517,7 @@ term = prefixes typedTerm where
     <|> composeTerm
     where
     pattern =
-      do k <- choice [ ESing . TLab <$> lidentifier
+      do k <- choice [ labelFromString <$> lidentifier
                      , EVar (-1) <$> qidentifier ]
          symbol ":"
          x <- choice [ do x <- lexeme termIdentifier
@@ -583,7 +579,7 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
 
   goal s = Goal . (s,) <$> newIORef Nothing
 
-  ctor = do x <- choice [ ESing . TLab <$> lidentifier
+  ctor = do x <- choice [ labelFromString <$> lidentifier
                         , EVar (-1) <$> qidentifier ]
             char ':'
             notFollowedBy operatorChar
@@ -594,13 +590,13 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
   selection =
     do x <- EVar (-1) <$> qidentifier
        xs <- many $ do char '.'
-                       choice [ ESing . TLab <$> lidentifier
+                       choice [ labelFromString <$> lidentifier
                               , EVar (-1) . sing <$> identifier]
        return (foldl buildSel x xs)
 
   stor =
     do xs <- some $ do char '.'
-                       choice [ ESing . TLab <$> lidentifier
+                       choice [ labelFromString <$> lidentifier
                               , EVar (-1) . sing <$> identifier]
        return (ELam (PatternVar "$x") Nothing (foldl buildSel (EVar (-1) ["$x"]) xs))
 
@@ -613,7 +609,7 @@ appTerm = do (t:ts) <- some (AType <$> (char '@' >> atype) <|> ATerm <$> aterm)
                  , lexeme $ do char '?'
                                name <- many identChar
                                return (EHole name)
-                 , ESing . TLab <$> lexeme lidentifier
+                 , labelFromString <$> lexeme lidentifier
                  , EVar (-1) <$> try (lexeme qidentifier)
                  , ESing <$> (char '#' >> atype)
                  , buildNumber <$> lexeme number
