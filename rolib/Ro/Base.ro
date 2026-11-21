@@ -31,7 +31,7 @@ tt = prj ('x := \x. x)
 -------------------------------------------------------------------------------
 -- the any label
 
-any : ∀ l : L. #l
+any : forall l : L. #l
 any @l = #l
 
 -------------------------------------------------------------------------------
@@ -79,7 +79,7 @@ upd r s = r ++ prj s
 -- Existential types
 
 -- Function singleton here because figuring out functions is hard...
-pack : ∀ f t. #f → f t → (∃ x. f x)
+pack : forall f t. #f → f t → (exists x. f x)
 pack f x = x
 
 --------------------------------------------------------------------------------
@@ -120,18 +120,18 @@ impossible = fix (\x. x)
 -- Basic analysis / synthesis
 
 
-reflect : ∀ z : R[*], t. Π (z → t) → Σ z → t
+reflect : forall z : R[*], t. Π (z → t) → Σ z → t
 reflect d w = ana #(λX. X) (λ l u. d.l u) w
 
 -- Need to name type variables
-reify : ∀ z t. (Σ z → t) → Π (z → t)
+reify : forall z t. (Σ z → t) → Π (z → t)
 reify @z @t f = syn #(λX. X → t) (λl x. f (l: x))
 
 -- Categorical duals to reify / reflect. Don't have great names for these.
-decompose : ∀ z : R[*] , t. Π (t → z) → (t → Π z)
+decompose : forall z : R[*] , t. Π (t → z) → (t → Π z)
 decompose d t = syn #(λ X. X) (λl. d.l t)
 
-recompose : ∀ z : R[*] , t. (t → Π z) → Π (t → z)
+recompose : forall z : R[*] , t. (t → Π z) → Π (t → z)
 recompose @z @t f = syn #(λ X. t → X) (λ l u. sel (f u) l)
 
 every : a → Π ((Const a)* z)
@@ -140,7 +140,7 @@ every @a x = syn #(λX. a) (λl. x)
 type Eq : * → *
 type Eq t = t → t → Bool
 
-eqS : ∀ z : R[*]. Π (Eq z) → Eq (Σ z)
+eqS : forall z : R[*]. Π (Eq z) → Eq (Σ z)
 eqS d v =  ana #(λX. X)
                (λ l y. match v
                        ( l: x → d.l x y
@@ -217,5 +217,5 @@ either f g = (case 'Left f | case 'Right g)
 
 -------------------------------------------------------------------------------
 
-sorry : ∀ a. a
+sorry : forall a. a
 sorry = fix (\x. x)

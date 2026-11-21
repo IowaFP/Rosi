@@ -75,7 +75,7 @@ chainr1 p op =
         down lhs ((op, rhs) : rhss) = op lhs (down rhs rhss)
 
 chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
-chainl1 p op =
+chainl1 p op = 
   do lhs <- p
      rhss <- many (do f <- op
                       rhs <- p
