@@ -6,7 +6,7 @@ import Data.IORef
 --------------------------------------------------------------------------------
 -- Names
 --
--- Qualified names are stored in reverse order ("Data.Nat.zero" --> ["zero",
+-- Qualified names are stored in reverse order ("Data.Nat.Zero" --> ["Zero",
 -- "Nat", "Data"]). Local names are signified with an empty list ["zero", ""].
 --------------------------------------------------------------------------------
 

@@ -228,8 +228,8 @@ class FromPeano a where
 
 instance FromPeano Term where
   fromPeano :: Term -> Maybe Int
-  fromPeano (EVar _ ["zero","Nat","Data"])          = Just 0
-  fromPeano (EApp (EVar _ ["succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
+  fromPeano (EVar _ ["Zero","Nat","Data"])          = Just 0
+  fromPeano (EApp (EVar _ ["Succ","Nat","Data"]) p) = fmap (+ 1) (fromPeano p)
   fromPeano _                                       = Nothing
 
 collectBinders :: Term -> RDoc ann
