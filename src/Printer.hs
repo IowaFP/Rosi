@@ -234,19 +234,13 @@ instance FromPeano Term where
 
 collectBinders :: Term -> RDoc ann
 collectBinders = go "\\" where
-  go s (ELam x Nothing m)    = go (s <+> ppre x) m
-  go s (ELam x (Just t) m)   = go (s <+> parens (ppre x <:> ppr t)) m
-  go s (ETyLam x Nothing m)  = go (s <+> "@" <> ppre x) m
-  go s (ETyLam x (Just k) m) = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
-  go s (EExLam xs _ps y mt m)
-    | Nothing <- mt          = go (s <+> parens (tyvars <> ppre y)) m
-    | Just t <- mt           = go (s <+> parens (tyvars <> ppre y <:> ppr t)) m
-    where
-      tyvar (x, Just k)  = parens ("@!" <> ppre x <:> ppr k)
-      tyvar (x, Nothing) = "@!" <> ppre x
-      tyvars | null xs   = mempty
-             | otherwise = sep (map tyvar xs) <> " "
-  go s t                     = s <+> "." <+> ppr t
+  go s (ELam x Nothing m)        = go (s <+> ppre x) m
+  go s (ELam x (Just t) m)       = go (s <+> parens (ppre x <:> ppr t)) m
+  go s (ETyLam x Nothing m)      = go (s <+> "@" <> ppre x) m
+  go s (ETyLam x (Just k) m)     = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
+  go s (EExTyLam x Nothing _ m)  = go (s <+> "@!" <> ppre x) m
+  go s (EExTyLam x (Just k) _ m) = go (s <+> parens ("@!" <> ppre x <:> ppr k)) m
+  go s t                         = s <+> "." <+> ppr t
 
 instance Printable EInfixToken where
   ppr :: EInfixToken -> RDoc ann
@@ -268,7 +262,9 @@ instance Printable Term where
   ppr t | Just n <- fromPeano t =  ppre (show n)
   ppr (EVar _ s) = ppr s
   ppr m@(ELam {}) = with 0 $ collectBinders m
-  ppr m@(EExLam {}) = with 0 $ collectBinders m
+  ppr m@(EExTyLam {}) = with 0 $ collectBinders m
+  ppr m@(EExPrLam {}) = with 0 $ collectBinders m
+  ppr m@(ETyLam {}) = with 0 $ collectBinders m
   ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "++", ppr e2]
   ppr (EApp (EApp (EInst (EConst CBranch) _) e1) e2) =
@@ -278,7 +274,6 @@ instance Printable Term where
   ppr (EApp (EApp (EConst CStringEq) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "~", ppr e2]
   ppr (EApp m n) = with 4 $ fillSep [ppr m, at 5 (ppr n)]
-  ppr m@(ETyLam {}) = with 0 $ collectBinders m
   ppr (EInst m is) = with 4 $ ppr m <+> brackets (sep (punctuate "," (map pprI is))) where
     pprI (TyArg t)  = "@" <> parens (ppr t)
     pprI (PrArg _)  = mempty

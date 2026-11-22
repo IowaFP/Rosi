@@ -154,7 +154,7 @@ instance HasVars Term where
   scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x Nothing (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
   scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
-  scope (EExLam xs ps y mt m) = EExLam xs <$> scope ps <*> pure y <*> scope mt <*> foldr (bindTyVar . fst) (bindVar y Nothing (scope m)) xs
+  scope (EExTyLam x k mt m) = EExTyLam x k <$> scope mt <*> bindTyVar x (scope m)
   scope (ESing t) = ESing <$> scope t
   scope (ELabel k l m) = ELabel k <$> scope l <*> scope m
   scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l
@@ -170,6 +170,7 @@ instance HasVars Term where
   scope e@(EHole {}) = return e
   -- These shouldn't have been created yet
   scope EPrLam{} = error "scope: EPrLam"
+  scope EExPrLam{} = error "scope: EExPrLam"
   scope ECast{} = error "scope: ETyEqu"
   scope (EInfix s) = EInfix <$> scope s
 instance HasVars Decl where

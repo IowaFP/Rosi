@@ -179,19 +179,16 @@ eval' (_, he) (EVar i _)
   | i < length he = he !! i
   | otherwise = error $ "environment too small for variable " ++ show i ++ ": " ++ show he
 eval' h (ELam _ _ e) = VLam h (Term e)
-eval' h (EExLam _ ps _ _ e) =
-  VLam h $
-  Prim $ \case
-    (qs, v : vs) -> peel (qs, vs) ps v
-    _            -> error "bad environment for EExLam"
-  where
-    peel (qs, vs) [] v                 = eval (qs, v : vs) e
-    peel (qs, vs) (_ : ps) (VPack q v) = peel (q : qs, vs) ps v
-    peel _ qs v                        = error $ "bad peel: " ++ show qs ++ " " ++ show v
 eval' h (EApp f e) = app (eval h f) (eval h e)
 eval' h (ELet x e f) = eval h (EApp (ELam x Nothing f) e)
 eval' h (ETyLam _ _ e) = eval h e
+eval' h (EExTyLam _ _ _ e) = eval h e
 eval' h (EPrLam _ e) = VPrLam h (Term e)
+eval' h (EExPrLam _ e) =
+  VLam h $
+  Prim $ \case
+    (qs, VPack q v : vs) -> eval (q : qs, vs) e
+    _ -> error "bad environment for EExPrLam"
 eval' h (EInst t is) = inst (eval h t) is
   where
     inst v []                = v

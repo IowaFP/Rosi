@@ -1,4 +1,5 @@
 {- HLINT ignore "Move brackets to avoid $" -}
+{- HLINT ignore "Fuse foldr/map" -}
 module Checker.Terms (module Checker.Terms) where
 
 import Control.Monad
@@ -91,9 +92,8 @@ checkTerm0 e (TForall v (Just k) t) =
        checkTerm (shiftN 0 1 e) t)
 checkTerm0 e0@(EPrLam p e) expected =
   do tcod <- expectedGoal "cod"
-     wrapInst expected $ \expected ->
-       do q <- expectT e0 (TThen p tcod) expected
-          wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
+     q <- expectT e0 (TThen p tcod) expected
+     wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
 checkTerm0 e (TThen p t) =
   EPrLam p <$> assume p (checkTerm e t)
 checkTerm0 (EVar (-1) x) expected =
@@ -113,47 +113,32 @@ checkTerm0 e0@(ELam v (Just t) e) expected =
        do q <- expectT e0 (funTy t' tcod) expected
           tdom <- flatten t'
           case tdom of
-            TExists {}  -> checkTerm (EExLam [] [] v (Just tdom) e) expected
-            TExistsP {} -> checkTerm (EExLam [] [] v (Just tdom) e) expected
-            _           -> wrap q . ELam v (Just t') <$> bind v t' (checkTerm'  e tcod)
-checkTerm0 e0@(EExLam xs _ y mt m) expected
-  | Nothing <- mt =
-    do tdom <- expectedGoal "dom"
-       tcod <- expectedGoal "cod"
-       xs' <- mapM addKinds xs
-       q <- expectT e0 (foldr (uncurry TExists) tdom xs' `funTy` tcod) expected
-       (existentials, (assumed, tdom')) <- second existsQuals . existsBinders <$> flatten tdom
-       wrap q . EExLam (xs' ++ existentials) assumed y Nothing <$>
-         (upLevel $
-          bindTys (xs' ++ existentials) $
-          assumes assumed $
-          bind y tdom' $
-          checkTerm (shiftN 0 (length existentials) m) (shiftN 0 (length xs' + length existentials) tcod))
-  | Just t <- mt =
-    do tdom <- fst <$> (normalize' [] =<< toCheckM (checkTy' e0 t KType))
-       tcod <- expectedGoal "cod"
-       xs' <- mapM addKinds xs
-       q <- expectT e0 (tdom `funTy` tcod) expected
-       (ys, (assumed, tdom')) <- second existsQuals . existsBinders <$> flatten tdom
-       wrap q . EExLam (xs' ++ drop (length xs') ys) assumed y Nothing <$>
-         (upLevel $
-          bindTys (xs' ++ drop (length xs') ys) $
-          assumes assumed $
-          bind y tdom' $
-          checkTerm (shiftN 0 (length ys - length xs') m) (shiftN 0 (length ys) tcod))
-  where
-    addKinds (x, Just k) = return (x, Just k)
-    addKinds (x, Nothing) =
-      do k <- kindGoal "k"
-         return (x, Just k)
+            TExists {}  -> wrap q <$> checkTerm (wrapExLams 0 tdom) expected
+            TExistsP {} -> wrap q <$> checkTerm (wrapExLams 0 tdom) expected
+            _           -> wrap q . ELam v (Just t') <$> bind v t' (checkTerm' e tcod)
 
-    bindTys [] m                 = m
-    bindTys ((_, Just k) : xs) m = bindTy k (bindTys xs m)
-    bindTys _ _                  = error "unannotated type variable in bindTys"
-
-    assumes [] m       = m
-    assumes (p : ps) m = assume p (assumes ps m)
-
+  where wrapExLams n (TExists x k t) = EExTyLam x k Nothing (wrapExLams (n + 1) t)
+        wrapExLams n (TExistsP p t)  = EExPrLam p (wrapExLams n t)
+        wrapExLams n t               = ELam v (Just t) (shiftN 0 n e)
+checkTerm0 e0@(EExTyLam x Nothing mty m) expected =
+  do k <- kindGoal "k"
+     checkTerm (EExTyLam x (Just k) mty m) expected
+checkTerm0 e0@(EExTyLam x (Just k) mdom m) expected =
+  do dom <- expectedGoal "d"
+     cod <- typeGoal "c"
+     case mdom of
+       Nothing -> return ()
+       Just t  -> void (expectT e0 (TExists x (Just k) dom) t)
+     q <- expectT e0 (TExists x (Just k) dom `funTy` cod) expected
+     wrap q . EExTyLam x (Just k) (Just (TExists x (Just k) dom)) <$>
+      (upLevel $
+       bindTy k $
+         checkTerm' m (dom `funTy` shift 0 cod))
+checkTerm0 e0@(EExPrLam p m) expected =
+  do dom <- typeGoal "d"
+     cod <- typeGoal "c"
+     q <- expectT e0 (TExistsP p dom `funTy` cod) expected
+     wrap q . EExPrLam p <$> assume p (checkTerm m (dom `funTy` cod))
 checkTerm0 e0@(EApp f e) expected =
   do tdom <- expectedGoal "dom"
      wrapInst expected $ \expected ->
@@ -324,7 +309,9 @@ checkTerm0 e0@(ELet x e f) expected =
                      assumes assumed $
                      bind x t' $
                      checkTerm f (shiftN 0 (length existentials) expected)
-               return (EApp (EExLam existentials assumed x (Just t) f') e')
+               return (EApp
+                         (foldr ($) (foldr ($) (ELam x (Just t) f') (map EPrLam assumed)) [EExTyLam x k Nothing | (x, k) <- existentials])
+                         e')
        _ -> do f' <- bind x t (wrapInst expected (checkTerm f))
                return (ELet x e' f')
   where

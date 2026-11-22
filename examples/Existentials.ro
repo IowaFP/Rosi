@@ -45,6 +45,7 @@ type Subrecord z = exists y. y < z => Pi y
 updateS : Subrecord z -> Pi z -> Pi z
 updateS r s = upd r s
 
+
 updated = updateS ('1 := 2) ('1 := 1, '2 := 2)
 
 -- Typing fails, as it should: '3 is not contained in {'1 := Nat, '2 := Nat}

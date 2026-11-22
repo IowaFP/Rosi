@@ -28,6 +28,11 @@ shift = flip shiftN 1
 beta :: (HasTyVars t, MonadRef m) => t -> Ty -> m t
 beta x u = shiftN 0 (-1) <$> subst 0 (shift 0 u) x
 
+instance HasTyVars t => HasTyVars (Maybe t) where
+  shiftNV vs n j = fmap (shiftNV vs n j)
+  isFree vs = maybe False (isFree vs)
+  subst n t = traverse (subst n t)
+
 instance HasTyVars Ty where
   shiftNV _ _ 0 t = t
   shiftNV _ j n (TVar i x)
@@ -155,25 +160,24 @@ instance HasTyVars Pred where
   subst v t (PFold z)     = PFold <$> subst v t z
 
 instance HasTyVars Term where
-  shiftNV _ _ _ e@(EVar {})            = e
-  shiftNV vs j n (ELam x mt e)         = ELam x (shiftNV vs j n <$> mt) (shiftNV vs j n e)
-  shiftNV vs j n (EApp f e)            = EApp (shiftNV vs j n f) (shiftNV vs j n e)
-  shiftNV vs j n (ETyLam x mk e)       = ETyLam x mk (shiftNV vs (j + 1) n e)
-  shiftNV vs j n (EPrLam p e)          = EPrLam (shiftNV vs j n p) e
-  shiftNV vs j n (EExLam xs ps y mt e) = EExLam xs (map (shiftNV vs (j + length xs) n) ps)
-                                                y (shiftNV vs (j + length xs) n <$> mt)
-                                                (shiftNV vs (j + length xs) n e)
-  shiftNV vs j n (EInst e is)          = EInst (shiftNV vs j n e) (shiftNV [] j n is)
-  shiftNV vs j n (ESing t)             = ESing (shiftNV vs j n t)
-  shiftNV vs j n (ELabel k l e)        = ELabel k (shiftNV vs j n l) (shiftNV vs j n e)
-  shiftNV vs j n (EUnlabel k e l)      = EUnlabel k (shiftNV vs j n e) (shiftNV vs j n l)
-  shiftNV _ _ _ e@(EConst {})          = e
-  shiftNV vs j n (ELet x e f)          = ELet x (shiftNV vs j n e) (shiftNV vs j n f)
-  shiftNV vs j n (ECast e q)           = ECast (shiftNV vs j n e) q
-  shiftNV vs j n (ETyped e t)          = ETyped e (shiftNV vs j n t)
-  shiftNV vs j n (EInfix ops)          = error "should have desugared Einfix before now"
-  shiftNV _ _ _ e@(EStringLit {})      = e
-  shiftNV _ _ _ e@(EHole {})           = e
+  shiftNV _ _ _ e@(EVar {})           = e
+  shiftNV vs j n (ELam x mt e)        = ELam x (shiftNV vs j n <$> mt) (shiftNV vs j n e)
+  shiftNV vs j n (EApp f e)           = EApp (shiftNV vs j n f) (shiftNV vs j n e)
+  shiftNV vs j n (ETyLam x mk e)      = ETyLam x mk (shiftNV vs (j + 1) n e)
+  shiftNV vs j n (EPrLam p e)         = EPrLam (shiftNV vs j n p) (shiftNV vs j n e)
+  shiftNV vs j n (EExTyLam x mk mt e) = EExTyLam x mk (shiftNV vs j n mt) (shiftNV vs (j + 1) n e)
+  shiftNV vs j n (EExPrLam p e)       = EExPrLam (shiftNV vs n j p) (shiftNV vs j n e)
+  shiftNV vs j n (EInst e is)         = EInst (shiftNV vs j n e) (shiftNV [] j n is)
+  shiftNV vs j n (ESing t)            = ESing (shiftNV vs j n t)
+  shiftNV vs j n (ELabel k l e)       = ELabel k (shiftNV vs j n l) (shiftNV vs j n e)
+  shiftNV vs j n (EUnlabel k e l)     = EUnlabel k (shiftNV vs j n e) (shiftNV vs j n l)
+  shiftNV _ _ _ e@(EConst {})         = e
+  shiftNV vs j n (ELet x e f)         = ELet x (shiftNV vs j n e) (shiftNV vs j n f)
+  shiftNV vs j n (ECast e q)          = ECast (shiftNV vs j n e) q
+  shiftNV vs j n (ETyped e t)         = ETyped e (shiftNV vs j n t)
+  shiftNV vs j n (EInfix ops)         = error "should have desugared Einfix before now"
+  shiftNV _ _ _ e@(EStringLit {})     = e
+  shiftNV _ _ _ e@(EHole {})          = e
 
   isFree = error "isFree not implemented for terms"
 

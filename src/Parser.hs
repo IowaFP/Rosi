@@ -413,7 +413,7 @@ pr = choice [ do keyword "Fold"
 
 existentialBinder :: Parser ([(String, Maybe Kind)], String, Maybe Ty)
 existentialBinder =
-  do xs <- concat <$> many existentialTyVars
+  do xs <- concat <$> some existentialTyVars
      y  <- lexeme identifier
      t  <- optional (colon >> ty)
      return (xs, y, t)
@@ -425,8 +425,6 @@ existentialBinder =
                       k  <- colon >> kind
                       return (map (, Just k) xs)
         ]
-
-
 
 termLamBinders :: Parser [Term -> Term]
 termLamBinders =
@@ -441,8 +439,11 @@ termLamBinders =
       parens $ do xs <- some (lexeme (char '@' >> identifier))
                   t <- colon >> kind
                   return (map (flip ETyLam (Just t)) xs)
-    , parens $ do (xs, y, t) <- existentialBinder
-                  return [EExLam xs [] y t]
+    , parens $ do ((x, k) : xs, y, mt) <- existentialBinder
+                  return $
+                    EExTyLam x k mt :
+                    map (\(x, k) -> EExTyLam x k Nothing) xs ++
+                    [ELam y Nothing]
     ]
 
 term :: Parser Term
@@ -501,8 +502,10 @@ term = prefixes typedTerm where
                                    t <- colon >> ty
                                    return (ELam x (Just t))
                      , parens $
-                       do (xs, y, mty) <- lexeme existentialBinder
-                          return (EExLam xs [] y mty) ]
+                       do ((x, k) : xs, y, mty) <- lexeme existentialBinder
+                          return $
+                            EExTyLam x k mty .
+                            foldr (.) (ELam y Nothing) (map (\(x, k) -> EExTyLam x k Nothing) xs) ]
 
          return (k, x)
 

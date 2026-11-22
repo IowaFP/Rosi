@@ -18,7 +18,7 @@ data Const =
 data Term =
     EVar Int QName | ELam String (Maybe Ty) Term | EApp Term Term
   | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term
-  | EExLam [(String, Maybe Kind)] [Pred] String (Maybe Ty) Term
+  | EExTyLam String (Maybe Kind) (Maybe Ty) Term | EExPrLam Pred Term
   | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const | EInfix [EInfixToken]
@@ -48,7 +48,8 @@ hasHoles (ELam _ _ e)       = hasHoles e
 hasHoles (EApp f e)         = hasHoles f || hasHoles e
 hasHoles (ETyLam _ _ e)     = hasHoles e
 hasHoles (EPrLam _ e)       = hasHoles e
-hasHoles (EExLam _ _ _ _ e) = hasHoles e
+hasHoles (EExTyLam _ _ _ e) = hasHoles e
+hasHoles (EExPrLam _ e)     = hasHoles e
 hasHoles (EInst e _)        = hasHoles e
 hasHoles (ELabel _ l e)     = hasHoles l || hasHoles e
 hasHoles (EUnlabel _ e l)   = hasHoles e || hasHoles l
