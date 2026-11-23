@@ -234,13 +234,15 @@ instance FromPeano Term where
 
 collectBinders :: Term -> RDoc ann
 collectBinders = go "\\" where
-  go s (ELam x Nothing m)        = go (s <+> ppre x) m
-  go s (ELam x (Just t) m)       = go (s <+> parens (ppre x <:> ppr t)) m
-  go s (ETyLam x Nothing m)      = go (s <+> "@" <> ppre x) m
-  go s (ETyLam x (Just k) m)     = go (s <+> parens ("@" <> ppre x <:> ppr k)) m
-  go s (EExTyLam x Nothing _ m)  = go (s <+> "@!" <> ppre x) m
-  go s (EExTyLam x (Just k) _ m) = go (s <+> parens ("@!" <> ppre x <:> ppr k)) m
-  go s t                         = s <+> "." <+> ppr t
+  go s (ELam x Nothing m)                    = go (s <+> ppre x) m
+  go s (ELam x (Just t) m)                   = go (s <+> parens (ppre x <:> ppr t)) m
+  go s (EGen [] m)                           = go s m
+  go s (EGen (TyParam x Nothing : gs) m)     = go (s <+> "@" <> ppre x) (EGen gs m)
+  go s (EGen (TyParam x (Just k) : gs) m)    = go (s <+> parens ("@" <> ppre x <:> ppr k)) (EGen gs m)
+  go s (EGen (TyUnpack x Nothing _ : gs) m)  = go (s <+> "@!" <> ppre x) (EGen gs m)
+  go s (EGen (TyUnpack x (Just k) _ : gs) m) = go (s <+> parens ("@!" <> ppre x <:> ppr k)) (EGen gs m)
+  go s (EGen (_ : gs) m)                     = go s (EGen gs m)
+  go s t                                     = s <+> "." <+> ppr t
 
 instance Printable EInfixToken where
   ppr :: EInfixToken -> RDoc ann
@@ -262,9 +264,7 @@ instance Printable Term where
   ppr t | Just n <- fromPeano t =  ppre (show n)
   ppr (EVar _ s) = ppr s
   ppr m@(ELam {}) = with 0 $ collectBinders m
-  ppr m@(EExTyLam {}) = with 0 $ collectBinders m
-  ppr m@(EExPrLam {}) = with 0 $ collectBinders m
-  ppr m@(ETyLam {}) = with 0 $ collectBinders m
+  ppr m@(EGen {}) = with 0 $ collectBinders m
   ppr (EApp (EApp (EInst (EConst CConcat) _) e1) e2) =
     with 1 $ fillSep [at 2 (ppr e1), "++", ppr e2]
   ppr (EApp (EApp (EInst (EConst CBranch) _) e1) e2) =
@@ -303,7 +303,6 @@ instance Printable Term where
   ppr (ELet x m n) = with 0 $ nest 2 $ fillSep ["let" <+> ppre x <+> "=" <+> ppr m <+> "in", ppr n]
   ppr (ETyped e t) = with 1 (fillSep [ppr e <+> ":", ppr t])
   -- Not printing internals (yet)
-  ppr (EPrLam _ m) = ppr m
   ppr (ECast m VEqRefl) = ppr m
   ppr (ECast m q) = parens (fillSep [ppr m <+> "<|", fromString (show q)])
   ppr (EStringLit s) = "\"" <> ppre s <> "\""

@@ -22,10 +22,7 @@ instance DesugarInfix Term where
   desugarInfix (ELam x ty tm)       = ELam x ty <$> desugarInfix tm
   desugarInfix (EApp ft xt)         = EApp <$> desugarInfix ft <*> desugarInfix xt
 
-  desugarInfix (ETyLam s k tm )     = ETyLam s k <$> desugarInfix tm
-  desugarInfix (EExTyLam x k mt tm) = EExTyLam x k mt <$> desugarInfix tm
-  desugarInfix (EPrLam p tm)        = EPrLam p <$> desugarInfix tm
-  desugarInfix (EExPrLam p tm)      = EPrLam p <$> desugarInfix tm
+  desugarInfix (EGen gs m)          = EGen gs <$> desugarInfix m
   desugarInfix (EInst tm insts)     = (`EInst` insts) <$> desugarInfix tm
 
   desugarInfix (ESing ty)           = return $ ESing ty

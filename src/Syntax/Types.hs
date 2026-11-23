@@ -98,8 +98,10 @@ data Inst = TyArg Ty | PrArg Evid | TyPack Ty | PrPack Evid | Unknown Int (Goal 
 
 type Insts = [Inst]
 
--- data Insts = Known [Inst] | Unknown Int (Goal Insts)
---   deriving (Data, Eq, Show, Typeable)
+data Gen = TyParam String (Maybe Kind) | PrParam Pred | TyUnpack String (Maybe Kind) (Maybe Ty) | PrUnpack Pred | UnknownG Int (Goal Gens)
+  deriving (Data, Eq, Show, Typeable)
+
+type Gens = [Gen]
 
 infixr 4 `TThen`
 

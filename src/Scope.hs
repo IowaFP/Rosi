@@ -153,8 +153,22 @@ instance HasVars Term where
 
   scope (ELam x t m) = ELam x <$> traverse scope t <*> bindVar x Nothing (scope m)
   scope (EApp t u) = EApp <$> scope t <*> scope u
-  scope (ETyLam x k m) = ETyLam x k <$> bindTyVar x (scope m)
-  scope (EExTyLam x k mt m) = EExTyLam x k <$> scope mt <*> bindTyVar x (scope m)
+  scope (EGen gs m) = uncurry EGen <$> go gs where
+    go [] =
+      ([],) <$> scope m
+    go (TyParam x k : gs) =
+      first (TyParam x k :) <$> bindTyVar x (go gs)
+    go (PrParam p : gs) =
+      do p' <- scope p
+         first (PrParam p' :) <$> go gs
+    go (TyUnpack x k mt : gs) =
+      do mt' <- scope mt
+         first (TyUnpack x k mt' :) <$> bindTyVar x (go gs)
+    go (PrUnpack p : gs) =
+      do p' <- scope p
+         first (PrUnpack p' :) <$> go gs
+    go (UnknownG n g : gs) =
+      first (UnknownG n g :) <$> go gs
   scope (ESing t) = ESing <$> scope t
   scope (ELabel k l m) = ELabel k <$> scope l <*> scope m
   scope (EUnlabel k m l) = EUnlabel k <$> scope m <*> scope l
@@ -169,8 +183,6 @@ instance HasVars Term where
   scope e@(EStringLit {}) = return e
   scope e@(EHole {}) = return e
   -- These shouldn't have been created yet
-  scope EPrLam{} = error "scope: EPrLam"
-  scope EExPrLam{} = error "scope: EExPrLam"
   scope ECast{} = error "scope: ETyEqu"
   scope (EInfix s) = EInfix <$> scope s
 instance HasVars Decl where

@@ -73,29 +73,55 @@ wrapInst expected k =
      flip EInst [Unknown 0 (Goal (name, iv))] <$> k (TInst [Unknown 0 (Goal (name, iv))] expected)
 
 checkTerm0 :: Term -> Ty -> CheckM Term
-checkTerm0 (ETyLam v Nothing e) expected =
-  do k <- kindGoal "d"
-     checkTerm (ETyLam v (Just k) e) expected
-checkTerm0 e0@(ETyLam v (Just k) e) expected =
-  do tcod <- expectedGoal "cod"
-     q <- expectT e0 (TForall v (Just k) tcod) expected
-     wrap q . ETyLam v (Just k) <$>
-       (upLevel $
-       bindTy k $
-         checkTerm' e tcod)
+checkTerm0 e0@(EGen gs e) expected = uncurry EGen <$> gen gs expected where
+  gen :: [Gen] -> Ty -> CheckM ([Gen], Term)
+  gen [] expected' = ([],) <$> checkTerm' e expected'
+  gen (TyParam x Nothing : gs) expected =
+    do k <- kindGoal "d"
+       gen (TyParam x (Just k) : gs) expected
+  gen (TyParam x (Just k) : gs) expected =
+    do tcod <- expectedGoal "cod"
+       q <- expectT e0 (TForall x (Just k) tcod) expected
+       -- TODO (all cases): what to do about equations?
+       first (TyParam x (Just k) :) <$>
+         (upLevel $
+          bindTy k $
+          gen gs tcod)
+  gen (PrParam p : gs) expected =
+    do tcod <- expectedGoal "cod"
+       q <- expectT e0 (TThen p tcod) expected
+       first (PrParam p :) <$> assume p (gen gs tcod)
+  gen (TyUnpack x Nothing mty : gs) expected =
+    do k <- kindGoal "d"
+       gen (TyUnpack x (Just k) mty : gs) expected
+  gen (TyUnpack x (Just k) mty : gs) expected =
+    do dom <- expectedGoal "d"
+       cod <- typeGoal "c"
+       case mty of
+         Nothing -> return ()
+         Just t  -> void (expectT e0 (TExists x (Just k) dom) t)
+       q <- expectT e0 (TExists x (Just k) dom `funTy` cod) expected
+       first (TyUnpack x (Just k) (Just (TExists x (Just k) dom)) :) <$>
+         (upLevel $
+          bindTy k $
+            gen gs (dom `funTy` shift 0 cod))
+  gen (PrUnpack p : gs) expected =
+    do dom <- typeGoal "d"
+       cod <- typeGoal "c"
+       q <- expectT e0 (TExistsP p dom `funTy` cod) expected
+       first (PrUnpack p :) <$> assume p (gen gs (dom `funTy` cod))
+  gen (UnknownG n g : gs) expected =
+    first (UnknownG n g :) <$> gen gs expected
+  gen _ _          = undefined
 checkTerm0 _ (TForall v Nothing t) =
   error "checkTerm: forall without kind"
 checkTerm0 e (TForall v (Just k) t) =
-  ETyLam v (Just k) <$>
+  EGen [TyParam v (Just k)] <$>
     (upLevel $
      bindTy k $
        checkTerm (shiftN 0 1 e) t)
-checkTerm0 e0@(EPrLam p e) expected =
-  do tcod <- expectedGoal "cod"
-     q <- expectT e0 (TThen p tcod) expected
-     wrap q . EPrLam p <$> assume p (checkTerm' e tcod)
 checkTerm0 e (TThen p t) =
-  EPrLam p <$> assume p (checkTerm e t)
+  EGen [PrParam p] <$> assume p (checkTerm e t)
 checkTerm0 (EVar (-1) x) expected =
   typeError (ErrOther $ "scoping error: variable " ++ head x ++ " not resolved")
 checkTerm0 e@(EVar i v) expected =
@@ -113,32 +139,14 @@ checkTerm0 e0@(ELam v (Just t) e) expected =
        do q <- expectT e0 (funTy t' tcod) expected
           tdom <- flatten t'
           case tdom of
-            TExists {}  -> wrap q <$> checkTerm (wrapExLams 0 tdom) expected
-            TExistsP {} -> wrap q <$> checkTerm (wrapExLams 0 tdom) expected
+            TExists {}  -> wrap q <$> checkTerm (wrapGen tdom) expected
+            TExistsP {} -> wrap q <$> checkTerm (wrapGen tdom) expected
             _           -> wrap q . ELam v (Just t') <$> bind v t' (checkTerm' e tcod)
 
-  where wrapExLams n (TExists x k t) = EExTyLam x k Nothing (wrapExLams (n + 1) t)
-        wrapExLams n (TExistsP p t)  = EExPrLam p (wrapExLams n t)
-        wrapExLams n t               = ELam v (Just t) (shiftN 0 n e)
-checkTerm0 e0@(EExTyLam x Nothing mty m) expected =
-  do k <- kindGoal "k"
-     checkTerm (EExTyLam x (Just k) mty m) expected
-checkTerm0 e0@(EExTyLam x (Just k) mdom m) expected =
-  do dom <- expectedGoal "d"
-     cod <- typeGoal "c"
-     case mdom of
-       Nothing -> return ()
-       Just t  -> void (expectT e0 (TExists x (Just k) dom) t)
-     q <- expectT e0 (TExists x (Just k) dom `funTy` cod) expected
-     wrap q . EExTyLam x (Just k) (Just (TExists x (Just k) dom)) <$>
-      (upLevel $
-       bindTy k $
-         checkTerm' m (dom `funTy` shift 0 cod))
-checkTerm0 e0@(EExPrLam p m) expected =
-  do dom <- typeGoal "d"
-     cod <- typeGoal "c"
-     q <- expectT e0 (TExistsP p dom `funTy` cod) expected
-     wrap q . EExPrLam p <$> assume p (checkTerm m (dom `funTy` cod))
+  where wrapGen t = uncurry EGen (wrapGens 0 t)
+        wrapGens n (TExists x k t) = first (TyUnpack x k Nothing :) $ wrapGens (n + 1) t
+        wrapGens n (TExistsP p t)  = first (PrUnpack p :) $ wrapGens n t
+        wrapGens n t               = ([], ELam v (Just t) (shiftN 0 n e))
 checkTerm0 e0@(EApp f e) expected =
   do tdom <- expectedGoal "dom"
      wrapInst expected $ \expected ->
@@ -310,7 +318,8 @@ checkTerm0 e0@(ELet x e f) expected =
                      bind x t' $
                      checkTerm f (shiftN 0 (length existentials) expected)
                return (EApp
-                         (foldr ($) (foldr ($) (ELam x (Just t) f') (map EPrLam assumed)) [EExTyLam x k Nothing | (x, k) <- existentials])
+                         (EGen ([TyUnpack x k Nothing | (x, k) <- existentials] ++ [PrUnpack p | p <- assumed]) (ELam x (Just t) f'))
+                        --  (foldr ($) (foldr ($) (ELam x (Just t) f') (map EPrLam assumed)) [EExTyLam x k Nothing | (x, k) <- existentials])
                          e')
        _ -> do f' <- bind x t (wrapInst expected (checkTerm f))
                return (ELet x e' f')
@@ -411,17 +420,18 @@ generalize topLevel e =
 
         buildFinal :: [String] -> [UVar] -> [(Pred, IORef (Maybe Evid))] -> Term -> Ty -> (Term, Ty)
         buildFinal names ts ps e t =
-          (tyLams ts names (prLams ps e), quantifiers ts names (qualifiers ps t))
+          (EGen (tyLams ts names ++ prLams ps) e, quantifiers ts names (qualifiers ps t))
+            -- tyLams ts names (prLams ps e), quantifiers ts names (qualifiers ps t))
           where quantifiers [] _ t              = t
                 quantifiers (u : us) (b : bs) t = TForall b (Just (uvKind u)) (quantifiers us bs t)
                 quantifiers _ _ _               = error "misaligned variable and uvar lists"
                 qualifiers [] t            = t
                 qualifiers ((p, _) : ps) t = TThen p (qualifiers ps t)
-                tyLams [] _ e              = e
-                tyLams (u : us) (b : bs) e = ETyLam b (Just (uvKind u)) (tyLams us bs e)
-                tyLams _ _ _=              error "misaligned variable and uvar lists"
-                prLams [] e            = e
-                prLams ((p, _) : ps) e = EPrLam p (prLams ps e)
+                tyLams [] _              = []
+                tyLams (u : us) (b : bs) = TyParam b (Just (uvKind u)) : tyLams us bs
+                tyLams _ _               = error "misaligned variable and uvar lists"
+                prLams []            = []
+                prLams ((p, _) : ps) = PrParam p : prLams ps
 
 checkTop :: Term -> Maybe Ty -> CheckM (Term, Ty)
 checkTop m (Just t) =

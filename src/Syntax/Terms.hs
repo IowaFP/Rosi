@@ -17,8 +17,7 @@ data Const =
 
 data Term =
     EVar Int QName | ELam String (Maybe Ty) Term | EApp Term Term
-  | ETyLam String (Maybe Kind) Term  | EPrLam Pred Term
-  | EExTyLam String (Maybe Kind) (Maybe Ty) Term | EExPrLam Pred Term
+  | EGen Gens Term
   | EInst Term Insts
   | ESing Ty | ELabel (Maybe TyCon) Term Term | EUnlabel (Maybe TyCon) Term Term
   | EConst Const | EInfix [EInfixToken]
@@ -36,6 +35,14 @@ instance Ord EOp where
 explicitApp :: EInfixToken
 explicitApp = Operator $ Op (-1) ["__Apply"] (Just (Fixity InfixL 10))
 
+etylam :: String -> Maybe Kind -> Term -> Term
+etylam x k (EGen gs m) = EGen (TyParam x k : gs) m
+etylam x k m           = EGen [TyParam x k] m
+
+eextylam :: String -> Maybe Kind -> Maybe Ty -> Term -> Term
+eextylam x k t (EGen gs m) = EGen (TyUnpack x k t : gs) m
+eextylam x k t m           = EGen [TyUnpack x k t] m
+
 data EOp = Op Int QName (Maybe Fixity)
   deriving (Data, Eq, Show)
 
@@ -43,20 +50,17 @@ data AppTerm = AType Ty | ATerm Term
   deriving (Data, Eq, Show)
 
 hasHoles :: Term -> Bool
-hasHoles (EHole {})         = True
-hasHoles (ELam _ _ e)       = hasHoles e
-hasHoles (EApp f e)         = hasHoles f || hasHoles e
-hasHoles (ETyLam _ _ e)     = hasHoles e
-hasHoles (EPrLam _ e)       = hasHoles e
-hasHoles (EExTyLam _ _ _ e) = hasHoles e
-hasHoles (EExPrLam _ e)     = hasHoles e
-hasHoles (EInst e _)        = hasHoles e
-hasHoles (ELabel _ l e)     = hasHoles l || hasHoles e
-hasHoles (EUnlabel _ e l)   = hasHoles e || hasHoles l
-hasHoles (ELet _ e f)       = hasHoles e || hasHoles f
-hasHoles (ECast e _)        = hasHoles e
-hasHoles (ETyped e _)       = hasHoles e
-hasHoles _                  = False -- covers: EVar, ESing, EConst
+hasHoles (EHole {})       = True
+hasHoles (ELam _ _ e)     = hasHoles e
+hasHoles (EApp f e)       = hasHoles f || hasHoles e
+hasHoles (EGen _ e)       = hasHoles e
+hasHoles (EInst e _)      = hasHoles e
+hasHoles (ELabel _ l e)   = hasHoles l || hasHoles e
+hasHoles (EUnlabel _ e l) = hasHoles e || hasHoles l
+hasHoles (ELet _ e f)     = hasHoles e || hasHoles f
+hasHoles (ECast e _)      = hasHoles e
+hasHoles (ETyped e _)     = hasHoles e
+hasHoles _                = False -- covers: EVar, ESing, EConst
 
 --------------------------------------------------------------------------------
 -- Programs

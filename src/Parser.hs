@@ -430,7 +430,7 @@ termLamBinders :: Parser [Term -> Term]
 termLamBinders =
   choice
     [ singleton . flip ELam Nothing <$> try (lexeme termIdentifier)
-    , singleton . flip ETyLam Nothing <$> lexeme (char '@' >> identifier)
+    , singleton . flip etylam Nothing <$> lexeme (char '@' >> identifier)
     , try $
       parens $ do xs <- some (try (lexeme termIdentifier))
                   t <- colon >> ty
@@ -438,11 +438,11 @@ termLamBinders =
     , try $
       parens $ do xs <- some (lexeme (char '@' >> identifier))
                   t <- colon >> kind
-                  return (map (flip ETyLam (Just t)) xs)
+                  return (map (flip etylam (Just t)) xs)
     , parens $ do ((x, k) : xs, y, mt) <- existentialBinder
                   return $
-                    EExTyLam x k mt :
-                    map (\(x, k) -> EExTyLam x k Nothing) xs ++
+                    eextylam x k mt :
+                    map (\(x, k) -> eextylam x k Nothing) xs ++
                     [ELam y Nothing]
     ]
 
@@ -504,8 +504,8 @@ term = prefixes typedTerm where
                      , parens $
                        do ((x, k) : xs, y, mty) <- lexeme existentialBinder
                           return $
-                            EExTyLam x k mty .
-                            foldr (.) (ELam y Nothing) (map (\(x, k) -> EExTyLam x k Nothing) xs) ]
+                            eextylam x k mty .
+                            foldr (.) (ELam y Nothing) (map (\(x, k) -> eextylam x k Nothing) xs) ]
 
          return (k, x)
 

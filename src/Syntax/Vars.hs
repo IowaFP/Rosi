@@ -4,6 +4,7 @@ import Data.Generics
 import Data.List
 
 import Control.Monad
+import Data.Bifunctor (first)
 import Syntax.Common
 import Syntax.Terms
 import Syntax.Types
@@ -163,11 +164,14 @@ instance HasTyVars Term where
   shiftNV _ _ _ e@(EVar {})           = e
   shiftNV vs j n (ELam x mt e)        = ELam x (shiftNV vs j n <$> mt) (shiftNV vs j n e)
   shiftNV vs j n (EApp f e)           = EApp (shiftNV vs j n f) (shiftNV vs j n e)
-  shiftNV vs j n (ETyLam x mk e)      = ETyLam x mk (shiftNV vs (j + 1) n e)
-  shiftNV vs j n (EPrLam p e)         = EPrLam (shiftNV vs j n p) (shiftNV vs j n e)
-  shiftNV vs j n (EExTyLam x mk mt e) = EExTyLam x mk (shiftNV vs j n mt) (shiftNV vs (j + 1) n e)
-  shiftNV vs j n (EExPrLam p e)       = EExPrLam (shiftNV vs n j p) (shiftNV vs j n e)
-  shiftNV vs j n (EInst e is)         = EInst (shiftNV vs j n e) (shiftNV [] j n is)
+  shiftNV vs j n (EGen gs e) = uncurry EGen (go gs j)
+    where go [] j'                      = ([], shiftNV vs j' n e)
+          go (TyParam x mk : gs) j'     = first (TyParam x mk :) (go gs (j' + 1))
+          go (PrParam p : gs) j'        = first (PrParam (shiftNV vs j' n p) :) (go gs j')
+          go (TyUnpack x mk mt : gs) j' = first (TyUnpack x mk (shiftNV vs j' n mt) :) (go gs (j' + 1))
+          go (PrUnpack p : gs) j'       = first (PrUnpack (shiftNV vs j' n p) :) (go gs j')
+          go (UnknownG k g : gs) j'     = first (UnknownG (k + j') g :) (go gs j')
+  shiftNV vs j n (EInst e is)         = EInst (shiftNV vs j n e) (shiftNV [] j n is) -- TODO: why do we ignore the `vs` here?
   shiftNV vs j n (ESing t)            = ESing (shiftNV vs j n t)
   shiftNV vs j n (ELabel k l e)       = ELabel k (shiftNV vs j n l) (shiftNV vs j n e)
   shiftNV vs j n (EUnlabel k e l)     = EUnlabel k (shiftNV vs j n e) (shiftNV vs j n l)

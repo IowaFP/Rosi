@@ -181,13 +181,14 @@ eval' (_, he) (EVar i _)
 eval' h (ELam _ _ e) = VLam h (Term e)
 eval' h (EApp f e) = app (eval h f) (eval h e)
 eval' h (ELet x e f) = eval h (EApp (ELam x Nothing f) e)
-eval' h (ETyLam _ _ e) = eval h e
-eval' h (EExTyLam _ _ _ e) = eval h e
-eval' h (EPrLam _ e) = VPrLam h (Term e)
-eval' h (EExPrLam _ e) =
+eval' h (EGen [] e) = eval h e
+eval' h (EGen (TyParam {} : gs) e) = eval' h (EGen gs e)
+eval' h (EGen (PrParam _ : gs) e) = VPrLam h (Term (EGen gs e))
+eval' h (EGen (TyUnpack {} : gs) e) = eval' h (EGen gs e)
+eval' h (EGen (PrUnpack _ : gs) e) =
   VLam h $
   Prim $ \case
-    (qs, VPack q v : vs) -> eval (q : qs, vs) e
+    (qs, VPack q v : vs) -> eval (q : qs, vs) (EGen gs e)
     _ -> error "bad environment for EExPrLam"
 eval' h (EInst t is) = inst (eval h t) is
   where
