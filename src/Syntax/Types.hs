@@ -77,21 +77,16 @@ data TyOrdering = Leq | Geq
 
 data Ty =
     TVar Int QName | TUnif UVar
-  | TForall String (Maybe Kind) Ty | TThen Pred Ty
-  | TExists String (Maybe Kind) Ty | TExistsP Pred Ty
+  | TInst Insts Ty | TGen Gens Ty
+  -- | TForall String (Maybe Kind) Ty | TThen Pred Ty
+  -- | TExists String (Maybe Kind) Ty | TExistsP Pred Ty
   | TLam String (Maybe Kind) Ty | TApp Ty Ty
   | TFun | TLab String | TSing Ty | TLabeled Ty Ty | TRow [Ty] | TConApp TyCon Ty
   | TMap Ty | TCompl Ty Ty
   | TString
   -- Internals and temporaries
-  | TInst Insts Ty | TMapApp Ty | TPlus Ty Ty | TConOrd TyCon TyOrdering Ty
+  | TMapApp Ty | TPlus Ty Ty | TConOrd TyCon TyOrdering Ty
   deriving (Data, Eq, Show, Typeable)
-
-unitTy :: Ty
-unitTy = TConApp Pi (TRow [])
-
-boolTy :: Ty
-boolTy = TConApp Sigma (TRow [TLabeled (TLab "False") unitTy, TLabeled (TLab "True") unitTy])
 
 data Inst = TyArg Ty | PrArg Evid | TyPack Ty | PrPack Evid | Unknown Int (Goal Insts)
   deriving (Data, Eq, Show, Typeable)
@@ -103,7 +98,22 @@ data Gen = TyParam String (Maybe Kind) | PrParam Pred | TyUnpack String (Maybe K
 
 type Gens = [Gen]
 
-infixr 4 `TThen`
+addGeneralization :: Gen -> Ty -> Ty
+addGeneralization g (TGen gs t) = TGen (g : gs) t
+addGeneralization g t           = TGen [g] t
+
+tforall x k = addGeneralization (TyParam x k)
+tthen p = addGeneralization (PrParam p)
+texists x k = addGeneralization (TyUnpack x k Nothing)
+texistsp p = addGeneralization (PrUnpack p)
+
+infixr 4 `tthen`
+
+unitTy :: Ty
+unitTy = TConApp Pi (TRow [])
+
+boolTy :: Ty
+boolTy = TConApp Sigma (TRow [TLabeled (TLab "False") unitTy, TLabeled (TLab "True") unitTy])
 
 funTy :: Ty -> Ty -> Ty
 funTy = TApp . TApp TFun

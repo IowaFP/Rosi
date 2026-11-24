@@ -112,7 +112,6 @@ checkTerm0 e0@(EGen gs e) expected = uncurry EGen <$> gen gs expected where
        first (PrUnpack p :) <$> assume p (gen gs (dom `funTy` cod))
   gen (UnknownG n g : gs) expected =
     first (UnknownG n g :) <$> gen gs expected
-  gen _ _          = undefined
 checkTerm0 _ (TForall v Nothing t) =
   error "checkTerm: forall without kind"
 checkTerm0 e (TForall v (Just k) t) =
